@@ -66,3 +66,22 @@ def test_aggregate_respects_weights():
 
 def test_aggregate_empty_returns_zero():
     assert aggregate([]) == 0.0
+
+
+def test_aggregate_zero_subtitle_tokens_unweighted():
+    import pytest
+    scores = [
+        SegmentScore(f1=0.8, wer=0.2, subtitle_tokens=0),
+        SegmentScore(f1=0.4, wer=0.6, subtitle_tokens=0),
+    ]
+    assert aggregate(scores) == pytest.approx(0.6)
+
+
+def test_word_error_rate_empty_ref_nonempty_hyp():
+    from submatch.compare import _word_error_rate
+    assert _word_error_rate([], ["hello"]) == 1.0
+
+
+def test_word_error_rate_both_empty():
+    from submatch.compare import _word_error_rate
+    assert _word_error_rate([], []) == 0.0

@@ -45,3 +45,15 @@ def test_parse_skips_malformed_block(tmp_path):
     result = parse(f)
     assert len(result) == 1
     assert result[0].text == "World."
+
+
+def test_parse_skips_non_integer_index(tmp_path):
+    content = (
+        "INTRO\n00:00:01,000 --> 00:00:03,000\nHello.\n\n"
+        "1\n00:00:05,000 --> 00:00:07,000\nWorld.\n"
+    )
+    f = tmp_path / "test.srt"
+    f.write_text(content)
+    result = parse(f)
+    assert len(result) == 1
+    assert result[0].text == "World."

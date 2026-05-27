@@ -61,3 +61,11 @@ def test_select_segments_sparse_fallback():
     subs = _make_subtitles(2, duration_ms)
     result = select_segments(subs, duration_ms, n=5)
     assert len(result) == 5
+
+
+def test_select_segments_very_short_video_boundary_correction():
+    # duration < window triggers start_bound >= end_bound correction
+    duration_ms = 20_000  # 20s, less than 30s window
+    subs = _make_subtitles(2, duration_ms)
+    result = select_segments(subs, duration_ms, n=2)
+    assert len(result) == 2

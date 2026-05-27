@@ -1,10 +1,13 @@
+import json
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 from submatch.language import (
     detect_from_filename,
     detect_from_text,
+    detect_from_video,
     build_result,
     LanguageResult,
+    _langdetect,
 )
 
 
@@ -75,3 +78,66 @@ def test_build_result_expected_overrides():
         expected="pt",
     )
     assert result.mismatch
+
+
+def test_build_result_video_meta_mismatch():
+    result = build_result(
+        audio="en",
+        subtitle_detected=None,
+        subtitle_filename=None,
+        video_meta="pt",
+        expected=None,
+    )
+    assert result.mismatch
+    assert any("video metadata" in d for d in result.mismatch_details)
+
+
+def test_build_result_filename_mismatch():
+    result = build_result(
+        audio="en",
+        subtitle_detected=None,
+        subtitle_filename="pt",
+        video_meta=None,
+        expected=None,
+    )
+    assert result.mismatch
+
+
+def test_build_result_multiple_mismatches():
+    result = build_result(
+        audio="en",
+        subtitle_detected="pt",
+        subtitle_filename="es",
+        video_meta="fr",
+        expected=None,
+    )
+    assert len(result.mismatch_details) == 3
+
+
+def test_detect_from_video_returns_language(tmp_path):
+    streams = json.dumps({"streams": [{"tags": {"language": "eng"}}]})
+    mock_result = MagicMock(stdout=streams)
+    with patch("submatch.language.subprocess.run", return_value=mock_result):
+        assert detect_from_video(Path("video.mp4")) == "eng"
+
+
+def test_detect_from_video_und_returns_none():
+    streams = json.dumps({"streams": [{"tags": {"language": "und"}}]})
+    with patch("submatch.language.subprocess.run", return_value=MagicMock(stdout=streams)):
+        assert detect_from_video(Path("video.mp4")) is None
+
+
+def test_detect_from_video_no_streams():
+    with patch("submatch.language.subprocess.run",
+               return_value=MagicMock(stdout=json.dumps({"streams": []}))):
+        assert detect_from_video(Path("video.mp4")) is None
+
+
+def test_detect_from_video_exception_returns_none():
+    with patch("submatch.language.subprocess.run", side_effect=Exception("fail")):
+        assert detect_from_video(Path("video.mp4")) is None
+
+
+def test_langdetect_delegates_to_langdetect_library():
+    with patch("langdetect.detect", return_value="fr"):
+        assert _langdetect("Bonjour le monde") == "fr"
