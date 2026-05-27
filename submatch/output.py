@@ -15,6 +15,13 @@ _BOLD = "\033[1m"
 _RESET = "\033[0m"
 
 
+class _PathEncoder(json.JSONEncoder):
+    def default(self, obj: Any) -> Any:
+        if isinstance(obj, Path):
+            return str(obj)
+        return super().default(obj)
+
+
 @dataclass
 class SegmentResult:
     index: int
@@ -93,16 +100,10 @@ def print_human(result: MatchResult, verbose: bool = False) -> None:
 
 
 def format_json(result: MatchResult) -> str:
-    class _Encoder(json.JSONEncoder):
-        def default(self, obj: Any) -> Any:
-            if isinstance(obj, Path):
-                return str(obj)
-            return super().default(obj)
-
-    return json.dumps(dataclasses.asdict(result), cls=_Encoder, indent=2)
+    return json.dumps(dataclasses.asdict(result), cls=_PathEncoder, indent=2)
 
 
-def print_batch_compact(pairs: list[BatchPairResult], threshold: float) -> None:
+def print_batch_compact(pairs: list[BatchPairResult]) -> None:
     for p in pairs:
         if p.error:
             label = f"{_RED}ERROR{_RESET}"
@@ -118,16 +119,11 @@ def print_batch_summary(pairs: list[BatchPairResult]) -> None:
     passed = sum(1 for p in pairs if p.result and p.result.passed)
     failed = sum(1 for p in pairs if p.result and not p.result.passed)
     errors = sum(1 for p in pairs if p.error)
-    print(f"\nResults: {passed} passed, {failed} failed, {errors} errors")
+    e_word = "error" if errors == 1 else "errors"
+    print(f"\nResults: {passed} passed, {failed} failed, {errors} {e_word}")
 
 
 def format_batch_json(pairs: list[BatchPairResult]) -> str:
-    class _Encoder(json.JSONEncoder):
-        def default(self, obj: Any) -> Any:
-            if isinstance(obj, Path):
-                return str(obj)
-            return super().default(obj)
-
     items = []
     for p in pairs:
         if p.result is not None:
@@ -139,7 +135,7 @@ def format_batch_json(pairs: list[BatchPairResult]) -> str:
         if p.error is not None:
             d["error"] = p.error
         items.append(d)
-    return json.dumps(items, cls=_Encoder, indent=2)
+    return json.dumps(items, cls=_PathEncoder, indent=2)
 
 
 def _lang_row(label: str, value: str | None) -> None:

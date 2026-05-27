@@ -219,22 +219,22 @@ def _make_batch_pairs() -> list[BatchPairResult]:
 
 
 def test_print_batch_compact_shows_pass(capsys):
-    print_batch_compact(_make_batch_pairs(), threshold=0.35)
+    print_batch_compact(_make_batch_pairs())
     assert "PASS" in capsys.readouterr().out
 
 
 def test_print_batch_compact_shows_fail(capsys):
-    print_batch_compact(_make_batch_pairs(), threshold=0.35)
+    print_batch_compact(_make_batch_pairs())
     assert "FAIL" in capsys.readouterr().out
 
 
 def test_print_batch_compact_shows_error(capsys):
-    print_batch_compact(_make_batch_pairs(), threshold=0.35)
+    print_batch_compact(_make_batch_pairs())
     assert "ERROR" in capsys.readouterr().out
 
 
 def test_print_batch_compact_shows_filenames(capsys):
-    print_batch_compact(_make_batch_pairs(), threshold=0.35)
+    print_batch_compact(_make_batch_pairs())
     out = capsys.readouterr().out
     assert "show.en.srt" in out
     assert "show.pt.srt" in out
@@ -245,7 +245,7 @@ def test_print_batch_summary_counts(capsys):
     out = capsys.readouterr().out
     assert "1 passed" in out
     assert "1 failed" in out
-    assert "1 errors" in out
+    assert "1 error" in out
 
 
 def test_format_batch_json_is_array():
@@ -270,3 +270,15 @@ def test_format_batch_json_error_entry_has_error_key():
 def test_format_batch_json_success_entry_has_confidence():
     data = json.loads(format_batch_json(_make_batch_pairs()))
     assert data[0]["confidence"] == 0.75
+
+
+def test_print_batch_compact_shows_score(capsys):
+    print_batch_compact(_make_batch_pairs())
+    out = capsys.readouterr().out
+    assert "0.75" in out   # passed pair score
+    assert "0.10" in out   # failed pair score
+
+
+def test_print_batch_summary_empty(capsys):
+    print_batch_summary([])
+    assert "0 passed, 0 failed, 0 errors" in capsys.readouterr().out
