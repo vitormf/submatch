@@ -1,10 +1,13 @@
-.PHONY: install test lint clean
+.PHONY: install test integration-test lint clean
 
 install:
 	pip install -e ".[dev]"
 
 test:
-	pytest tests/ -v
+	pytest tests/ --ignore=tests/integration --cov-fail-under=95 -v
+
+integration-test:
+	pytest tests/integration/ -v -s --no-cov
 
 lint:
 	ruff check submatch/ tests/

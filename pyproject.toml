@@ -25,4 +25,7 @@ submatch = "submatch.cli:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--cov=submatch --cov-report=term-missing --cov-fail-under=95"
+addopts = "--cov=submatch --cov-report=term-missing --ignore=tests/integration"
+markers = [
+    "integration: requires network, real ffmpeg/whisper, and downloaded fixtures",
+]

@@ -19,3 +19,7 @@ venv/
 # Misc
 *.tmp
 *.log
+.coverage
+
+# Integration test fixtures (downloaded assets, not committed)
+tests/fixtures/
