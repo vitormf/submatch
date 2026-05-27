@@ -90,3 +90,63 @@ def test_find_pairs_doesnt_cross_episode_match(tmp_path):
     pair_map = {p[0].name: p[1].name for p in pairs}
     assert pair_map["show.mkv"] == "show.srt"
     assert pair_map["show.season1.mkv"] == "show.season1.srt"
+
+
+from submatch.batch import find_pairs_recursive, find_subtitle_candidates_recursive
+
+
+def test_find_pairs_recursive_nested(tmp_path):
+    show = tmp_path / "Bluey" / "Season1"
+    show.mkdir(parents=True)
+    (show / "ep01.mkv").touch()
+    (show / "ep01.srt").touch()
+    (show / "ep02.mkv").touch()
+    (show / "ep02.srt").touch()
+    pairs = find_pairs_recursive(tmp_path)
+    assert len(pairs) == 2
+    assert any(p[0].name == "ep01.mkv" for p in pairs)
+    assert any(p[0].name == "ep02.mkv" for p in pairs)
+
+
+def test_find_pairs_recursive_per_directory_isolation(tmp_path):
+    s01 = tmp_path / "Season1"
+    s02 = tmp_path / "Season2"
+    s01.mkdir()
+    s02.mkdir()
+    (s01 / "ep01.mkv").touch()
+    (s01 / "ep01.srt").touch()
+    (s02 / "ep01.mkv").touch()
+    (s02 / "ep01.srt").touch()
+    pairs = find_pairs_recursive(tmp_path)
+    assert len(pairs) == 2
+    for video, sub in pairs:
+        assert video.parent == sub.parent
+
+
+def test_find_pairs_recursive_flat_dir(tmp_path):
+    (tmp_path / "movie.mkv").touch()
+    (tmp_path / "movie.srt").touch()
+    assert find_pairs_recursive(tmp_path) == find_pairs(tmp_path)
+
+
+def test_find_pairs_recursive_empty(tmp_path):
+    assert find_pairs_recursive(tmp_path) == []
+
+
+def test_find_subtitle_candidates_recursive(tmp_path):
+    (tmp_path / "en").mkdir()
+    (tmp_path / "pt").mkdir()
+    (tmp_path / "en" / "movie.srt").touch()
+    (tmp_path / "pt" / "movie.vtt").touch()
+    result = find_subtitle_candidates_recursive(tmp_path)
+    assert {p.name for p in result} == {"movie.srt", "movie.vtt"}
+
+
+def test_find_subtitle_candidates_recursive_filters_non_subtitles(tmp_path):
+    sub = tmp_path / "subs"
+    sub.mkdir()
+    (sub / "movie.srt").touch()
+    (sub / "readme.txt").touch()
+    result = find_subtitle_candidates_recursive(tmp_path)
+    assert len(result) == 1
+    assert result[0].name == "movie.srt"

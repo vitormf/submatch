@@ -1,4 +1,5 @@
 from __future__ import annotations
+import os
 from pathlib import Path
 
 VIDEO_EXTENSIONS = {".mkv", ".mp4", ".avi", ".mov", ".webm", ".m4v"}
@@ -30,4 +31,18 @@ def find_subtitle_candidates(subtitle_dir: Path) -> list[Path]:
     return sorted(
         p for p in subtitle_dir.iterdir()
         if p.suffix.lower() in SUBTITLE_EXTENSIONS
+    )
+
+
+def find_pairs_recursive(directory: Path) -> list[tuple[Path, Path]]:
+    all_pairs: list[tuple[Path, Path]] = []
+    for dirpath, _dirnames, _filenames in os.walk(directory):
+        all_pairs.extend(find_pairs(Path(dirpath)))
+    return sorted(all_pairs)
+
+
+def find_subtitle_candidates_recursive(subtitle_dir: Path) -> list[Path]:
+    return sorted(
+        p for p in subtitle_dir.rglob("*")
+        if p.is_file() and p.suffix.lower() in SUBTITLE_EXTENSIONS
     )
