@@ -879,3 +879,147 @@ def test_cross_threshold_used_for_cross_language_pair(tmp_path):
         cli.main()
 
     assert exc.value.code == 1  # FAIL because 0.72 < cross-threshold 0.9
+
+
+def test_resolve_device_auto_cuda():
+    mock_torch = MagicMock()
+    mock_torch.cuda.is_available.return_value = True
+    mock_torch.backends.mps.is_available.return_value = False
+    with patch.dict(sys.modules, {"torch": mock_torch}):
+        assert cli._resolve_device("auto") == "cuda"
+
+
+def test_get_embed_model_returns_cached():
+    """Second call to _get_embed_model returns the cached model without reloading."""
+    if hasattr(cli._embed_local, "model"):
+        del cli._embed_local.model
+    mock_model = MagicMock()
+    with patch("submatch.embeddings.load_embedding_model", return_value=mock_model) as mock_load:
+        first = cli._get_embed_model()
+        second = cli._get_embed_model()
+    assert first is mock_model
+    assert second is mock_model
+    mock_load.assert_called_once()
+    del cli._embed_local.model
+
+
+def test_batch_sync_bar_description(tmp_path):
+    """In batch mode without --no-sync, bar.set_description is called during sync phase."""
+    from submatch.sync import SyncResult
+    video = tmp_path / "show.mp4"
+    video.touch()
+    sub = tmp_path / "show.srt"
+    sub.write_text(SAMPLE_SRT)
+    synced_srt = tmp_path / "synced.srt"
+    synced_srt.write_text(SAMPLE_SRT)
+    sync_result = SyncResult(synced_srt_path=synced_srt, offset_seconds=0.0, drift_detected=False)
+
+    subs_parsed = [Subtitle(1, 1_000, 3_500, "Hello world")]
+    segs = [Segment(60_000, 90_000, "Hello world", 2)]
+    mock_trans = MagicMock(text="hello world", language="en")
+    lang = LanguageResult(
+        audio="en", subtitle_detected="en", subtitle_filename="en",
+        video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
+    )
+
+    with patch("sys.argv", ["submatch", str(tmp_path), "--threshold", "0.01"]), \
+         patch("submatch.cli.check_dependencies"), \
+         patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
+         patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
+         patch("submatch.cli.subtitle.parse", return_value=subs_parsed), \
+         patch("submatch.cli.sampler.select_segments", return_value=segs), \
+         patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
+         patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
+         patch("submatch.cli.language.detect_from_text", return_value="en"), \
+         patch("submatch.cli.language.detect_from_filename", return_value="en"), \
+         patch("submatch.cli.language.detect_from_video", return_value=None), \
+         patch("submatch.cli.language.build_result", return_value=lang), \
+         patch("submatch.cli.sync.sync_subtitle", return_value=sync_result):
+        with pytest.raises(SystemExit) as exc:
+            cli.main()
+    assert exc.value.code == 0
+
+
+def test_batch_single_video_non_dir_subtitle_exits_2(tmp_path):
+    """_run_batch returns 2 when video is a file and subtitle argument is not a directory."""
+    video = tmp_path / "movie.mp4"
+    video.touch()
+    sub_file = tmp_path / "movie.srt"
+    sub_file.write_text(SAMPLE_SRT)
+
+    with patch("sys.argv", ["submatch", str(video), str(sub_file), "--no-sync"]):
+        args = cli.parse_args()
+
+    with patch("submatch.cli.check_dependencies"):
+        result = cli._run_batch(args)
+    assert result == 2
+
+
+def test_batch_delete_failures(tmp_path):
+    """--delete-failures in batch mode removes subtitle files that fail."""
+    ctx = _make_batch_patches(tmp_path, ["--threshold", "2.0", "--delete-failures"])
+    sub = tmp_path / "show.srt"
+    assert sub.exists()
+    [c.__enter__() for c in ctx]
+    try:
+        with pytest.raises(SystemExit) as exc:
+            cli.main()
+    finally:
+        for c in reversed(ctx):
+            c.__exit__(None, None, None)
+    assert exc.value.code == 1
+    assert not sub.exists()
+
+
+def test_batch_reuses_transcription_cache_for_same_video(tmp_path):
+    """Second subtitle for the same video skips audio extraction (cache reuse)."""
+    video = tmp_path / "show.mp4"
+    video.touch()
+    (tmp_path / "show.en.srt").write_text(SAMPLE_SRT)
+    (tmp_path / "show.pt.srt").write_text(SAMPLE_SRT)
+
+    subs_parsed = [Subtitle(1, 1_000, 3_500, "Hello world")]
+    segs = [Segment(60_000, 90_000, "Hello world", 2)]
+    mock_trans = MagicMock(text="hello world", language="en")
+    lang = LanguageResult(
+        audio="en", subtitle_detected="en", subtitle_filename="en",
+        video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
+    )
+    mock_get_duration = MagicMock(return_value=90 * 60 * 1_000)
+    mock_extract = MagicMock(return_value=tmp_path / "seg.wav")
+
+    with patch("sys.argv", ["submatch", str(tmp_path), "--no-sync", "--threshold", "0.01"]), \
+         patch("submatch.cli.check_dependencies"), \
+         patch("submatch.cli.audio.get_duration_ms", mock_get_duration), \
+         patch("submatch.cli.audio.extract_segment", mock_extract), \
+         patch("submatch.cli.subtitle.parse", return_value=subs_parsed), \
+         patch("submatch.cli.sampler.select_segments", return_value=segs), \
+         patch("submatch.cli.sampler.segments_from_starts", return_value=segs), \
+         patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
+         patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
+         patch("submatch.cli.language.detect_from_text", return_value="en"), \
+         patch("submatch.cli.language.detect_from_filename", return_value="en"), \
+         patch("submatch.cli.language.detect_from_video", return_value=None), \
+         patch("submatch.cli.language.build_result", return_value=lang):
+        with pytest.raises(SystemExit) as exc:
+            cli.main()
+
+    assert exc.value.code == 0
+    mock_get_duration.assert_called_once()   # only on the first subtitle
+    mock_extract.assert_called_once()        # only on the first subtitle
+
+
+def test_main_delete_failures_single(tmp_path):
+    """--delete-failures in single-file mode removes the subtitle when it fails."""
+    _, subtitle, ctx = _make_pipeline_patches(tmp_path, ["--threshold", "2.0",
+                                                          "--delete-failures"])
+    assert subtitle.exists()
+    [c.__enter__() for c in ctx]
+    try:
+        with pytest.raises(SystemExit) as exc:
+            cli.main()
+    finally:
+        for c in reversed(ctx):
+            c.__exit__(None, None, None)
+    assert exc.value.code == 1
+    assert not subtitle.exists()

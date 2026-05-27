@@ -230,6 +230,16 @@ def test_lang_matches_no_tag_include_on_failure(tmp_path):
         assert _lang_matches(f, ["en"]) is True
 
 
+def test_lang_matches_no_tag_empty_detected(tmp_path):
+    """When detect_from_text returns empty string (detection failed), include the file."""
+    f = tmp_path / "movie.srt"
+    f.touch()
+    with patch("submatch.subtitle.parse",
+               return_value=[MagicMock(text="Hello world")]), \
+         patch("submatch.language.detect_from_text", return_value=""):
+        assert _lang_matches(f, ["en"]) is True
+
+
 # ── filter_pairs ─────────────────────────────────────────────────────────────
 
 def test_filter_pairs_no_filters(tmp_path):

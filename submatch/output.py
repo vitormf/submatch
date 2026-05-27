@@ -53,8 +53,17 @@ class BatchPairResult:
     error: str | None
 
 
-def print_human(result: MatchResult, verbose: bool = False) -> None:
+def print_human(
+    result: MatchResult,
+    verbose: bool = False,
+    video: Path | None = None,
+    subtitle: Path | None = None,
+) -> None:
     print()
+    if video is not None and subtitle is not None:
+        print(f"{_BOLD}{'─' * 60}{_RESET}")
+        print(f"{_BOLD}{video.name}  /  {subtitle.name}{_RESET}")
+        print()
 
     print(f"{_BOLD}Language check{_RESET}")
     lang = result.language

@@ -1,6 +1,7 @@
 from __future__ import annotations
 import argparse
 import concurrent.futures
+import dataclasses
 import os
 import shutil
 import sys
@@ -104,6 +105,14 @@ def _resolve_workers(requested: int | None, device: str) -> int:
     return min(4, os.cpu_count() or 1)
 
 
+@dataclasses.dataclass
+class _VideoCache:
+    """Transcriptions from a video's first subtitle pass, reused for subsequent subtitles."""
+    segment_starts: list[int]
+    transcriptions: list[str]
+    audio_lang: str | None
+
+
 _model_local = threading.local()
 
 
@@ -137,15 +146,30 @@ def _get_embed_model():
     return _embed_local.model
 
 
-def _score_pair_parallel(
+def _score_group_parallel(
     video: Path,
-    subtitle_path: Path,
+    subs: list[Path],
     args: argparse.Namespace,
     model_name: str,
     device: str,
-) -> output.MatchResult:
+    bar=None,
+) -> list[output.BatchPairResult]:
+    """Process all subtitles for one video in a single thread, sharing transcriptions."""
     model = _get_model(model_name, device)
-    return _score_pair(video, subtitle_path, args, model, show_progress=False)
+    results = []
+    cache: _VideoCache | None = None
+    for sub in subs:
+        try:
+            result, cache = _score_pair(video, sub, args, model, show_progress=False,
+                                        video_cache=cache)
+            results.append(output.BatchPairResult(video=video, subtitle=sub,
+                                                  result=result, error=None))
+        except Exception as exc:
+            results.append(output.BatchPairResult(video=video, subtitle=sub,
+                                                  result=None, error=str(exc)))
+        if bar is not None:
+            bar.update(1)
+    return results
 
 
 def _score_pair(
@@ -155,7 +179,8 @@ def _score_pair(
     model,
     show_progress: bool = True,
     bar=None,
-) -> output.MatchResult:
+    video_cache: _VideoCache | None = None,
+) -> tuple[output.MatchResult, _VideoCache]:
     subtitles = subtitle.parse(subtitle_path)
     subtitle_sample = " ".join(s.text for s in subtitles[:50])
     subtitle_lang = (language.detect_from_filename(subtitle_path) or
@@ -177,34 +202,55 @@ def _score_pair(
                 print(f"Warning: ffsubsync failed ({exc}), proceeding without sync",
                       file=sys.stderr)
 
-        duration_ms = audio.get_duration_ms(video)
-        segments = sampler.select_segments(subtitles, duration_ms, n=args.segments)
-
-        # Phase 1: transcribe all segments
+        # Phase 1: transcribe (first subtitle for this video) or reuse cache
         transcription_pairs: list[tuple[int, sampler.Segment, str]] = []
-        audio_lang: str | None = None
+        new_cache: _VideoCache
 
-        for i, seg in enumerate(segments):
-            if bar is not None:
-                bar.set_description(
-                    f"[{i + 1}/{len(segments)}] {video.name} / {subtitle_path.name}"
-                )
-            elif show_progress and not args.json:
-                print(f"  Transcribing segment {i + 1}/{len(segments)}...", end="\r")
-            try:
-                wav_path = audio.extract_segment(video, seg.start_ms, 30_000)
+        if video_cache is None:
+            duration_ms = audio.get_duration_ms(video)
+            segments = sampler.select_segments(subtitles, duration_ms, n=args.segments)
+            audio_lang: str | None = None
+
+            for i, seg in enumerate(segments):
+                if bar is not None:
+                    bar.set_description(
+                        f"[{i + 1}/{len(segments)}] {video.name} / {subtitle_path.name}"
+                    )
+                elif show_progress and not args.json:
+                    print(f"  Transcribing segment {i + 1}/{len(segments)}...", end="\r")
                 try:
-                    trans = transcribe.transcribe_segment(model, wav_path)
-                    if i == 0:
-                        audio_lang = trans.language
-                    transcription_pairs.append((i + 1, seg, trans.text))
-                finally:
-                    wav_path.unlink(missing_ok=True)
-            except Exception as exc:
-                print(f"\nWarning: segment {i + 1} failed: {exc}", file=sys.stderr)
+                    wav_path = audio.extract_segment(video, seg.start_ms, 30_000)
+                    try:
+                        trans = transcribe.transcribe_segment(model, wav_path)
+                        if i == 0:
+                            audio_lang = trans.language
+                        transcription_pairs.append((i + 1, seg, trans.text))
+                    finally:
+                        wav_path.unlink(missing_ok=True)
+                except Exception as exc:
+                    print(f"\nWarning: segment {i + 1} failed: {exc}", file=sys.stderr)
 
-        if show_progress and not args.json:
-            print()
+            if show_progress and not args.json:
+                print()
+
+            new_cache = _VideoCache(
+                segment_starts=[seg.start_ms for _, seg, _ in transcription_pairs],
+                transcriptions=[t for _, _, t in transcription_pairs],
+                audio_lang=audio_lang,
+            )
+        else:
+            # Reuse transcriptions from the first subtitle for this video.
+            # Still re-syncs per subtitle (each has its own drift), then looks up
+            # subtitle text at the pre-transcribed timestamps.
+            if bar is not None:
+                bar.set_description(f"scoring [{video.name} / {subtitle_path.name}]")
+            audio_lang = video_cache.audio_lang
+            cached_segs = sampler.segments_from_starts(subtitles, video_cache.segment_starts)
+            transcription_pairs = [
+                (i + 1, seg, trans)
+                for i, (seg, trans) in enumerate(zip(cached_segs, video_cache.transcriptions))
+            ]
+            new_cache = video_cache
 
         # Phase 2: determine scoring mode
         cross_lang = _is_cross_language(audio_lang, subtitle_lang)
@@ -260,7 +306,7 @@ def _score_pair(
             model=args.model,
             cross_language=cross_lang,
             subtitle_language=subtitle_lang,
-        )
+        ), new_cache
     finally:
         if _sync_tmp is not None:
             _sync_tmp.unlink(missing_ok=True)
@@ -321,12 +367,16 @@ def _run_batch(args: argparse.Namespace) -> int:
             unit="pair",
             disable=args.json or not sys.stderr.isatty(),
         )
+        video_caches: dict[Path, _VideoCache] = {}
         for video, sub in pairs_to_run:
             bar.set_description(f"Batch [{video.name} / {sub.name}]")
-            if not args.json:
-                tqdm.write(f"  Processing {video.name} / {sub.name} ...")
             try:
-                match_result = _score_pair(video, sub, args, model, show_progress=False, bar=bar)
+                cache = video_caches.get(video)
+                match_result, new_cache = _score_pair(video, sub, args, model,
+                                                      show_progress=False, bar=bar,
+                                                      video_cache=cache)
+                if cache is None:
+                    video_caches[video] = new_cache
                 results.append(output.BatchPairResult(
                     video=video, subtitle=sub, result=match_result, error=None,
                 ))
@@ -337,32 +387,42 @@ def _run_batch(args: argparse.Namespace) -> int:
             bar.update(1)
         bar.close()
     else:
+        # Group pairs by video so each group shares one set of transcriptions.
+        video_groups: dict[Path, list[Path]] = {}
+        video_order: list[Path] = []
+        for video, sub in pairs_to_run:
+            if video not in video_groups:
+                video_groups[video] = []
+                video_order.append(video)
+            video_groups[video].append(sub)
+
         bar = tqdm(
             total=len(pairs_to_run),
             unit="pair",
             disable=args.json or not sys.stderr.isatty(),
         )
-        future_to_pair: dict[concurrent.futures.Future, tuple[Path, Path]] = {}
+        results_by_video: dict[Path, list[output.BatchPairResult]] = {}
         with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
-            for video, sub in pairs_to_run:
+            future_to_video: dict[concurrent.futures.Future, Path] = {}
+            for video in video_order:
                 future = executor.submit(
-                    _score_pair_parallel, video, sub, args, args.model, device,
+                    _score_group_parallel, video, video_groups[video], args, args.model, device, bar,
                 )
-                future_to_pair[future] = (video, sub)
-            results_dict: dict[tuple[Path, Path], output.BatchPairResult] = {}
-            for future in concurrent.futures.as_completed(future_to_pair):
-                video, sub = future_to_pair[future]
-                bar.update(1)
+                future_to_video[future] = video
+            for future in concurrent.futures.as_completed(future_to_video):
+                video = future_to_video[future]
                 try:
-                    results_dict[(video, sub)] = output.BatchPairResult(
-                        video=video, subtitle=sub, result=future.result(), error=None,
-                    )
+                    results_by_video[video] = future.result()
                 except Exception as exc:
-                    results_dict[(video, sub)] = output.BatchPairResult(
-                        video=video, subtitle=sub, result=None, error=str(exc),
-                    )
+                    results_by_video[video] = [
+                        output.BatchPairResult(video=video, subtitle=sub,
+                                               result=None, error=str(exc))
+                        for sub in video_groups[video]
+                    ]
         bar.close()
-        results = [results_dict[(v, s)] for v, s in pairs_to_run]
+        results = []
+        for video in video_order:
+            results.extend(results_by_video.get(video, []))
 
     if args.delete_failures:
         for p in results:
@@ -382,7 +442,8 @@ def _run_batch(args: argparse.Namespace) -> int:
                 print(f"\nError: {p.video.name} / {p.subtitle.name}: {p.error}",
                       file=sys.stderr)
             else:
-                output.print_human(p.result, verbose=args.verbose)
+                output.print_human(p.result, verbose=args.verbose,
+                                   video=p.video, subtitle=p.subtitle)
         output.print_batch_summary(results)
 
     if any(p.error for p in results):
@@ -415,7 +476,7 @@ def main() -> None:
         print(f"Loading Whisper model '{args.model}'...")
     model = transcribe.load_model(args.model)
 
-    result = _score_pair(args.video, args.subtitle, args, model)
+    result, _ = _score_pair(args.video, args.subtitle, args, model)
 
     if args.keep_synced and result.sync:
         kept = args.subtitle.with_stem(args.subtitle.stem + ".synced")

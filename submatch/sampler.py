@@ -50,6 +50,30 @@ def select_segments(
     return sorted(segments, key=lambda s: s.start_ms)
 
 
+def segments_from_starts(
+    subtitles: list[Subtitle],
+    starts_ms: list[int],
+    window_ms: int = 30_000,
+) -> list[Segment]:
+    """Build Segment objects at fixed video timestamps using text from a (re-synced) subtitle.
+
+    Used when transcriptions are already cached: reconstructs the subtitle text that
+    falls inside each pre-determined window without re-running segment selection.
+    """
+    result = []
+    for start in starts_ms:
+        end = start + window_ms
+        words = [s for s in subtitles if s.start_ms < end and s.end_ms > start]
+        text = " ".join(s.text for s in words)
+        result.append(Segment(
+            start_ms=start,
+            end_ms=end,
+            subtitle_text=text,
+            word_count=len(text.split()) if text else 0,
+        ))
+    return result
+
+
 def _best_window_in_range(
     subtitles: list[Subtitle],
     range_start: int,

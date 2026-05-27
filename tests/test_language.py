@@ -6,6 +6,7 @@ from submatch.language import (
     detect_from_text,
     detect_from_video,
     build_result,
+    normalize_lang,
     LanguageResult,
     _langdetect,
 )
@@ -118,7 +119,56 @@ def test_detect_from_video_returns_language(tmp_path):
     streams = json.dumps({"streams": [{"tags": {"language": "eng"}}]})
     mock_result = MagicMock(stdout=streams)
     with patch("submatch.language.subprocess.run", return_value=mock_result):
-        assert detect_from_video(Path("video.mp4")) == "eng"
+        assert detect_from_video(Path("video.mp4")) == "en"
+
+
+def test_detect_from_video_three_letter_german():
+    streams = json.dumps({"streams": [{"tags": {"language": "deu"}}]})
+    with patch("submatch.language.subprocess.run", return_value=MagicMock(stdout=streams)):
+        assert detect_from_video(Path("video.mp4")) == "de"
+
+
+def test_detect_from_video_unknown_three_letter_passthrough():
+    streams = json.dumps({"streams": [{"tags": {"language": "xyz"}}]})
+    with patch("submatch.language.subprocess.run", return_value=MagicMock(stdout=streams)):
+        assert detect_from_video(Path("video.mp4")) == "xyz"
+
+
+def test_detect_from_filename_three_letter_code():
+    assert detect_from_filename(Path("movie.eng.srt")) == "en"
+
+
+def test_detect_from_filename_three_letter_german():
+    assert detect_from_filename(Path("movie.deu.srt")) == "de"
+
+
+def test_detect_from_filename_three_letter_french_b():
+    assert detect_from_filename(Path("movie.fre.srt")) == "fr"
+
+
+def test_normalize_lang_three_to_two():
+    assert normalize_lang("eng") == "en"
+    assert normalize_lang("por") == "pt"
+    assert normalize_lang("deu") == "de"
+    assert normalize_lang("ger") == "de"
+
+
+def test_normalize_lang_two_letter_passthrough():
+    assert normalize_lang("en") == "en"
+    assert normalize_lang("pt") == "pt"
+
+
+def test_normalize_lang_none():
+    assert normalize_lang(None) is None
+
+
+def test_normalize_lang_unknown_passthrough():
+    assert normalize_lang("xyz") == "xyz"
+
+
+def test_normalize_lang_uppercase():
+    assert normalize_lang("ENG") == "en"
+    assert normalize_lang("DEU") == "de"
 
 
 def test_detect_from_video_und_returns_none():
