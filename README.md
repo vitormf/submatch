@@ -63,6 +63,18 @@ submatch movie.mkv subs/ --filter "*.en.*"    # glob on subtitle filename
 submatch /media/natal/ --sub-lang pt --filter "*.srt"   # both must pass
 ```
 
+### Cross-language matching
+
+When the subtitle language differs from the audio language (e.g. English audio with Portuguese subtitles), `submatch` automatically switches from token F1 scoring to multilingual semantic similarity using [`paraphrase-multilingual-MiniLM-L12-v2`](https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2). The score is normalized so the same `--threshold` applies to both same-language and cross-language pairs.
+
+Use `--cross-threshold` to tune the pass/fail cutoff for translated subtitles independently:
+
+```bash
+submatch movie.mkv movie.pt.srt --cross-threshold 0.5
+```
+
+The model is downloaded on first use (~90 MB) and cached by sentence-transformers.
+
 ## Supported subtitle formats
 
 SRT, WebVTT, ASS/SSA (and any other format supported by [pysubs2](https://github.com/tkarabela/pysubs2)).
@@ -73,6 +85,7 @@ SRT, WebVTT, ASS/SSA (and any other format supported by [pysubs2](https://github
 |---|---|---|
 | `--model` | `base` | Whisper model: `tiny`, `base`, `small`, `medium`, `large` |
 | `--threshold` | `0.35` | Pass/fail confidence cutoff (0–1) |
+| `--cross-threshold` | same as `--threshold` | Pass/fail threshold for cross-language pairs |
 | `--segments` | auto | Number of audio segments to sample |
 | `--language` | auto | Expected audio language (e.g. `en`, `pt`) |
 | `--no-sync` | off | Skip ffsubsync timing drift check |
