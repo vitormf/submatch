@@ -95,6 +95,62 @@ ASSETS: dict[str, str] = {
         "&title=File%3AWIKITONGUES-_Omar_Speaking_English_and_Jamaican_Patois.webm"
         "&lang=pt&trackformat=srt&origin=*"
     ),
+    # WIKITONGUES — Clara speaking French (CC BY-SA 4.0)
+    # Native French speaker from Francophone Switzerland, ~35 sec, 1.1 MB.
+    # Subtitles available in: fr (native), en, es.
+    "wikitongues_french.webm": (
+        "https://upload.wikimedia.org/wikipedia/commons/7/79/"
+        "WIKITONGUES-_Clara_speaking_French.webm"
+    ),
+    "wikitongues_french.fr.srt": (
+        "https://commons.wikimedia.org/w/api.php?action=timedtext"
+        "&title=File%3AWIKITONGUES-_Clara_speaking_French.webm"
+        "&lang=fr&trackformat=srt&origin=*"
+    ),
+    "wikitongues_french.en.srt": (
+        "https://commons.wikimedia.org/w/api.php?action=timedtext"
+        "&title=File%3AWIKITONGUES-_Clara_speaking_French.webm"
+        "&lang=en&trackformat=srt&origin=*"
+    ),
+    "wikitongues_french.es.srt": (
+        "https://commons.wikimedia.org/w/api.php?action=timedtext"
+        "&title=File%3AWIKITONGUES-_Clara_speaking_French.webm"
+        "&lang=es&trackformat=srt&origin=*"
+    ),
+    # WIKITONGUES — Ivy speaking Shanghainese (CC BY-SA 4.0)
+    # Native Shanghainese speaker, ~27 MB.
+    # Subtitles available in: zh-hans (native), zh, en.
+    "wikitongues_shanghainese.webm": (
+        "https://upload.wikimedia.org/wikipedia/commons/8/8d/"
+        "WIKITONGUES-_Ivy_speaking_Shanghainese.webm"
+    ),
+    "wikitongues_shanghainese.zh-hans.srt": (
+        "https://commons.wikimedia.org/w/api.php?action=timedtext"
+        "&title=File%3AWIKITONGUES-_Ivy_speaking_Shanghainese.webm"
+        "&lang=zh-hans&trackformat=srt&origin=*"
+    ),
+    "wikitongues_shanghainese.en.srt": (
+        "https://commons.wikimedia.org/w/api.php?action=timedtext"
+        "&title=File%3AWIKITONGUES-_Ivy_speaking_Shanghainese.webm"
+        "&lang=en&trackformat=srt&origin=*"
+    ),
+    # WIKITONGUES — Krishna speaking Hindi (CC BY-SA 4.0)
+    # Native Hindi speaker from Delhi, ~23 MB.
+    # Subtitles available in: en, fa (Farsi), fr. No native hi subtitle track.
+    "wikitongues_hindi.webm": (
+        "https://upload.wikimedia.org/wikipedia/commons/7/7a/"
+        "WIKITONGUES-_Krishna_speaking_Hindi.webm"
+    ),
+    "wikitongues_hindi.en.srt": (
+        "https://commons.wikimedia.org/w/api.php?action=timedtext"
+        "&title=File%3AWIKITONGUES-_Krishna_speaking_Hindi.webm"
+        "&lang=en&trackformat=srt&origin=*"
+    ),
+    "wikitongues_hindi.fr.srt": (
+        "https://commons.wikimedia.org/w/api.php?action=timedtext"
+        "&title=File%3AWIKITONGUES-_Krishna_speaking_Hindi.webm"
+        "&lang=fr&trackformat=srt&origin=*"
+    ),
 }
 
 # Populated during pytest_sessionstart; checked by fixtures to skip dependent tests.
@@ -246,6 +302,59 @@ def english_fr_srt() -> Path:
 @pytest.fixture(scope="session")
 def english_pt_srt() -> Path:
     return _fixture_path("wikitongues_english.pt.srt")
+
+
+# French video (Clara, native French speaker from Switzerland)
+@pytest.fixture(scope="session")
+def french_video() -> Path:
+    return _fixture_path("wikitongues_french.webm")
+
+
+@pytest.fixture(scope="session")
+def french_fr_srt() -> Path:
+    return _fixture_path("wikitongues_french.fr.srt")
+
+
+@pytest.fixture(scope="session")
+def french_en_srt() -> Path:
+    return _fixture_path("wikitongues_french.en.srt")
+
+
+@pytest.fixture(scope="session")
+def french_es_srt() -> Path:
+    return _fixture_path("wikitongues_french.es.srt")
+
+
+# Shanghainese video (Ivy, native Shanghainese speaker)
+@pytest.fixture(scope="session")
+def shanghainese_video() -> Path:
+    return _fixture_path("wikitongues_shanghainese.webm")
+
+
+@pytest.fixture(scope="session")
+def shanghainese_zh_hans_srt() -> Path:
+    return _fixture_path("wikitongues_shanghainese.zh-hans.srt")
+
+
+@pytest.fixture(scope="session")
+def shanghainese_en_srt() -> Path:
+    return _fixture_path("wikitongues_shanghainese.en.srt")
+
+
+# Hindi video (Krishna, native Hindi speaker from Delhi)
+@pytest.fixture(scope="session")
+def hindi_video() -> Path:
+    return _fixture_path("wikitongues_hindi.webm")
+
+
+@pytest.fixture(scope="session")
+def hindi_en_srt() -> Path:
+    return _fixture_path("wikitongues_hindi.en.srt")
+
+
+@pytest.fixture(scope="session")
+def hindi_fr_srt() -> Path:
+    return _fixture_path("wikitongues_hindi.fr.srt")
 
 
 # Shared model fixtures
