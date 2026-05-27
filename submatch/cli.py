@@ -31,6 +31,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-sync", action="store_true")
     parser.add_argument("--keep-synced", action="store_true")
     parser.add_argument("--recursive", "-r", action="store_true")
+    parser.add_argument("--sub-lang", action="append", dest="sub_lang", metavar="CODE")
+    parser.add_argument("--filter", metavar="GLOB")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return parser.parse_args()
 
@@ -164,6 +166,12 @@ def _run_batch(args: argparse.Namespace) -> int:
             else _batch.find_subtitle_candidates(args.subtitle)
         )
         pairs_to_run = [(args.video, c) for c in candidates]
+
+    pairs_to_run = _batch.filter_pairs(
+        pairs_to_run,
+        sub_langs=args.sub_lang,
+        glob_pattern=args.filter,
+    )
 
     if not pairs_to_run:
         print("No video/subtitle pairs found.", file=sys.stderr)

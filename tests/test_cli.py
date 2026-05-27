@@ -29,6 +29,8 @@ def test_parse_args_defaults(tmp_path):
     assert args.no_sync is False
     assert args.keep_synced is False
     assert args.recursive is False
+    assert args.sub_lang is None
+    assert args.filter is None
 
 
 def test_parse_args_all_flags(tmp_path):
@@ -37,7 +39,7 @@ def test_parse_args_all_flags(tmp_path):
         "submatch", str(v), str(s),
         "--model", "small", "--threshold", "0.6", "--segments", "4",
         "--json", "--compact", "--verbose", "--language", "pt", "--no-sync", "--keep-synced",
-        "--recursive",
+        "--recursive", "--sub-lang", "en", "--filter", "*.en.*",
     ]):
         args = cli.parse_args()
     assert args.model == "small"
@@ -50,6 +52,8 @@ def test_parse_args_all_flags(tmp_path):
     assert args.no_sync is True
     assert args.keep_synced is True
     assert args.recursive is True
+    assert args.sub_lang == ["en"]
+    assert args.filter == "*.en.*"
 
 
 # ── check_dependencies ────────────────────────────────────────────────────────
@@ -580,3 +584,39 @@ def test_batch_suppresses_transcription_progress(tmp_path, capsys):
             c.__exit__(None, None, None)
     out = capsys.readouterr().out
     assert "Transcribing" not in out
+
+
+def test_parse_args_sub_lang_single(tmp_path):
+    v = tmp_path / "v"
+    v.mkdir()
+    with patch("sys.argv", ["submatch", str(v), "--sub-lang", "pt"]):
+        args = cli.parse_args()
+    assert args.sub_lang == ["pt"]
+
+
+def test_parse_args_sub_lang_multiple(tmp_path):
+    v = tmp_path / "v"
+    v.mkdir()
+    with patch("sys.argv", ["submatch", str(v), "--sub-lang", "en", "--sub-lang", "pt"]):
+        args = cli.parse_args()
+    assert args.sub_lang == ["en", "pt"]
+
+
+def test_parse_args_filter(tmp_path):
+    v = tmp_path / "v"
+    v.mkdir()
+    with patch("sys.argv", ["submatch", str(v), "--filter", "*.en.*"]):
+        args = cli.parse_args()
+    assert args.filter == "*.en.*"
+
+
+def test_batch_sub_lang_filters_all_pairs(tmp_path):
+    """When --sub-lang excludes all pairs, exit 2 with no pairs found."""
+    video = tmp_path / "show.mp4"
+    video.touch()
+    (tmp_path / "show.en.srt").write_text(SAMPLE_SRT)
+    with patch("sys.argv", ["submatch", str(tmp_path), "--sub-lang", "de", "--no-sync"]), \
+         patch("submatch.cli.check_dependencies"):
+        with pytest.raises(SystemExit) as exc:
+            cli.main()
+    assert exc.value.code == 2
