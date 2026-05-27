@@ -282,3 +282,41 @@ def test_print_batch_compact_shows_score(capsys):
 def test_print_batch_summary_empty(capsys):
     print_batch_summary([])
     assert "0 passed, 0 failed, 0 errors" in capsys.readouterr().out
+
+
+# ── cross-language fields ─────────────────────────────────────────────────────
+
+def test_format_json_cross_language_fields():
+    result = _make_result()
+    result.cross_language = True
+    result.subtitle_language = "pt"
+    data = json.loads(format_json(result))
+    assert data["cross_language"] is True
+    assert data["subtitle_language"] == "pt"
+
+
+def test_format_json_cross_language_defaults_false():
+    data = json.loads(format_json(_make_result()))
+    assert data["cross_language"] is False
+    assert data["subtitle_language"] is None
+
+
+def test_print_human_cross_language_shows_header(capsys):
+    result = _make_result()
+    result.cross_language = True
+    result.subtitle_language = "pt"
+    result.language = LanguageResult(
+        audio="en", subtitle_detected="pt", subtitle_filename="pt",
+        video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
+    )
+    print_human(result)
+    out = capsys.readouterr().out
+    assert "cross-language" in out
+    assert "en" in out
+    assert "pt" in out
+
+
+def test_print_human_same_language_no_cross_header(capsys):
+    print_human(_make_result())
+    out = capsys.readouterr().out
+    assert "cross-language" not in out

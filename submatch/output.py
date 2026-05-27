@@ -41,6 +41,8 @@ class MatchResult:
     sync: SyncResult | None
     segments: list[SegmentResult]
     model: str
+    cross_language: bool = False
+    subtitle_language: str | None = None
 
 
 @dataclass
@@ -79,7 +81,19 @@ def print_human(result: MatchResult, verbose: bool = False) -> None:
         print(f"  No significant drift  {_GREEN}✓{_RESET}")
     print()
 
-    print(f"{_BOLD}Content check ({len(result.segments)} segments, {result.model} model){_RESET}")
+    if result.cross_language:
+        audio_lbl = result.language.audio or "?"
+        sub_lbl = result.subtitle_language or "?"
+        print(
+            f"{_BOLD}Content check — cross-language"
+            f"  ({audio_lbl} audio → {sub_lbl} subtitle,"
+            f" {len(result.segments)} segments, {result.model} model){_RESET}"
+        )
+    else:
+        print(
+            f"{_BOLD}Content check"
+            f" ({len(result.segments)} segments, {result.model} model){_RESET}"
+        )
     for seg in result.segments:
         ts = _ms_to_ts(seg.start_ms)
         color = _GREEN if seg.score >= result.threshold else _RED
