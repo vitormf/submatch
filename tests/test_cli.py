@@ -28,6 +28,7 @@ def test_parse_args_defaults(tmp_path):
     assert args.language is None
     assert args.no_sync is False
     assert args.keep_synced is False
+    assert args.recursive is False
 
 
 def test_parse_args_all_flags(tmp_path):
@@ -36,6 +37,7 @@ def test_parse_args_all_flags(tmp_path):
         "submatch", str(v), str(s),
         "--model", "small", "--threshold", "0.6", "--segments", "4",
         "--json", "--compact", "--verbose", "--language", "pt", "--no-sync", "--keep-synced",
+        "--recursive",
     ]):
         args = cli.parse_args()
     assert args.model == "small"
@@ -47,6 +49,7 @@ def test_parse_args_all_flags(tmp_path):
     assert args.language == "pt"
     assert args.no_sync is True
     assert args.keep_synced is True
+    assert args.recursive is True
 
 
 # ── check_dependencies ────────────────────────────────────────────────────────
@@ -481,3 +484,85 @@ def test_batch_error_in_one_pair_exits_2(tmp_path):
         for c in reversed(ctx):
             c.__exit__(None, None, None)
     assert exc.value.code == 2
+
+
+# ── recursive flag ────────────────────────────────────────────────────────────
+
+def test_parse_args_recursive_short_flag(tmp_path):
+    v = tmp_path / "v"
+    v.mkdir()
+    with patch("sys.argv", ["submatch", str(v), "-r"]):
+        args = cli.parse_args()
+    assert args.recursive is True
+
+
+def test_batch_recursive_dir_mode(tmp_path):
+    """--recursive finds pairs in nested subdirectory."""
+    nested = tmp_path / "show" / "season1"
+    nested.mkdir(parents=True)
+    video = nested / "ep01.mp4"
+    video.touch()
+    sub = nested / "ep01.srt"
+    sub.write_text(SAMPLE_SRT)
+
+    subs_parsed = [Subtitle(1, 1_000, 3_500, "Hello world")]
+    segs = [Segment(60_000, 90_000, "Hello world", 2)]
+    mock_trans = MagicMock(text="hello world", language="en")
+    lang = LanguageResult(
+        audio="en", subtitle_detected="en", subtitle_filename="en",
+        video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
+    )
+
+    with patch("sys.argv", ["submatch", str(tmp_path), "--recursive", "--no-sync",
+                            "--threshold", "0.01"]), \
+         patch("submatch.cli.check_dependencies"), \
+         patch("submatch.cli.audio.has_audio_track", return_value=True), \
+         patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
+         patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
+         patch("submatch.cli.subtitle.parse", return_value=subs_parsed), \
+         patch("submatch.cli.sampler.select_segments", return_value=segs), \
+         patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
+         patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
+         patch("submatch.cli.language.detect_from_text", return_value="en"), \
+         patch("submatch.cli.language.detect_from_filename", return_value="en"), \
+         patch("submatch.cli.language.detect_from_video", return_value=None), \
+         patch("submatch.cli.language.build_result", return_value=lang):
+        with pytest.raises(SystemExit) as exc:
+            cli.main()
+    assert exc.value.code == 0
+
+
+def test_batch_recursive_candidates_mode(tmp_path):
+    """--recursive with subtitle dir finds subtitles in subdirectories."""
+    video = tmp_path / "movie.mp4"
+    video.touch()
+    subs_dir = tmp_path / "subs"
+    nested = subs_dir / "en"
+    nested.mkdir(parents=True)
+    (nested / "movie.srt").write_text(SAMPLE_SRT)
+
+    subs_parsed = [Subtitle(1, 1_000, 3_500, "Hello world")]
+    segs = [Segment(60_000, 90_000, "Hello world", 2)]
+    mock_trans = MagicMock(text="hello world", language="en")
+    lang = LanguageResult(
+        audio="en", subtitle_detected="en", subtitle_filename="en",
+        video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
+    )
+
+    with patch("sys.argv", ["submatch", str(video), str(subs_dir), "--recursive",
+                            "--no-sync", "--threshold", "0.01"]), \
+         patch("submatch.cli.check_dependencies"), \
+         patch("submatch.cli.audio.has_audio_track", return_value=True), \
+         patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
+         patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
+         patch("submatch.cli.subtitle.parse", return_value=subs_parsed), \
+         patch("submatch.cli.sampler.select_segments", return_value=segs), \
+         patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
+         patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
+         patch("submatch.cli.language.detect_from_text", return_value="en"), \
+         patch("submatch.cli.language.detect_from_filename", return_value="en"), \
+         patch("submatch.cli.language.detect_from_video", return_value=None), \
+         patch("submatch.cli.language.build_result", return_value=lang):
+        with pytest.raises(SystemExit) as exc:
+            cli.main()
+    assert exc.value.code == 0

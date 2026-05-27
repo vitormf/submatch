@@ -28,6 +28,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--language", default=None)
     parser.add_argument("--no-sync", action="store_true")
     parser.add_argument("--keep-synced", action="store_true")
+    parser.add_argument("--recursive", "-r", action="store_true")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return parser.parse_args()
 
@@ -144,13 +145,21 @@ def _run_batch(args: argparse.Namespace) -> int:
     from submatch import batch as _batch
 
     if args.video.is_dir():
-        pairs_to_run = _batch.find_pairs(args.video)
+        pairs_to_run = (
+            _batch.find_pairs_recursive(args.video)
+            if args.recursive
+            else _batch.find_pairs(args.video)
+        )
     else:
         if not args.subtitle.is_dir():
             print(f"Error: expected a directory for subtitle argument, got: {args.subtitle}",
                   file=sys.stderr)
             return 2
-        candidates = _batch.find_subtitle_candidates(args.subtitle)
+        candidates = (
+            _batch.find_subtitle_candidates_recursive(args.subtitle)
+            if args.recursive
+            else _batch.find_subtitle_candidates(args.subtitle)
+        )
         pairs_to_run = [(args.video, c) for c in candidates]
 
     if not pairs_to_run:
