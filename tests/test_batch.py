@@ -1,6 +1,11 @@
 from pathlib import Path
 import pytest
-from submatch.batch import find_pairs, find_subtitle_candidates, find_pairs_recursive, find_subtitle_candidates_recursive
+from unittest.mock import patch, MagicMock
+from submatch.batch import (
+    find_pairs, find_subtitle_candidates,
+    find_pairs_recursive, find_subtitle_candidates_recursive,
+    filter_pairs, _extract_lang_tag, _lang_matches,
+)
 
 
 def test_find_pairs_by_stem(tmp_path):
@@ -165,3 +170,123 @@ def test_find_subtitle_candidates_recursive_filters_non_subtitles(tmp_path):
     result = find_subtitle_candidates_recursive(tmp_path)
     assert len(result) == 1
     assert result[0].name == "movie.srt"
+
+
+# ── _extract_lang_tag ────────────────────────────────────────────────────────
+
+def test_extract_lang_tag_simple():
+    assert _extract_lang_tag(Path("movie.en.srt")) == "en"
+
+
+def test_extract_lang_tag_region():
+    assert _extract_lang_tag(Path("movie.pt-BR.srt")) == "pt-BR"
+
+
+def test_extract_lang_tag_no_lang():
+    assert _extract_lang_tag(Path("movie.srt")) is None
+
+
+def test_extract_lang_tag_release_group_number():
+    assert _extract_lang_tag(Path("The.Year.Without.1974.srt")) is None
+
+
+def test_extract_lang_tag_long_stem():
+    assert _extract_lang_tag(
+        Path("Frosty the Snowman (1969) (1080p BluRay).en.srt")
+    ) == "en"
+
+
+# ── _lang_matches ────────────────────────────────────────────────────────────
+
+def test_lang_matches_exact(tmp_path):
+    f = tmp_path / "movie.en.srt"
+    f.touch()
+    assert _lang_matches(f, ["en"]) is True
+    assert _lang_matches(f, ["pt"]) is False
+
+
+def test_lang_matches_prefix(tmp_path):
+    f = tmp_path / "movie.pt-BR.srt"
+    f.touch()
+    assert _lang_matches(f, ["pt"]) is True
+    assert _lang_matches(f, ["pt-BR"]) is True
+    assert _lang_matches(f, ["en"]) is False
+
+
+def test_lang_matches_no_tag_infers(tmp_path):
+    f = tmp_path / "movie.srt"
+    f.touch()
+    with patch("submatch.subtitle.parse",
+               return_value=[MagicMock(text="Hello world")]), \
+         patch("submatch.language.detect_from_text", return_value="en"):
+        assert _lang_matches(f, ["en"]) is True
+        assert _lang_matches(f, ["pt"]) is False
+
+
+def test_lang_matches_no_tag_include_on_failure(tmp_path):
+    f = tmp_path / "movie.srt"
+    f.touch()
+    with patch("submatch.subtitle.parse", side_effect=Exception("parse error")):
+        assert _lang_matches(f, ["en"]) is True
+
+
+# ── filter_pairs ─────────────────────────────────────────────────────────────
+
+def test_filter_pairs_no_filters(tmp_path):
+    v = tmp_path / "movie.mkv"
+    s = tmp_path / "movie.srt"
+    v.touch(); s.touch()
+    pairs = [(v, s)]
+    assert filter_pairs(pairs) == pairs
+
+
+def test_filter_pairs_sub_lang_keeps_match(tmp_path):
+    v = tmp_path / "movie.mkv"
+    en = tmp_path / "movie.en.srt"
+    pt = tmp_path / "movie.pt-BR.srt"
+    v.touch(); en.touch(); pt.touch()
+    result = filter_pairs([(v, en), (v, pt)], sub_langs=["en"])
+    assert result == [(v, en)]
+
+
+def test_filter_pairs_sub_lang_prefix(tmp_path):
+    v = tmp_path / "movie.mkv"
+    en = tmp_path / "movie.en.srt"
+    pt_br = tmp_path / "movie.pt-BR.srt"
+    pt_pt = tmp_path / "movie.pt-PT.srt"
+    v.touch(); en.touch(); pt_br.touch(); pt_pt.touch()
+    result = filter_pairs([(v, en), (v, pt_br), (v, pt_pt)], sub_langs=["pt"])
+    assert {s.name for _, s in result} == {"movie.pt-BR.srt", "movie.pt-PT.srt"}
+
+
+def test_filter_pairs_sub_lang_multiple_codes(tmp_path):
+    v = tmp_path / "movie.mkv"
+    en = tmp_path / "movie.en.srt"
+    pt = tmp_path / "movie.pt.srt"
+    de = tmp_path / "movie.de.srt"
+    v.touch(); en.touch(); pt.touch(); de.touch()
+    result = filter_pairs([(v, en), (v, pt), (v, de)], sub_langs=["en", "pt"])
+    assert {s.name for _, s in result} == {"movie.en.srt", "movie.pt.srt"}
+
+
+def test_filter_pairs_glob(tmp_path):
+    v = tmp_path / "movie.mkv"
+    en = tmp_path / "movie.en.srt"
+    pt = tmp_path / "movie.pt-BR.srt"
+    v.touch(); en.touch(); pt.touch()
+    result = filter_pairs([(v, en), (v, pt)], glob_pattern="*.en.*")
+    assert result == [(v, en)]
+
+
+def test_filter_pairs_combined(tmp_path):
+    v = tmp_path / "movie.mkv"
+    en_srt = tmp_path / "movie.en.srt"
+    en_vtt = tmp_path / "movie.en.vtt"
+    pt = tmp_path / "movie.pt.srt"
+    v.touch(); en_srt.touch(); en_vtt.touch(); pt.touch()
+    result = filter_pairs(
+        [(v, en_srt), (v, en_vtt), (v, pt)],
+        sub_langs=["en"],
+        glob_pattern="*.srt",
+    )
+    assert result == [(v, en_srt)]

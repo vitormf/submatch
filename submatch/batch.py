@@ -1,5 +1,7 @@
 from __future__ import annotations
+import fnmatch
 import os
+import re
 from pathlib import Path
 
 VIDEO_EXTENSIONS = {".mkv", ".mp4", ".avi", ".mov", ".webm", ".m4v"}
@@ -47,3 +49,44 @@ def find_subtitle_candidates_recursive(subtitle_dir: Path) -> list[Path]:
         p for p in subtitle_dir.rglob("*")
         if p.is_file() and p.suffix.lower() in SUBTITLE_EXTENSIONS
     )
+
+
+_LANG_TAG_RE = re.compile(r'^[a-zA-Z]{2,3}(-[a-zA-Z]{2,4})?$')
+
+
+def _extract_lang_tag(path: Path) -> str | None:
+    stem = path.stem
+    if '.' not in stem:
+        return None
+    candidate = stem.rsplit('.', 1)[1]
+    return candidate if _LANG_TAG_RE.match(candidate) else None
+
+
+def _lang_matches(path: Path, codes: list[str]) -> bool:
+    tag = _extract_lang_tag(path)
+    if tag is None:
+        try:
+            from submatch import subtitle as _subtitle, language as _language
+            subs = _subtitle.parse(path)
+            text = ' '.join(s.text for s in subs[:50])
+            tag = _language.detect_from_text(text)
+        except Exception:
+            return True
+        if not tag:
+            return True
+    return any(tag.lower().startswith(c.lower()) for c in codes)
+
+
+def filter_pairs(
+    pairs: list[tuple[Path, Path]],
+    sub_langs: list[str] | None = None,
+    glob_pattern: str | None = None,
+) -> list[tuple[Path, Path]]:
+    result = []
+    for video, sub in pairs:
+        if glob_pattern and not fnmatch.fnmatch(sub.name, glob_pattern):
+            continue
+        if sub_langs and not _lang_matches(sub, sub_langs):
+            continue
+        result.append((video, sub))
+    return result
