@@ -165,7 +165,7 @@ def test_main_no_audio_track(tmp_path):
 
 def test_main_pipeline_passes(tmp_path):
     _, _, ctx = _make_pipeline_patches(tmp_path, ["--threshold", "0.01"])
-    stack = [c.__enter__() for c in ctx]
+    [c.__enter__() for c in ctx]
     try:
         with pytest.raises(SystemExit) as exc:
             cli.main()
@@ -177,7 +177,7 @@ def test_main_pipeline_passes(tmp_path):
 
 def test_main_pipeline_fails(tmp_path):
     _, _, ctx = _make_pipeline_patches(tmp_path, ["--threshold", "2.0"])
-    stack = [c.__enter__() for c in ctx]
+    [c.__enter__() for c in ctx]
     try:
         with pytest.raises(SystemExit) as exc:
             cli.main()
@@ -189,7 +189,7 @@ def test_main_pipeline_fails(tmp_path):
 
 def test_main_json_output(tmp_path, capsys):
     _, _, ctx = _make_pipeline_patches(tmp_path, ["--json", "--threshold", "0.01"])
-    stack = [c.__enter__() for c in ctx]
+    [c.__enter__() for c in ctx]
     try:
         with pytest.raises(SystemExit):
             cli.main()
@@ -248,7 +248,7 @@ def test_main_segment_transcription_failure_warns(tmp_path, capsys):
     # Override transcribe_segment to raise
     ctx.append(patch("submatch.cli.transcribe.transcribe_segment",
                      side_effect=RuntimeError("GPU exploded")))
-    stack = [c.__enter__() for c in ctx]
+    [c.__enter__() for c in ctx]
     try:
         with pytest.raises(SystemExit) as exc:
             cli.main()
@@ -357,7 +357,6 @@ def _make_batch_patches(tmp_path, extra_argv=()):
     ctx = [
         patch("sys.argv", argv),
         patch("submatch.cli.check_dependencies"),
-        patch("submatch.cli.audio.has_audio_track", return_value=True),
         patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000),
         patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"),
         patch("submatch.cli.subtitle.parse", return_value=subs),
@@ -374,7 +373,7 @@ def _make_batch_patches(tmp_path, extra_argv=()):
 
 def test_batch_dir_mode_passes(tmp_path):
     ctx = _make_batch_patches(tmp_path, ["--threshold", "0.01"])
-    stack = [c.__enter__() for c in ctx]
+    [c.__enter__() for c in ctx]
     try:
         with pytest.raises(SystemExit) as exc:
             cli.main()
@@ -386,7 +385,7 @@ def test_batch_dir_mode_passes(tmp_path):
 
 def test_batch_dir_mode_fails_below_threshold(tmp_path):
     ctx = _make_batch_patches(tmp_path, ["--threshold", "2.0"])
-    stack = [c.__enter__() for c in ctx]
+    [c.__enter__() for c in ctx]
     try:
         with pytest.raises(SystemExit) as exc:
             cli.main()
@@ -442,7 +441,7 @@ def test_batch_candidates_mode(tmp_path):
 
 def test_batch_json_output(tmp_path, capsys):
     ctx = _make_batch_patches(tmp_path, ["--json", "--threshold", "0.01"])
-    stack = [c.__enter__() for c in ctx]
+    [c.__enter__() for c in ctx]
     try:
         with pytest.raises(SystemExit):
             cli.main()
@@ -452,11 +451,13 @@ def test_batch_json_output(tmp_path, capsys):
     data = json.loads(capsys.readouterr().out)
     assert isinstance(data, list)
     assert data[0]["passed"] is True
+    assert "video" in data[0]
+    assert "subtitle" in data[0]
 
 
 def test_batch_compact_output(tmp_path, capsys):
     ctx = _make_batch_patches(tmp_path, ["--compact", "--threshold", "0.01"])
-    stack = [c.__enter__() for c in ctx]
+    [c.__enter__() for c in ctx]
     try:
         with pytest.raises(SystemExit):
             cli.main()
@@ -472,7 +473,7 @@ def test_batch_error_in_one_pair_exits_2(tmp_path):
     ctx = _make_batch_patches(tmp_path, ["--threshold", "0.01"])
     ctx.append(patch("submatch.cli.audio.get_duration_ms",
                      side_effect=RuntimeError("ffprobe failed")))
-    stack = [c.__enter__() for c in ctx]
+    [c.__enter__() for c in ctx]
     try:
         with pytest.raises(SystemExit) as exc:
             cli.main()

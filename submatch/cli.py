@@ -146,6 +146,10 @@ def _run_batch(args: argparse.Namespace) -> int:
     if args.video.is_dir():
         pairs_to_run = _batch.find_pairs(args.video)
     else:
+        if not args.subtitle.is_dir():
+            print(f"Error: expected a directory for subtitle argument, got: {args.subtitle}",
+                  file=sys.stderr)
+            return 2
         candidates = _batch.find_subtitle_candidates(args.subtitle)
         pairs_to_run = [(args.video, c) for c in candidates]
 
