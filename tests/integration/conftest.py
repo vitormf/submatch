@@ -26,6 +26,9 @@ ASSETS: dict[str, str] = {
     ),
 }
 
+# Populated during pytest_sessionstart; checked by fixtures to skip dependent tests.
+_DOWNLOAD_ERRORS: dict[str, str] = {}
+
 
 # ── Cache sync ────────────────────────────────────────────────────────────────
 
@@ -40,15 +43,27 @@ def pytest_sessionstart(session) -> None:
 
     Downloads files that are in the registry but missing from the cache.
     Deletes cached files that have been removed from the registry.
+    Prints a warning for each failed download; dependent tests will be skipped.
     """
     FIXTURES_DIR.mkdir(parents=True, exist_ok=True)
 
     for name, url in ASSETS.items():
         dest = FIXTURES_DIR / name
-        if not dest.exists():
-            print(f"\n  [fixtures] Downloading {name} ...", flush=True)
+        if dest.exists():
+            continue
+        print(f"\n  [fixtures] Downloading {name} ...", flush=True)
+        try:
             _download(dest, url)
             print(f"  [fixtures] {name} ready ({dest.stat().st_size // 1024} KB)", flush=True)
+        except Exception as exc:
+            _DOWNLOAD_ERRORS[name] = str(exc)
+            if dest.exists():
+                dest.unlink()
+            print(
+                f"\n  ⚠  [fixtures] FAILED to download {name}: {exc}\n"
+                f"     Tests requiring this file will be skipped.",
+                flush=True,
+            )
 
     stale = [f for f in FIXTURES_DIR.iterdir() if f.name not in ASSETS]
     for path in stale:
@@ -58,19 +73,27 @@ def pytest_sessionstart(session) -> None:
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
+def _fixture_path(name: str) -> Path:
+    if name in _DOWNLOAD_ERRORS:
+        pytest.skip(
+            f"Fixture '{name}' unavailable — download failed: {_DOWNLOAD_ERRORS[name]}"
+        )
+    return FIXTURES_DIR / name
+
+
 @pytest.fixture(scope="session")
 def made_in_america_video() -> Path:
-    return FIXTURES_DIR / "made_in_america.webm"
+    return _fixture_path("made_in_america.webm")
 
 
 @pytest.fixture(scope="session")
 def made_in_america_srt() -> Path:
-    return FIXTURES_DIR / "made_in_america.srt"
+    return _fixture_path("made_in_america.srt")
 
 
 @pytest.fixture(scope="session")
 def nasa_venus_srt() -> Path:
-    return FIXTURES_DIR / "nasa_venus.srt"
+    return _fixture_path("nasa_venus.srt")
 
 
 @pytest.fixture(scope="session")
