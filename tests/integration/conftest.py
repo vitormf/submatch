@@ -1,6 +1,9 @@
+import shutil
 import urllib.request
 from pathlib import Path
 import pytest
+
+_USER_AGENT = "submatch-integration-tests/1.0 (https://github.com/vitormf/submatch)"
 
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
 
@@ -28,7 +31,9 @@ def _fetch(name: str) -> Path:
         return dest
     FIXTURES_DIR.mkdir(parents=True, exist_ok=True)
     print(f"\n    Downloading {name} ...", flush=True)
-    urllib.request.urlretrieve(_ASSETS[name], dest)
+    req = urllib.request.Request(_ASSETS[name], headers={"User-Agent": _USER_AGENT})
+    with urllib.request.urlopen(req) as resp, open(dest, "wb") as f:
+        shutil.copyfileobj(resp, f)
     return dest
 
 
