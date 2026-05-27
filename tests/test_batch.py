@@ -79,3 +79,14 @@ def test_find_subtitle_candidates_sorted(tmp_path):
     (tmp_path / "a.srt").touch()
     result = find_subtitle_candidates(tmp_path)
     assert result[0].name == "a.srt"
+
+
+def test_find_pairs_doesnt_cross_episode_match(tmp_path):
+    (tmp_path / "show.mkv").touch()
+    (tmp_path / "show.season1.mkv").touch()
+    (tmp_path / "show.srt").touch()
+    (tmp_path / "show.season1.srt").touch()
+    pairs = find_pairs(tmp_path)
+    pair_map = {p[0].name: p[1].name for p in pairs}
+    assert pair_map["show.mkv"] == "show.srt"
+    assert pair_map["show.season1.mkv"] == "show.season1.srt"
