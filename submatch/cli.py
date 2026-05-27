@@ -219,6 +219,10 @@ def _run_batch(args: argparse.Namespace) -> int:
         glob_pattern=args.filter,
     )
 
+    if not pairs_to_run:
+        print("No video/subtitle pairs found.", file=sys.stderr)
+        return 2
+
     device = _resolve_device(args.device)
     workers = _resolve_workers(args.workers, device)
 
@@ -229,10 +233,6 @@ def _run_batch(args: argparse.Namespace) -> int:
             "--workers 1 to keep GPU acceleration.",
             file=sys.stderr,
         )
-
-    if not pairs_to_run:
-        print("No video/subtitle pairs found.", file=sys.stderr)
-        return 2
 
     check_dependencies(skip_sync=args.no_sync)
 

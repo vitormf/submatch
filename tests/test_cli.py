@@ -627,9 +627,6 @@ def test_batch_sub_lang_filters_all_pairs(tmp_path):
     assert exc.value.code == 2
 
 
-import sys as _sys
-
-
 def test_resolve_device_explicit_cpu():
     assert cli._resolve_device("cpu") == "cpu"
 
@@ -642,7 +639,7 @@ def test_resolve_device_auto_no_gpu():
     mock_torch = MagicMock()
     mock_torch.cuda.is_available.return_value = False
     mock_torch.backends.mps.is_available.return_value = False
-    with patch.dict(_sys.modules, {"torch": mock_torch}):
+    with patch.dict(sys.modules, {"torch": mock_torch}):
         assert cli._resolve_device("auto") == "cpu"
 
 
@@ -650,7 +647,7 @@ def test_resolve_device_auto_mps():
     mock_torch = MagicMock()
     mock_torch.cuda.is_available.return_value = False
     mock_torch.backends.mps.is_available.return_value = True
-    with patch.dict(_sys.modules, {"torch": mock_torch}):
+    with patch.dict(sys.modules, {"torch": mock_torch}):
         assert cli._resolve_device("auto") == "mps"
 
 
@@ -711,3 +708,19 @@ def test_batch_no_warn_multi_worker_cpu(tmp_path, capsys):
             c.__exit__(None, None, None)
     err = capsys.readouterr().err
     assert "contention" not in err
+
+
+def test_batch_parallel_error_in_one_pair_exits_2(tmp_path):
+    """In parallel mode, an exception from one pair produces BatchPairResult.error and exit 2."""
+    ctx = _make_batch_patches(tmp_path, ["--workers", "2", "--device", "cpu",
+                                          "--threshold", "0.01"])
+    ctx.append(patch("submatch.cli.audio.get_duration_ms",
+                     side_effect=RuntimeError("ffprobe failed")))
+    [c.__enter__() for c in ctx]
+    try:
+        with pytest.raises(SystemExit) as exc:
+            cli.main()
+    finally:
+        for c in reversed(ctx):
+            c.__exit__(None, None, None)
+    assert exc.value.code == 2
