@@ -27,6 +27,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--language", default=None)
     parser.add_argument("--no-sync", action="store_true")
     parser.add_argument("--keep-synced", action="store_true")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return parser.parse_args()
 
 
@@ -70,15 +71,14 @@ def main() -> None:
 
     # Timing sync
     sync_result = None
-    working_subtitle = args.subtitle
+    _sync_tmp: Path | None = None
     if not args.no_sync:
         try:
             tmp = tempfile.NamedTemporaryFile(suffix=".srt", delete=False)
-            tmp_path = Path(tmp.name)
+            _sync_tmp = Path(tmp.name)
             tmp.close()
-            sync_result = sync.sync_subtitle(args.video, args.subtitle, tmp_path)
-            working_subtitle = sync_result.synced_srt_path
-            subtitles = srt.parse(working_subtitle)
+            sync_result = sync.sync_subtitle(args.video, args.subtitle, _sync_tmp)
+            subtitles = srt.parse(sync_result.synced_srt_path)
         except RuntimeError as exc:
             print(f"Warning: ffsubsync failed ({exc}), proceeding without sync",
                   file=sys.stderr)
@@ -159,5 +159,8 @@ def main() -> None:
         print(output.format_json(result))
     else:
         output.print_human(result, verbose=args.verbose)
+
+    if _sync_tmp is not None:
+        _sync_tmp.unlink(missing_ok=True)
 
     sys.exit(0 if result.passed else 1)
