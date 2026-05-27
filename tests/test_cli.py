@@ -33,6 +33,7 @@ def test_parse_args_defaults(tmp_path):
     assert args.filter is None
     assert args.device == "auto"
     assert args.workers is None
+    assert args.cross_threshold is None
 
 
 def test_parse_args_all_flags(tmp_path):
@@ -43,6 +44,7 @@ def test_parse_args_all_flags(tmp_path):
         "--json", "--compact", "--verbose", "--language", "pt", "--no-sync", "--keep-synced",
         "--recursive", "--sub-lang", "en", "--filter", "*.en.*",
         "--device", "cpu", "--workers", "2",
+        "--cross-threshold", "0.5",
     ]):
         args = cli.parse_args()
     assert args.model == "small"
@@ -59,6 +61,7 @@ def test_parse_args_all_flags(tmp_path):
     assert args.filter == "*.en.*"
     assert args.device == "cpu"
     assert args.workers == 2
+    assert args.cross_threshold == pytest.approx(0.5)
 
 
 # ── check_dependencies ────────────────────────────────────────────────────────
@@ -724,3 +727,155 @@ def test_batch_parallel_error_in_one_pair_exits_2(tmp_path):
         for c in reversed(ctx):
             c.__exit__(None, None, None)
     assert exc.value.code == 2
+
+
+# ── cross-language detection ──────────────────────────────────────────────────
+
+def test_is_cross_language_different():
+    assert cli._is_cross_language("en", "pt") is True
+
+
+def test_is_cross_language_same():
+    assert cli._is_cross_language("en", "en") is False
+
+
+def test_is_cross_language_prefix_match():
+    assert cli._is_cross_language("pt", "pt-BR") is False
+    assert cli._is_cross_language("pt-BR", "pt") is False
+
+
+def test_is_cross_language_none_audio():
+    assert cli._is_cross_language(None, "pt") is False
+
+
+def test_is_cross_language_none_subtitle():
+    assert cli._is_cross_language("en", None) is False
+
+
+def test_is_cross_language_both_none():
+    assert cli._is_cross_language(None, None) is False
+
+
+def test_parse_args_cross_threshold_default(tmp_path):
+    v, s = tmp_path / "v.mp4", tmp_path / "s.srt"
+    with patch("sys.argv", ["submatch", str(v), str(s)]):
+        args = cli.parse_args()
+    assert args.cross_threshold is None
+
+
+def test_parse_args_cross_threshold_explicit(tmp_path):
+    v, s = tmp_path / "v.mp4", tmp_path / "s.srt"
+    with patch("sys.argv", ["submatch", str(v), str(s), "--cross-threshold", "0.5"]):
+        args = cli.parse_args()
+    assert args.cross_threshold == pytest.approx(0.5)
+
+
+def test_get_embed_model_missing_import(capsys):
+    """_get_embed_model exits with code 2 when sentence_transformers not installed."""
+    if hasattr(cli._embed_local, "model"):
+        del cli._embed_local.model
+    with patch.dict(sys.modules, {"sentence_transformers": None}), \
+         patch("submatch.embeddings.load_embedding_model",
+               side_effect=ImportError("No module named 'sentence_transformers'")), \
+         pytest.raises(SystemExit) as exc:
+        cli._get_embed_model()
+    assert exc.value.code == 2
+    assert "sentence-transformers" in capsys.readouterr().err
+
+
+def test_score_pair_cross_language_uses_embeddings(tmp_path):
+    """Audio='en', subtitle detected as 'pt': embeddings scoring is used."""
+    video = tmp_path / "movie.mkv"
+    video.touch()
+    sub = tmp_path / "movie.pt.srt"
+    sub.write_text(SAMPLE_SRT)
+
+    subs_parsed = [Subtitle(1, 1_000, 3_500, "Olá mundo")]
+    segs = [Segment(60_000, 90_000, "Olá mundo", 2)]
+    mock_trans = MagicMock(text="hello world", language="en")
+    lang = LanguageResult(
+        audio="en", subtitle_detected="pt", subtitle_filename="pt",
+        video_metadata=None, expected=None, mismatch=True,
+        mismatch_details=["audio=en but subtitle text detected as pt"],
+    )
+    mock_embed_score = MagicMock(f1=0.72, wer=0.0)
+    mock_cross_fn = MagicMock(return_value=mock_embed_score)
+
+    with patch("sys.argv", ["submatch", str(video), str(sub),
+                            "--no-sync", "--threshold", "0.5"]), \
+         patch("submatch.cli.check_dependencies"), \
+         patch("submatch.cli.audio.has_audio_track", return_value=True), \
+         patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
+         patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
+         patch("submatch.cli.subtitle.parse", return_value=subs_parsed), \
+         patch("submatch.cli.sampler.select_segments", return_value=segs), \
+         patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
+         patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
+         patch("submatch.cli.language.detect_from_text", return_value="pt"), \
+         patch("submatch.cli.language.detect_from_filename", return_value="pt"), \
+         patch("submatch.cli.language.detect_from_video", return_value=None), \
+         patch("submatch.cli.language.build_result", return_value=lang), \
+         patch("submatch.cli._get_embed_model", return_value=MagicMock()), \
+         patch("submatch.embeddings.cross_language_score", mock_cross_fn), \
+         pytest.raises(SystemExit):
+        cli.main()
+
+    mock_cross_fn.assert_called_once()
+
+
+def test_score_pair_same_language_skips_embeddings(tmp_path):
+    """Audio='en', subtitle 'en': _get_embed_model is never called."""
+    _, _, ctx = _make_pipeline_patches(tmp_path, ["--threshold", "0.01"])
+    mock_get_embed = MagicMock()
+
+    with patch("submatch.cli._get_embed_model", mock_get_embed):
+        [c.__enter__() for c in ctx]
+        try:
+            with pytest.raises(SystemExit):
+                cli.main()
+        finally:
+            for c in reversed(ctx):
+                c.__exit__(None, None, None)
+
+    mock_get_embed.assert_not_called()
+
+
+def test_cross_threshold_used_for_cross_language_pair(tmp_path):
+    """--cross-threshold 0.9 causes score 0.72 to fail even though --threshold is 0.5."""
+    video = tmp_path / "movie.mkv"
+    video.touch()
+    sub = tmp_path / "movie.pt.srt"
+    sub.write_text(SAMPLE_SRT)
+
+    subs_parsed = [Subtitle(1, 1_000, 3_500, "Olá mundo")]
+    segs = [Segment(60_000, 90_000, "Olá mundo", 2)]
+    mock_trans = MagicMock(text="hello world", language="en")
+    lang = LanguageResult(
+        audio="en", subtitle_detected="pt", subtitle_filename="pt",
+        video_metadata=None, expected=None, mismatch=True,
+        mismatch_details=["audio=en but subtitle text detected as pt"],
+    )
+    mock_embed_score = MagicMock(f1=0.72, wer=0.0)
+
+    with patch("sys.argv", ["submatch", str(video), str(sub),
+                            "--no-sync", "--threshold", "0.5",
+                            "--cross-threshold", "0.9"]), \
+         patch("submatch.cli.check_dependencies"), \
+         patch("submatch.cli.audio.has_audio_track", return_value=True), \
+         patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
+         patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
+         patch("submatch.cli.subtitle.parse", return_value=subs_parsed), \
+         patch("submatch.cli.sampler.select_segments", return_value=segs), \
+         patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
+         patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
+         patch("submatch.cli.language.detect_from_text", return_value="pt"), \
+         patch("submatch.cli.language.detect_from_filename", return_value="pt"), \
+         patch("submatch.cli.language.detect_from_video", return_value=None), \
+         patch("submatch.cli.language.build_result", return_value=lang), \
+         patch("submatch.cli._get_embed_model", return_value=MagicMock()), \
+         patch("submatch.embeddings.cross_language_score",
+               return_value=mock_embed_score), \
+         pytest.raises(SystemExit) as exc:
+        cli.main()
+
+    assert exc.value.code == 1  # FAIL because 0.72 < cross-threshold 0.9
