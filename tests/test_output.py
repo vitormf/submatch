@@ -184,3 +184,89 @@ def test_print_human_shows_video_metadata_row(capsys):
     )
     print_human(result)
     assert "Video metadata:" in capsys.readouterr().out
+
+
+# ── batch output ──────────────────────────────────────────────────────────────
+
+from submatch.output import (
+    BatchPairResult, print_batch_compact, print_batch_summary, format_batch_json,
+)
+
+
+def _make_batch_pairs() -> list[BatchPairResult]:
+    passed = BatchPairResult(
+        video=Path("show.mkv"),
+        subtitle=Path("show.en.srt"),
+        result=_make_result(),
+        error=None,
+    )
+    failed_result = _make_result()
+    failed_result.passed = False
+    failed_result.confidence = 0.10
+    failed = BatchPairResult(
+        video=Path("show.mkv"),
+        subtitle=Path("show.pt.srt"),
+        result=failed_result,
+        error=None,
+    )
+    errored = BatchPairResult(
+        video=Path("broken.mkv"),
+        subtitle=Path("broken.srt"),
+        result=None,
+        error="no audio track",
+    )
+    return [passed, failed, errored]
+
+
+def test_print_batch_compact_shows_pass(capsys):
+    print_batch_compact(_make_batch_pairs(), threshold=0.35)
+    assert "PASS" in capsys.readouterr().out
+
+
+def test_print_batch_compact_shows_fail(capsys):
+    print_batch_compact(_make_batch_pairs(), threshold=0.35)
+    assert "FAIL" in capsys.readouterr().out
+
+
+def test_print_batch_compact_shows_error(capsys):
+    print_batch_compact(_make_batch_pairs(), threshold=0.35)
+    assert "ERROR" in capsys.readouterr().out
+
+
+def test_print_batch_compact_shows_filenames(capsys):
+    print_batch_compact(_make_batch_pairs(), threshold=0.35)
+    out = capsys.readouterr().out
+    assert "show.en.srt" in out
+    assert "show.pt.srt" in out
+
+
+def test_print_batch_summary_counts(capsys):
+    print_batch_summary(_make_batch_pairs())
+    out = capsys.readouterr().out
+    assert "1 passed" in out
+    assert "1 failed" in out
+    assert "1 errors" in out
+
+
+def test_format_batch_json_is_array():
+    data = json.loads(format_batch_json(_make_batch_pairs()))
+    assert isinstance(data, list)
+    assert len(data) == 3
+
+
+def test_format_batch_json_includes_paths():
+    data = json.loads(format_batch_json(_make_batch_pairs()))
+    assert data[0]["video"] == "show.mkv"
+    assert data[0]["subtitle"] == "show.en.srt"
+
+
+def test_format_batch_json_error_entry_has_error_key():
+    data = json.loads(format_batch_json(_make_batch_pairs()))
+    error_entry = data[2]
+    assert error_entry["error"] == "no audio track"
+    assert "confidence" not in error_entry
+
+
+def test_format_batch_json_success_entry_has_confidence():
+    data = json.loads(format_batch_json(_make_batch_pairs()))
+    assert data[0]["confidence"] == 0.75

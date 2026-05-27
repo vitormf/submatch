@@ -36,6 +36,14 @@ class MatchResult:
     model: str
 
 
+@dataclass
+class BatchPairResult:
+    video: Path
+    subtitle: Path
+    result: MatchResult | None
+    error: str | None
+
+
 def print_human(result: MatchResult, verbose: bool = False) -> None:
     print()
 
@@ -92,6 +100,46 @@ def format_json(result: MatchResult) -> str:
             return super().default(obj)
 
     return json.dumps(dataclasses.asdict(result), cls=_Encoder, indent=2)
+
+
+def print_batch_compact(pairs: list[BatchPairResult], threshold: float) -> None:
+    for p in pairs:
+        if p.error:
+            label = f"{_RED}ERROR{_RESET}"
+            score = "  n/a"
+        else:
+            color = _GREEN if p.result.passed else _RED
+            label = f"{color}{'PASS' if p.result.passed else 'FAIL'}{_RESET}"
+            score = f"{p.result.confidence:.2f}"
+        print(f"{label}  {score}  {p.video.name:<40}  {p.subtitle.name}")
+
+
+def print_batch_summary(pairs: list[BatchPairResult]) -> None:
+    passed = sum(1 for p in pairs if p.result and p.result.passed)
+    failed = sum(1 for p in pairs if p.result and not p.result.passed)
+    errors = sum(1 for p in pairs if p.error)
+    print(f"\nResults: {passed} passed, {failed} failed, {errors} errors")
+
+
+def format_batch_json(pairs: list[BatchPairResult]) -> str:
+    class _Encoder(json.JSONEncoder):
+        def default(self, obj: Any) -> Any:
+            if isinstance(obj, Path):
+                return str(obj)
+            return super().default(obj)
+
+    items = []
+    for p in pairs:
+        if p.result is not None:
+            d = dataclasses.asdict(p.result)
+        else:
+            d = {}
+        d["video"] = str(p.video)
+        d["subtitle"] = str(p.subtitle)
+        if p.error is not None:
+            d["error"] = p.error
+        items.append(d)
+    return json.dumps(items, cls=_Encoder, indent=2)
 
 
 def _lang_row(label: str, value: str | None) -> None:
