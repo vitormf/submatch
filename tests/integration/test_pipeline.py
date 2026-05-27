@@ -7,6 +7,11 @@ Run with: make integration-test
 Videos: WIKITONGUES project on Wikimedia Commons (CC BY-SA 4.0 / CC BY 3.0).
   - Gereon speaking German  — German audio, subtitles in de/en/pt-br
   - María speaking Guarani  — Guarani audio, subtitles in gn/en/es/de
+  - Omar speaking English   — English audio, subtitles in en/es/fr/pt
+
+Mismatch controls use subtitles from a different video in the same language:
+  - Same language, wrong content → should score LOW (F1 failure)
+  - Translated language, wrong content → should score LOW (embedding failure)
 """
 import pytest
 from pathlib import Path
@@ -191,4 +196,91 @@ def test_guarani_english_subtitle_scores_higher_than_german_mismatch(
     )
     assert mismatched < matching, (
         f"Mismatch ({mismatched:.2f}) should be lower than match ({matching:.2f})"
+    )
+
+
+# ── English video — same-language tests ──────────────────────────────────────
+
+def test_english_native_subtitle_passes_threshold(
+    english_video, english_en_srt, whisper_tiny,
+):
+    """English subtitle for English audio should score above 0.25 with tiny model."""
+    confidence, _ = _score(english_video, english_en_srt, whisper_tiny)
+    assert confidence >= 0.25, (
+        f"Native English subtitle scored {confidence:.2f} (tiny model), expected >= 0.25"
+    )
+
+
+def test_english_audio_detected_as_english(english_video, english_en_srt, whisper_tiny):
+    """Whisper should identify the audio language as English."""
+    _, lang = _score(english_video, english_en_srt, whisper_tiny, n=1)
+    assert lang == "en", f"Expected audio language 'en', got '{lang}'"
+
+
+def test_english_wrong_content_same_language_scores_lower(
+    english_video, english_en_srt, guarani_en_srt, whisper_tiny,
+):
+    """English subtitle from a different video (wrong content) should score lower than the match.
+
+    This simulates the primary use case of submatch: a subtitle tool downloaded a subtitle
+    with correct timing but content from the wrong film/episode.
+    """
+    matching, _ = _score(english_video, english_en_srt, whisper_tiny)
+    wrong_content, _ = _score(english_video, guarani_en_srt, whisper_tiny)
+    assert wrong_content < matching, (
+        f"Wrong-content English subtitle ({wrong_content:.2f}) should score lower "
+        f"than matching subtitle ({matching:.2f})"
+    )
+
+
+# ── English video — cross-language tests ─────────────────────────────────────
+
+def test_cross_language_english_spanish_passes_threshold(
+    english_video, english_es_srt, whisper_tiny, embed_model,
+):
+    """Spanish translation of English audio should score above 0.10 via embeddings."""
+    confidence, _ = _score_cross_language(english_video, english_es_srt, whisper_tiny, embed_model)
+    assert confidence >= 0.10, (
+        f"EN audio + ES subtitle scored {confidence:.2f} (tiny model), expected >= 0.10"
+    )
+
+
+def test_cross_language_english_french_passes_threshold(
+    english_video, english_fr_srt, whisper_tiny, embed_model,
+):
+    """French translation of English audio should score above 0.10 via embeddings."""
+    confidence, _ = _score_cross_language(english_video, english_fr_srt, whisper_tiny, embed_model)
+    assert confidence >= 0.10, (
+        f"EN audio + FR subtitle scored {confidence:.2f} (tiny model), expected >= 0.10"
+    )
+
+
+def test_cross_language_english_portuguese_passes_threshold(
+    english_video, english_pt_srt, whisper_tiny, embed_model,
+):
+    """Portuguese translation of English audio should score above 0.10 via embeddings."""
+    confidence, _ = _score_cross_language(english_video, english_pt_srt, whisper_tiny, embed_model)
+    assert confidence >= 0.10, (
+        f"EN audio + PT subtitle scored {confidence:.2f} (tiny model), expected >= 0.10"
+    )
+
+
+def test_cross_language_english_correct_translation_scores_higher_than_wrong_content(
+    english_video, english_es_srt, guarani_es_srt, whisper_tiny, embed_model,
+):
+    """Correct Spanish translation of English audio should outscore a Spanish subtitle
+    from an unrelated video — same language pair, wrong content.
+
+    This is the cross-language equivalent of a wrong-episode subtitle: the language
+    is right but the content has nothing to do with the audio.
+    """
+    matching, _ = _score_cross_language(
+        english_video, english_es_srt, whisper_tiny, embed_model,
+    )
+    wrong_content, _ = _score_cross_language(
+        english_video, guarani_es_srt, whisper_tiny, embed_model,
+    )
+    assert wrong_content < matching, (
+        f"Wrong-content ES subtitle ({wrong_content:.2f}) should score lower "
+        f"than matching ES translation ({matching:.2f})"
     )

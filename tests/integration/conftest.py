@@ -12,7 +12,6 @@ _USER_AGENT = "submatch-integration-tests/1.0 (https://github.com/vitormf/submat
 # Remove an entry → cached file is deleted before tests run.
 #
 # Sources: WIKITONGUES project on Wikimedia Commons (CC BY-SA 4.0 / CC BY 3.0).
-# All videos feature non-English audio with subtitles in multiple languages.
 ASSETS: dict[str, str] = {
     # WIKITONGUES — Gereon speaking German (CC BY-SA 4.0)
     # Native German speaker discussing the German language, ~3 min, 21.8 MB.
@@ -68,6 +67,33 @@ ASSETS: dict[str, str] = {
         "https://commons.wikimedia.org/w/api.php?action=timedtext"
         "&title=File%3AWIKITONGUES-_Mar%C3%ADa_speaking_Guarani.webm"
         "&lang=de&trackformat=srt&origin=*"
+    ),
+    # WIKITONGUES — Omar speaking English and Jamaican Patois (CC BY 3.0)
+    # English speaker discussing Jamaican Patois as heritage language, ~4 min, 85.5 MB.
+    # Subtitles available in: en (native), de, es, fr, pt, it, tr, eo, fy.
+    "wikitongues_english.webm": (
+        "https://upload.wikimedia.org/wikipedia/commons/f/f8/"
+        "WIKITONGUES-_Omar_Speaking_English_and_Jamaican_Patois.webm"
+    ),
+    "wikitongues_english.en.srt": (
+        "https://commons.wikimedia.org/w/api.php?action=timedtext"
+        "&title=File%3AWIKITONGUES-_Omar_Speaking_English_and_Jamaican_Patois.webm"
+        "&lang=en&trackformat=srt&origin=*"
+    ),
+    "wikitongues_english.es.srt": (
+        "https://commons.wikimedia.org/w/api.php?action=timedtext"
+        "&title=File%3AWIKITONGUES-_Omar_Speaking_English_and_Jamaican_Patois.webm"
+        "&lang=es&trackformat=srt&origin=*"
+    ),
+    "wikitongues_english.fr.srt": (
+        "https://commons.wikimedia.org/w/api.php?action=timedtext"
+        "&title=File%3AWIKITONGUES-_Omar_Speaking_English_and_Jamaican_Patois.webm"
+        "&lang=fr&trackformat=srt&origin=*"
+    ),
+    "wikitongues_english.pt.srt": (
+        "https://commons.wikimedia.org/w/api.php?action=timedtext"
+        "&title=File%3AWIKITONGUES-_Omar_Speaking_English_and_Jamaican_Patois.webm"
+        "&lang=pt&trackformat=srt&origin=*"
     ),
 }
 
@@ -196,6 +222,33 @@ def whisper_tiny():
     return load_model("tiny")
 
 
+# English video (Omar, English speaker discussing Jamaican Patois)
+@pytest.fixture(scope="session")
+def english_video() -> Path:
+    return _fixture_path("wikitongues_english.webm")
+
+
+@pytest.fixture(scope="session")
+def english_en_srt() -> Path:
+    return _fixture_path("wikitongues_english.en.srt")
+
+
+@pytest.fixture(scope="session")
+def english_es_srt() -> Path:
+    return _fixture_path("wikitongues_english.es.srt")
+
+
+@pytest.fixture(scope="session")
+def english_fr_srt() -> Path:
+    return _fixture_path("wikitongues_english.fr.srt")
+
+
+@pytest.fixture(scope="session")
+def english_pt_srt() -> Path:
+    return _fixture_path("wikitongues_english.pt.srt")
+
+
+# Shared model fixtures
 @pytest.fixture(scope="session")
 def embed_model():
     """Session-scoped multilingual sentence embedding model."""
