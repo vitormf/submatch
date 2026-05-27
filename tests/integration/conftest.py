@@ -10,19 +10,64 @@ _USER_AGENT = "submatch-integration-tests/1.0 (https://github.com/vitormf/submat
 # Single source of truth for integration test fixtures.
 # Add an entry  → file is downloaded before tests run.
 # Remove an entry → cached file is deleted before tests run.
+#
+# Sources: WIKITONGUES project on Wikimedia Commons (CC BY-SA 4.0 / CC BY 3.0).
+# All videos feature non-English audio with subtitles in multiple languages.
 ASSETS: dict[str, str] = {
-    "made_in_america.webm": (
-        "https://upload.wikimedia.org/wikipedia/commons/c/ce/"
-        "%22Made_in_America_is_back%21%22.webm"
+    # WIKITONGUES — Gereon speaking German (CC BY-SA 4.0)
+    # Native German speaker discussing the German language, ~3 min, 21.8 MB.
+    # Subtitles available in: de (native), en, pt-br, eo.
+    "wikitongues_german.webm": (
+        "https://upload.wikimedia.org/wikipedia/commons/2/20/"
+        "WIKITONGUES-_Gereon_speaking_German.webm"
     ),
-    "made_in_america.srt": (
-        "https://commons.wikimedia.org/w/index.php"
-        "?title=TimedText:%22Made_in_America_is_back!%22.webm.en.srt&action=raw"
+    "wikitongues_german.de.srt": (
+        "https://commons.wikimedia.org/w/api.php?action=timedtext"
+        "&title=File%3AWIKITONGUES-_Gereon_speaking_German.webm"
+        "&lang=de&trackformat=srt&origin=*"
     ),
-    # NASA public domain — used as mismatched subtitle (different content, same language)
-    "nasa_venus.srt": (
-        "https://svs.gsfc.nasa.gov/vis/a010000/a013600/a013640/"
-        "VIAM_caption.en_US.srt"
+    "wikitongues_german.en.srt": (
+        "https://commons.wikimedia.org/w/api.php?action=timedtext"
+        "&title=File%3AWIKITONGUES-_Gereon_speaking_German.webm"
+        "&lang=en&trackformat=srt&origin=*"
+    ),
+    "wikitongues_german.pt-br.srt": (
+        "https://commons.wikimedia.org/w/api.php?action=timedtext"
+        "&title=File%3AWIKITONGUES-_Gereon_speaking_German.webm"
+        "&lang=pt-br&trackformat=srt&origin=*"
+    ),
+    "wikitongues_german.de.vtt": (
+        "https://commons.wikimedia.org/w/api.php?action=timedtext"
+        "&title=File%3AWIKITONGUES-_Gereon_speaking_German.webm"
+        "&lang=de&trackformat=vtt&origin=*"
+    ),
+    # WIKITONGUES — María speaking Guarani (CC BY 3.0)
+    # Speaker from Paraguay, ~5 min, 31.6 MB.
+    # Subtitles available in: gn (native), en, es, de, fr, fi, pt-br, uk.
+    "wikitongues_guarani.webm": (
+        "https://upload.wikimedia.org/wikipedia/commons/e/e1/"
+        "WIKITONGUES-_Mar%C3%ADa_speaking_Guarani.webm"
+    ),
+    "wikitongues_guarani.gn.srt": (
+        "https://commons.wikimedia.org/w/api.php?action=timedtext"
+        "&title=File%3AWIKITONGUES-_Mar%C3%ADa_speaking_Guarani.webm"
+        "&lang=gn&trackformat=srt&origin=*"
+    ),
+    "wikitongues_guarani.en.srt": (
+        "https://commons.wikimedia.org/w/api.php?action=timedtext"
+        "&title=File%3AWIKITONGUES-_Mar%C3%ADa_speaking_Guarani.webm"
+        "&lang=en&trackformat=srt&origin=*"
+    ),
+    "wikitongues_guarani.es.srt": (
+        "https://commons.wikimedia.org/w/api.php?action=timedtext"
+        "&title=File%3AWIKITONGUES-_Mar%C3%ADa_speaking_Guarani.webm"
+        "&lang=es&trackformat=srt&origin=*"
+    ),
+    # German subtitle of the Guarani video — used as cross-video mismatch control.
+    "wikitongues_guarani.de.srt": (
+        "https://commons.wikimedia.org/w/api.php?action=timedtext"
+        "&title=File%3AWIKITONGUES-_Mar%C3%ADa_speaking_Guarani.webm"
+        "&lang=de&trackformat=srt&origin=*"
     ),
 }
 
@@ -81,22 +126,82 @@ def _fixture_path(name: str) -> Path:
     return FIXTURES_DIR / name
 
 
+# German video (Gereon, native German speaker)
 @pytest.fixture(scope="session")
-def made_in_america_video() -> Path:
-    return _fixture_path("made_in_america.webm")
-
-
-@pytest.fixture(scope="session")
-def made_in_america_srt() -> Path:
-    return _fixture_path("made_in_america.srt")
+def german_video() -> Path:
+    return _fixture_path("wikitongues_german.webm")
 
 
 @pytest.fixture(scope="session")
-def nasa_venus_srt() -> Path:
-    return _fixture_path("nasa_venus.srt")
+def german_de_srt() -> Path:
+    return _fixture_path("wikitongues_german.de.srt")
 
 
+@pytest.fixture(scope="session")
+def german_en_srt() -> Path:
+    return _fixture_path("wikitongues_german.en.srt")
+
+
+@pytest.fixture(scope="session")
+def german_ptbr_srt() -> Path:
+    return _fixture_path("wikitongues_german.pt-br.srt")
+
+
+@pytest.fixture(scope="session")
+def german_de_vtt() -> Path:
+    return _fixture_path("wikitongues_german.de.vtt")
+
+
+@pytest.fixture(scope="session")
+def german_de_ass(german_de_srt, tmp_path_factory) -> Path:
+    """ASS subtitle generated from the German SRT — exercises the ASS parser path."""
+    import pysubs2
+    subs = pysubs2.load(str(german_de_srt))
+    out = tmp_path_factory.mktemp("ass") / "wikitongues_german.de.ass"
+    subs.save(str(out))
+    return out
+
+
+# Guarani video (María, Guarani speaker from Paraguay)
+@pytest.fixture(scope="session")
+def guarani_video() -> Path:
+    return _fixture_path("wikitongues_guarani.webm")
+
+
+@pytest.fixture(scope="session")
+def guarani_gn_srt() -> Path:
+    return _fixture_path("wikitongues_guarani.gn.srt")
+
+
+@pytest.fixture(scope="session")
+def guarani_en_srt() -> Path:
+    return _fixture_path("wikitongues_guarani.en.srt")
+
+
+@pytest.fixture(scope="session")
+def guarani_es_srt() -> Path:
+    return _fixture_path("wikitongues_guarani.es.srt")
+
+
+@pytest.fixture(scope="session")
+def guarani_de_srt() -> Path:
+    """German subtitle of the Guarani video — different content from the German video."""
+    return _fixture_path("wikitongues_guarani.de.srt")
+
+
+# Shared model fixtures
 @pytest.fixture(scope="session")
 def whisper_tiny():
     from submatch.transcribe import load_model
     return load_model("tiny")
+
+
+@pytest.fixture(scope="session")
+def embed_model():
+    """Session-scoped multilingual sentence embedding model."""
+    pytest.importorskip(
+        "sentence_transformers",
+        reason="sentence-transformers not installed — skipping cross-language integration tests",
+    )
+    from submatch.embeddings import load_embedding_model
+    return load_embedding_model()
