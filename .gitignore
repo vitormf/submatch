@@ -1,0 +1,21 @@
+# Claude / superpowers
+.claude/
+CLAUDE.md
+docs/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+*.egg
+
+# macOS
+.DS_Store
+
+# Misc
+*.tmp
+*.log
