@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 
 from submatch import __version__
-from submatch import audio, compare, language, output, sampler, srt, sync, transcribe
+from submatch import audio, compare, language, output, sampler, subtitle, sync, transcribe
 
 
 def parse_args() -> argparse.Namespace:
@@ -68,7 +68,7 @@ def main() -> None:
             print(f"Error: no audio track in {args.video}", file=sys.stderr)
             sys.exit(2)
 
-        subtitles = srt.parse(args.subtitle)
+        subtitles = subtitle.parse(args.subtitle)
         subtitle_sample = " ".join(s.text for s in subtitles[:50])
 
         # Timing sync
@@ -79,7 +79,7 @@ def main() -> None:
                 _sync_tmp = Path(tmp.name)
                 tmp.close()
                 sync_result = sync.sync_subtitle(args.video, args.subtitle, _sync_tmp)
-                subtitles = srt.parse(sync_result.synced_srt_path)
+                subtitles = subtitle.parse(sync_result.synced_srt_path)
             except RuntimeError as exc:
                 print(f"Warning: ffsubsync failed ({exc}), proceeding without sync",
                       file=sys.stderr)

@@ -1,5 +1,5 @@
 from submatch.sampler import auto_segment_count, select_segments, Segment
-from submatch.srt import Subtitle
+from submatch.subtitle import Subtitle
 
 
 def _make_subtitles(n: int, duration_ms: int) -> list[Subtitle]:

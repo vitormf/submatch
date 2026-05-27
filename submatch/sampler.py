@@ -1,6 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass
-from submatch.srt import Subtitle
+from submatch.subtitle import Subtitle
 
 
 @dataclass

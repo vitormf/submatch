@@ -4,7 +4,7 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from submatch.srt import parse as parse_srt
+from submatch.subtitle import parse as parse_subtitle
 
 DRIFT_THRESHOLD_SECONDS = 2.0
 
@@ -43,8 +43,8 @@ def sync_subtitle(
 
 
 def _compute_offset(original_path: Path, synced_path: Path) -> float:
-    original = parse_srt(original_path)
-    synced = parse_srt(synced_path)
+    original = parse_subtitle(original_path)
+    synced = parse_subtitle(synced_path)
     pairs = list(zip(original[:5], synced[:5]))
     if not pairs:
         return 0.0

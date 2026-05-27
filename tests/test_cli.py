@@ -7,7 +7,7 @@ from unittest.mock import patch, MagicMock
 from submatch import cli
 from submatch.language import LanguageResult
 from submatch.sampler import Segment
-from submatch.srt import Subtitle
+from submatch.subtitle import Subtitle
 from tests.conftest import SAMPLE_SRT
 
 
@@ -116,7 +116,7 @@ def _make_pipeline_patches(tmp_path, extra_argv=()):
         patch("submatch.cli.audio.has_audio_track", return_value=True),
         patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000),
         patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"),
-        patch("submatch.cli.srt.parse", return_value=subs),
+        patch("submatch.cli.subtitle.parse", return_value=subs),
         patch("submatch.cli.sampler.select_segments", return_value=segs),
         patch("submatch.cli.transcribe.load_model", return_value=MagicMock()),
         patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans),
@@ -231,7 +231,7 @@ def test_main_sync_success_reparses_srt(tmp_path):
          patch("submatch.cli.language.detect_from_video", return_value=None), \
          patch("submatch.cli.language.build_result", return_value=lang), \
          patch("submatch.cli.sync.sync_subtitle", return_value=sync_result), \
-         patch("submatch.cli.srt.parse", return_value=subs) as mock_parse:
+         patch("submatch.cli.subtitle.parse", return_value=subs) as mock_parse:
         with pytest.raises(SystemExit) as exc:
             cli.main()
 
@@ -285,7 +285,7 @@ def test_main_keep_synced_saves_file(tmp_path):
          patch("submatch.cli.audio.has_audio_track", return_value=True), \
          patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
          patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
-         patch("submatch.cli.srt.parse", return_value=subs), \
+         patch("submatch.cli.subtitle.parse", return_value=subs), \
          patch("submatch.cli.sampler.select_segments", return_value=segs), \
          patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
          patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
@@ -320,7 +320,7 @@ def test_main_sync_failure_continues(tmp_path):
          patch("submatch.cli.audio.has_audio_track", return_value=True), \
          patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
          patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
-         patch("submatch.cli.srt.parse", return_value=subs), \
+         patch("submatch.cli.subtitle.parse", return_value=subs), \
          patch("submatch.cli.sampler.select_segments", return_value=segs), \
          patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
          patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \

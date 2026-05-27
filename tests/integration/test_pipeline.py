@@ -7,7 +7,7 @@ Run with: make integration-test
 import pytest
 from pathlib import Path
 
-from submatch import audio, compare, sampler, srt, transcribe
+from submatch import audio, compare, sampler, subtitle, transcribe
 
 pytestmark = pytest.mark.integration
 
@@ -15,7 +15,7 @@ pytestmark = pytest.mark.integration
 def _score(video: Path, subtitle: Path, model, n: int = 2) -> tuple[float, str]:
     """Run pipeline and return (confidence, audio_language)."""
     duration_ms = audio.get_duration_ms(video)
-    subtitles = srt.parse(subtitle)
+    subtitles = subtitle.parse(subtitle)
     segments = sampler.select_segments(subtitles, duration_ms, n=n)
 
     scores: list[compare.SegmentScore] = []
