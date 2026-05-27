@@ -15,7 +15,7 @@ def parse_args() -> argparse.Namespace:
         description="Verify a subtitle file matches the audio content of a video.",
     )
     parser.add_argument("video", type=Path)
-    parser.add_argument("subtitle", type=Path)
+    parser.add_argument("subtitle", type=Path, nargs="?", default=None)
     parser.add_argument(
         "--model", default="base",
         choices=["tiny", "base", "small", "medium", "large"],
@@ -23,6 +23,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--threshold", type=float, default=0.35)
     parser.add_argument("--segments", type=int, default=None)
     parser.add_argument("--json", action="store_true")
+    parser.add_argument("--compact", action="store_true")
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--language", default=None)
     parser.add_argument("--no-sync", action="store_true")
@@ -50,48 +51,31 @@ def check_dependencies(skip_sync: bool = False) -> None:
         sys.exit(2)
 
 
-def main() -> None:
-    args = parse_args()
+def _score_pair(
+    video: Path,
+    subtitle_path: Path,
+    args: argparse.Namespace,
+    model,
+) -> output.MatchResult:
+    subtitles = subtitle.parse(subtitle_path)
+    subtitle_sample = " ".join(s.text for s in subtitles[:50])
 
-    if not args.video.exists():
-        print(f"Error: video not found: {args.video}", file=sys.stderr)
-        sys.exit(2)
-    if not args.subtitle.exists():
-        print(f"Error: subtitle not found: {args.subtitle}", file=sys.stderr)
-        sys.exit(2)
-
-    check_dependencies(skip_sync=args.no_sync)
-
+    sync_result = None
     _sync_tmp: Path | None = None
     try:
-        if not audio.has_audio_track(args.video):
-            print(f"Error: no audio track in {args.video}", file=sys.stderr)
-            sys.exit(2)
-
-        subtitles = subtitle.parse(args.subtitle)
-        subtitle_sample = " ".join(s.text for s in subtitles[:50])
-
-        # Timing sync
-        sync_result = None
         if not args.no_sync:
             try:
                 tmp = tempfile.NamedTemporaryFile(suffix=".srt", delete=False)
                 _sync_tmp = Path(tmp.name)
                 tmp.close()
-                sync_result = sync.sync_subtitle(args.video, args.subtitle, _sync_tmp)
+                sync_result = sync.sync_subtitle(video, subtitle_path, _sync_tmp)
                 subtitles = subtitle.parse(sync_result.synced_srt_path)
             except RuntimeError as exc:
                 print(f"Warning: ffsubsync failed ({exc}), proceeding without sync",
                       file=sys.stderr)
 
-        # Segment selection
-        duration_ms = audio.get_duration_ms(args.video)
+        duration_ms = audio.get_duration_ms(video)
         segments = sampler.select_segments(subtitles, duration_ms, n=args.segments)
-
-        # Transcription
-        if not args.json:
-            print(f"Loading Whisper model '{args.model}'...")
-        model = transcribe.load_model(args.model)
 
         segment_results: list[output.SegmentResult] = []
         successful_segs: list[sampler.Segment] = []
@@ -101,7 +85,7 @@ def main() -> None:
             if not args.json:
                 print(f"  Transcribing segment {i + 1}/{len(segments)}...", end="\r")
             try:
-                wav_path = audio.extract_segment(args.video, seg.start_ms, 30_000)
+                wav_path = audio.extract_segment(video, seg.start_ms, 30_000)
                 try:
                     trans = transcribe.transcribe_segment(model, wav_path)
                     if i == 0:
@@ -124,16 +108,14 @@ def main() -> None:
         if not args.json:
             print()
 
-        # Language result
         lang_result = language.build_result(
             audio=audio_lang,
             subtitle_detected=language.detect_from_text(subtitle_sample),
-            subtitle_filename=language.detect_from_filename(args.subtitle),
-            video_meta=language.detect_from_video(args.video),
+            subtitle_filename=language.detect_from_filename(subtitle_path),
+            video_meta=language.detect_from_video(video),
             expected=args.language,
         )
 
-        # Confidence
         seg_scores = [
             compare.SegmentScore(
                 f1=sr.score,
@@ -144,7 +126,7 @@ def main() -> None:
         ]
         confidence = compare.aggregate(seg_scores)
 
-        result = output.MatchResult(
+        return output.MatchResult(
             confidence=confidence,
             passed=confidence >= args.threshold,
             threshold=args.threshold,
@@ -153,20 +135,99 @@ def main() -> None:
             segments=segment_results,
             model=args.model,
         )
-
-        # --keep-synced
-        if args.keep_synced and sync_result:
-            kept = args.subtitle.with_stem(args.subtitle.stem + ".synced")
-            shutil.copy(sync_result.synced_srt_path, kept)
-            if not args.json:
-                print(f"Synced subtitle saved to {kept}")
-
-        if args.json:
-            print(output.format_json(result))
-        else:
-            output.print_human(result, verbose=args.verbose)
-
-        sys.exit(0 if result.passed else 1)
     finally:
         if _sync_tmp is not None:
             _sync_tmp.unlink(missing_ok=True)
+
+
+def _run_batch(args: argparse.Namespace) -> int:
+    from submatch import batch as _batch
+
+    if args.video.is_dir():
+        pairs_to_run = _batch.find_pairs(args.video)
+    else:
+        candidates = _batch.find_subtitle_candidates(args.subtitle)
+        pairs_to_run = [(args.video, c) for c in candidates]
+
+    if not pairs_to_run:
+        print("No video/subtitle pairs found.", file=sys.stderr)
+        return 2
+
+    check_dependencies(skip_sync=args.no_sync)
+
+    if not args.json:
+        print(f"Loading Whisper model '{args.model}'...")
+    model = transcribe.load_model(args.model)
+
+    results: list[output.BatchPairResult] = []
+    for video, sub in pairs_to_run:
+        if not args.json:
+            print(f"  Processing {video.name} / {sub.name} ...")
+        try:
+            match_result = _score_pair(video, sub, args, model)
+            results.append(output.BatchPairResult(
+                video=video, subtitle=sub, result=match_result, error=None,
+            ))
+        except Exception as exc:
+            results.append(output.BatchPairResult(
+                video=video, subtitle=sub, result=None, error=str(exc),
+            ))
+
+    if args.json:
+        print(output.format_batch_json(results))
+    elif args.compact:
+        output.print_batch_compact(results)
+        output.print_batch_summary(results)
+    else:
+        for p in results:
+            if p.error:
+                print(f"\nError: {p.video.name} / {p.subtitle.name}: {p.error}",
+                      file=sys.stderr)
+            else:
+                output.print_human(p.result, verbose=args.verbose)
+        output.print_batch_summary(results)
+
+    if any(p.error for p in results):
+        return 2
+    if any(not p.result.passed for p in results):
+        return 1
+    return 0
+
+
+def main() -> None:
+    args = parse_args()
+
+    if args.video.is_dir() or (args.subtitle is not None and args.subtitle.is_dir()):
+        sys.exit(_run_batch(args))
+
+    if not args.video.exists():
+        print(f"Error: video not found: {args.video}", file=sys.stderr)
+        sys.exit(2)
+    if args.subtitle is None or not args.subtitle.exists():
+        print(f"Error: subtitle not found: {args.subtitle}", file=sys.stderr)
+        sys.exit(2)
+
+    check_dependencies(skip_sync=args.no_sync)
+
+    if not audio.has_audio_track(args.video):
+        print(f"Error: no audio track in {args.video}", file=sys.stderr)
+        sys.exit(2)
+
+    if not args.json:
+        print(f"Loading Whisper model '{args.model}'...")
+    model = transcribe.load_model(args.model)
+
+    result = _score_pair(args.video, args.subtitle, args, model)
+
+    if args.keep_synced and result.sync:
+        kept = args.subtitle.with_stem(args.subtitle.stem + ".synced")
+        shutil.copy(result.sync.synced_srt_path, kept)
+        if not args.json:
+            print(f"Synced subtitle saved to {kept}")
+
+    if args.json:
+        print(output.format_json(result))
+    else:
+        output.print_human(result, verbose=args.verbose)
+
+    sys.exit(0 if result.passed else 1)

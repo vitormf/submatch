@@ -23,6 +23,7 @@ def test_parse_args_defaults(tmp_path):
     assert args.threshold == pytest.approx(0.35)
     assert args.segments is None
     assert args.json is False
+    assert args.compact is False
     assert args.verbose is False
     assert args.language is None
     assert args.no_sync is False
@@ -34,13 +35,14 @@ def test_parse_args_all_flags(tmp_path):
     with patch("sys.argv", [
         "submatch", str(v), str(s),
         "--model", "small", "--threshold", "0.6", "--segments", "4",
-        "--json", "--verbose", "--language", "pt", "--no-sync", "--keep-synced",
+        "--json", "--compact", "--verbose", "--language", "pt", "--no-sync", "--keep-synced",
     ]):
         args = cli.parse_args()
     assert args.model == "small"
     assert args.threshold == pytest.approx(0.6)
     assert args.segments == 4
     assert args.json is True
+    assert args.compact is True
     assert args.verbose is True
     assert args.language == "pt"
     assert args.no_sync is True
@@ -332,3 +334,149 @@ def test_main_sync_failure_continues(tmp_path):
         with pytest.raises(SystemExit) as exc:
             cli.main()
     assert exc.value.code == 0
+
+
+# ── batch mode ────────────────────────────────────────────────────────────────
+
+def _make_batch_patches(tmp_path, extra_argv=()):
+    video = tmp_path / "show.mp4"
+    video.touch()
+    sub = tmp_path / "show.srt"
+    sub.write_text(SAMPLE_SRT)
+
+    subs = [Subtitle(1, 1_000, 3_500, "Hello world")]
+    segs = [Segment(60_000, 90_000, "Hello world", 2)]
+    mock_trans = MagicMock(text="hello world", language="en")
+    lang = LanguageResult(
+        audio="en", subtitle_detected="en", subtitle_filename="en",
+        video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
+    )
+
+    argv = ["submatch", str(tmp_path), "--no-sync"] + list(extra_argv)
+
+    ctx = [
+        patch("sys.argv", argv),
+        patch("submatch.cli.check_dependencies"),
+        patch("submatch.cli.audio.has_audio_track", return_value=True),
+        patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000),
+        patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"),
+        patch("submatch.cli.subtitle.parse", return_value=subs),
+        patch("submatch.cli.sampler.select_segments", return_value=segs),
+        patch("submatch.cli.transcribe.load_model", return_value=MagicMock()),
+        patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans),
+        patch("submatch.cli.language.detect_from_text", return_value="en"),
+        patch("submatch.cli.language.detect_from_filename", return_value="en"),
+        patch("submatch.cli.language.detect_from_video", return_value=None),
+        patch("submatch.cli.language.build_result", return_value=lang),
+    ]
+    return ctx
+
+
+def test_batch_dir_mode_passes(tmp_path):
+    ctx = _make_batch_patches(tmp_path, ["--threshold", "0.01"])
+    stack = [c.__enter__() for c in ctx]
+    try:
+        with pytest.raises(SystemExit) as exc:
+            cli.main()
+    finally:
+        for c in reversed(ctx):
+            c.__exit__(None, None, None)
+    assert exc.value.code == 0
+
+
+def test_batch_dir_mode_fails_below_threshold(tmp_path):
+    ctx = _make_batch_patches(tmp_path, ["--threshold", "2.0"])
+    stack = [c.__enter__() for c in ctx]
+    try:
+        with pytest.raises(SystemExit) as exc:
+            cli.main()
+    finally:
+        for c in reversed(ctx):
+            c.__exit__(None, None, None)
+    assert exc.value.code == 1
+
+
+def test_batch_dir_mode_empty_dir_exits_2(tmp_path):
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    with patch("sys.argv", ["submatch", str(empty), "--no-sync"]), \
+         patch("submatch.cli.check_dependencies"):
+        with pytest.raises(SystemExit) as exc:
+            cli.main()
+    assert exc.value.code == 2
+
+
+def test_batch_candidates_mode(tmp_path):
+    video = tmp_path / "show.mp4"
+    video.touch()
+    subs_dir = tmp_path / "subs"
+    subs_dir.mkdir()
+    (subs_dir / "show.srt").write_text(SAMPLE_SRT)
+
+    subs_parsed = [Subtitle(1, 1_000, 3_500, "Hello world")]
+    segs = [Segment(60_000, 90_000, "Hello world", 2)]
+    mock_trans = MagicMock(text="hello world", language="en")
+    lang = LanguageResult(
+        audio="en", subtitle_detected="en", subtitle_filename="en",
+        video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
+    )
+
+    with patch("sys.argv", ["submatch", str(video), str(subs_dir),
+                            "--no-sync", "--threshold", "0.01"]), \
+         patch("submatch.cli.check_dependencies"), \
+         patch("submatch.cli.audio.has_audio_track", return_value=True), \
+         patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
+         patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
+         patch("submatch.cli.subtitle.parse", return_value=subs_parsed), \
+         patch("submatch.cli.sampler.select_segments", return_value=segs), \
+         patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
+         patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
+         patch("submatch.cli.language.detect_from_text", return_value="en"), \
+         patch("submatch.cli.language.detect_from_filename", return_value="en"), \
+         patch("submatch.cli.language.detect_from_video", return_value=None), \
+         patch("submatch.cli.language.build_result", return_value=lang):
+        with pytest.raises(SystemExit) as exc:
+            cli.main()
+    assert exc.value.code == 0
+
+
+def test_batch_json_output(tmp_path, capsys):
+    ctx = _make_batch_patches(tmp_path, ["--json", "--threshold", "0.01"])
+    stack = [c.__enter__() for c in ctx]
+    try:
+        with pytest.raises(SystemExit):
+            cli.main()
+    finally:
+        for c in reversed(ctx):
+            c.__exit__(None, None, None)
+    data = json.loads(capsys.readouterr().out)
+    assert isinstance(data, list)
+    assert data[0]["passed"] is True
+
+
+def test_batch_compact_output(tmp_path, capsys):
+    ctx = _make_batch_patches(tmp_path, ["--compact", "--threshold", "0.01"])
+    stack = [c.__enter__() for c in ctx]
+    try:
+        with pytest.raises(SystemExit):
+            cli.main()
+    finally:
+        for c in reversed(ctx):
+            c.__exit__(None, None, None)
+    out = capsys.readouterr().out
+    assert "PASS" in out
+    assert "passed" in out
+
+
+def test_batch_error_in_one_pair_exits_2(tmp_path):
+    ctx = _make_batch_patches(tmp_path, ["--threshold", "0.01"])
+    ctx.append(patch("submatch.cli.audio.get_duration_ms",
+                     side_effect=RuntimeError("ffprobe failed")))
+    stack = [c.__enter__() for c in ctx]
+    try:
+        with pytest.raises(SystemExit) as exc:
+            cli.main()
+    finally:
+        for c in reversed(ctx):
+            c.__exit__(None, None, None)
+    assert exc.value.code == 2
