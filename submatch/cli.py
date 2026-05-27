@@ -1,8 +1,11 @@
 from __future__ import annotations
 import argparse
+import concurrent.futures
+import os
 import shutil
 import sys
 import tempfile
+import threading
 from pathlib import Path
 
 from tqdm import tqdm
@@ -33,6 +36,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--recursive", "-r", action="store_true")
     parser.add_argument("--sub-lang", action="append", dest="sub_lang", metavar="CODE")
     parser.add_argument("--filter", metavar="GLOB")
+    parser.add_argument(
+        "--device", choices=["cpu", "mps", "cuda", "auto"], default="auto",
+    )
+    parser.add_argument("--workers", type=int, default=None)
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return parser.parse_args()
 
@@ -54,6 +61,45 @@ def check_dependencies(skip_sync: bool = False) -> None:
         print("Error: openai-whisper not installed  →  pip install openai-whisper",
               file=sys.stderr)
         sys.exit(2)
+
+
+def _resolve_device(requested: str) -> str:
+    if requested != "auto":
+        return requested
+    import torch
+    if torch.cuda.is_available():
+        return "cuda"
+    if torch.backends.mps.is_available():
+        return "mps"
+    return "cpu"
+
+
+def _resolve_workers(requested: int | None, device: str) -> int:
+    if requested is not None:
+        return requested
+    if device in ("mps", "cuda"):
+        return 1
+    return min(4, os.cpu_count() or 1)
+
+
+_model_local = threading.local()
+
+
+def _get_model(model_name: str, device: str):
+    if not hasattr(_model_local, "model"):
+        _model_local.model = transcribe.load_model(model_name, device=device)
+    return _model_local.model
+
+
+def _score_pair_parallel(
+    video: Path,
+    subtitle_path: Path,
+    args: argparse.Namespace,
+    model_name: str,
+    device: str,
+) -> output.MatchResult:
+    model = _get_model(model_name, device)
+    return _score_pair(video, subtitle_path, args, model, show_progress=False)
 
 
 def _score_pair(
@@ -173,37 +219,76 @@ def _run_batch(args: argparse.Namespace) -> int:
         glob_pattern=args.filter,
     )
 
+    device = _resolve_device(args.device)
+    workers = _resolve_workers(args.workers, device)
+
+    if workers > 1 and device in ("mps", "cuda"):
+        print(
+            f"Warning: --workers {workers} with --device {device} may cause GPU "
+            "contention and hangs. Use --device cpu for parallel processing, or "
+            "--workers 1 to keep GPU acceleration.",
+            file=sys.stderr,
+        )
+
     if not pairs_to_run:
         print("No video/subtitle pairs found.", file=sys.stderr)
         return 2
 
     check_dependencies(skip_sync=args.no_sync)
 
-    if not args.json:
-        print(f"Loading Whisper model '{args.model}'...")
-    model = transcribe.load_model(args.model)
-
     results: list[output.BatchPairResult] = []
-    bar = tqdm(
-        total=len(pairs_to_run),
-        unit="pair",
-        disable=args.json or not sys.stderr.isatty(),
-    )
-    for video, sub in pairs_to_run:
-        bar.set_description(f"Batch [{video.name} / {sub.name}]")
+
+    if workers == 1:
         if not args.json:
-            tqdm.write(f"  Processing {video.name} / {sub.name} ...")
-        try:
-            match_result = _score_pair(video, sub, args, model, show_progress=False)
-            results.append(output.BatchPairResult(
-                video=video, subtitle=sub, result=match_result, error=None,
-            ))
-        except Exception as exc:
-            results.append(output.BatchPairResult(
-                video=video, subtitle=sub, result=None, error=str(exc),
-            ))
-        bar.update(1)
-    bar.close()
+            print(f"Loading Whisper model '{args.model}'...")
+        model = transcribe.load_model(args.model, device=device)
+        bar = tqdm(
+            total=len(pairs_to_run),
+            unit="pair",
+            disable=args.json or not sys.stderr.isatty(),
+        )
+        for video, sub in pairs_to_run:
+            bar.set_description(f"Batch [{video.name} / {sub.name}]")
+            if not args.json:
+                tqdm.write(f"  Processing {video.name} / {sub.name} ...")
+            try:
+                match_result = _score_pair(video, sub, args, model, show_progress=False)
+                results.append(output.BatchPairResult(
+                    video=video, subtitle=sub, result=match_result, error=None,
+                ))
+            except Exception as exc:
+                results.append(output.BatchPairResult(
+                    video=video, subtitle=sub, result=None, error=str(exc),
+                ))
+            bar.update(1)
+        bar.close()
+    else:
+        bar = tqdm(
+            total=len(pairs_to_run),
+            unit="pair",
+            disable=args.json or not sys.stderr.isatty(),
+        )
+        future_to_pair: dict[concurrent.futures.Future, tuple[Path, Path]] = {}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+            for video, sub in pairs_to_run:
+                future = executor.submit(
+                    _score_pair_parallel, video, sub, args, args.model, device,
+                )
+                future_to_pair[future] = (video, sub)
+            results_dict: dict[tuple[Path, Path], output.BatchPairResult] = {}
+            for future in concurrent.futures.as_completed(future_to_pair):
+                video, sub = future_to_pair[future]
+                bar.update(1)
+                try:
+                    results_dict[(video, sub)] = output.BatchPairResult(
+                        video=video, subtitle=sub, result=future.result(), error=None,
+                    )
+                except Exception as exc:
+                    results_dict[(video, sub)] = output.BatchPairResult(
+                        video=video, subtitle=sub, result=None, error=str(exc),
+                    )
+        bar.close()
+        results = [results_dict[(v, s)] for v, s in pairs_to_run]
 
     if args.json:
         print(output.format_batch_json(results))

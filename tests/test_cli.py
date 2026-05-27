@@ -31,6 +31,8 @@ def test_parse_args_defaults(tmp_path):
     assert args.recursive is False
     assert args.sub_lang is None
     assert args.filter is None
+    assert args.device == "auto"
+    assert args.workers is None
 
 
 def test_parse_args_all_flags(tmp_path):
@@ -40,6 +42,7 @@ def test_parse_args_all_flags(tmp_path):
         "--model", "small", "--threshold", "0.6", "--segments", "4",
         "--json", "--compact", "--verbose", "--language", "pt", "--no-sync", "--keep-synced",
         "--recursive", "--sub-lang", "en", "--filter", "*.en.*",
+        "--device", "cpu", "--workers", "2",
     ]):
         args = cli.parse_args()
     assert args.model == "small"
@@ -54,6 +57,8 @@ def test_parse_args_all_flags(tmp_path):
     assert args.recursive is True
     assert args.sub_lang == ["en"]
     assert args.filter == "*.en.*"
+    assert args.device == "cpu"
+    assert args.workers == 2
 
 
 # ── check_dependencies ────────────────────────────────────────────────────────
@@ -620,3 +625,89 @@ def test_batch_sub_lang_filters_all_pairs(tmp_path):
         with pytest.raises(SystemExit) as exc:
             cli.main()
     assert exc.value.code == 2
+
+
+import sys as _sys
+
+
+def test_resolve_device_explicit_cpu():
+    assert cli._resolve_device("cpu") == "cpu"
+
+
+def test_resolve_device_explicit_mps():
+    assert cli._resolve_device("mps") == "mps"
+
+
+def test_resolve_device_auto_no_gpu():
+    mock_torch = MagicMock()
+    mock_torch.cuda.is_available.return_value = False
+    mock_torch.backends.mps.is_available.return_value = False
+    with patch.dict(_sys.modules, {"torch": mock_torch}):
+        assert cli._resolve_device("auto") == "cpu"
+
+
+def test_resolve_device_auto_mps():
+    mock_torch = MagicMock()
+    mock_torch.cuda.is_available.return_value = False
+    mock_torch.backends.mps.is_available.return_value = True
+    with patch.dict(_sys.modules, {"torch": mock_torch}):
+        assert cli._resolve_device("auto") == "mps"
+
+
+def test_resolve_workers_auto_gpu():
+    assert cli._resolve_workers(None, "mps") == 1
+    assert cli._resolve_workers(None, "cuda") == 1
+
+
+def test_resolve_workers_auto_cpu():
+    import os
+    result = cli._resolve_workers(None, "cpu")
+    assert 1 <= result <= min(4, os.cpu_count() or 1)
+
+
+def test_resolve_workers_explicit_overrides():
+    assert cli._resolve_workers(3, "mps") == 3
+    assert cli._resolve_workers(1, "cpu") == 1
+
+
+def test_batch_warns_workers_plus_gpu(tmp_path, capsys):
+    ctx = _make_batch_patches(tmp_path, ["--workers", "2", "--device", "mps",
+                                          "--threshold", "0.01"])
+    [c.__enter__() for c in ctx]
+    try:
+        with pytest.raises(SystemExit):
+            cli.main()
+    finally:
+        for c in reversed(ctx):
+            c.__exit__(None, None, None)
+    err = capsys.readouterr().err
+    assert "Warning" in err
+    assert "contention" in err
+
+
+def test_batch_no_warn_single_worker_gpu(tmp_path, capsys):
+    ctx = _make_batch_patches(tmp_path, ["--workers", "1", "--device", "mps",
+                                          "--threshold", "0.01"])
+    [c.__enter__() for c in ctx]
+    try:
+        with pytest.raises(SystemExit):
+            cli.main()
+    finally:
+        for c in reversed(ctx):
+            c.__exit__(None, None, None)
+    err = capsys.readouterr().err
+    assert "contention" not in err
+
+
+def test_batch_no_warn_multi_worker_cpu(tmp_path, capsys):
+    ctx = _make_batch_patches(tmp_path, ["--workers", "4", "--device", "cpu",
+                                          "--threshold", "0.01"])
+    [c.__enter__() for c in ctx]
+    try:
+        with pytest.raises(SystemExit):
+            cli.main()
+    finally:
+        for c in reversed(ctx):
+            c.__exit__(None, None, None)
+    err = capsys.readouterr().err
+    assert "contention" not in err
