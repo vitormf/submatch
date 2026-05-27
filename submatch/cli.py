@@ -62,105 +62,111 @@ def main() -> None:
 
     check_dependencies(skip_sync=args.no_sync)
 
-    if not audio.has_audio_track(args.video):
-        print(f"Error: no audio track in {args.video}", file=sys.stderr)
-        sys.exit(2)
-
-    subtitles = srt.parse(args.subtitle)
-    subtitle_sample = " ".join(s.text for s in subtitles[:50])
-
-    # Timing sync
-    sync_result = None
     _sync_tmp: Path | None = None
-    if not args.no_sync:
-        try:
-            tmp = tempfile.NamedTemporaryFile(suffix=".srt", delete=False)
-            _sync_tmp = Path(tmp.name)
-            tmp.close()
-            sync_result = sync.sync_subtitle(args.video, args.subtitle, _sync_tmp)
-            subtitles = srt.parse(sync_result.synced_srt_path)
-        except RuntimeError as exc:
-            print(f"Warning: ffsubsync failed ({exc}), proceeding without sync",
-                  file=sys.stderr)
+    try:
+        if not audio.has_audio_track(args.video):
+            print(f"Error: no audio track in {args.video}", file=sys.stderr)
+            sys.exit(2)
 
-    # Segment selection
-    duration_ms = audio.get_duration_ms(args.video)
-    segments = sampler.select_segments(subtitles, duration_ms, n=args.segments)
+        subtitles = srt.parse(args.subtitle)
+        subtitle_sample = " ".join(s.text for s in subtitles[:50])
 
-    # Transcription
-    if not args.json:
-        print(f"Loading Whisper model '{args.model}'...")
-    model = transcribe.load_model(args.model)
+        # Timing sync
+        sync_result = None
+        if not args.no_sync:
+            try:
+                tmp = tempfile.NamedTemporaryFile(suffix=".srt", delete=False)
+                _sync_tmp = Path(tmp.name)
+                tmp.close()
+                sync_result = sync.sync_subtitle(args.video, args.subtitle, _sync_tmp)
+                subtitles = srt.parse(sync_result.synced_srt_path)
+            except RuntimeError as exc:
+                print(f"Warning: ffsubsync failed ({exc}), proceeding without sync",
+                      file=sys.stderr)
 
-    segment_results: list[output.SegmentResult] = []
-    audio_lang: str | None = None
+        # Segment selection
+        duration_ms = audio.get_duration_ms(args.video)
+        segments = sampler.select_segments(subtitles, duration_ms, n=args.segments)
 
-    for i, seg in enumerate(segments):
+        # Transcription
         if not args.json:
-            print(f"  Transcribing segment {i + 1}/{len(segments)}...", end="\r")
-        wav_path = audio.extract_segment(args.video, seg.start_ms, 30_000)
-        try:
-            trans = transcribe.transcribe_segment(model, wav_path)
-            if i == 0:
-                audio_lang = trans.language
-            score = compare.token_f1(seg.subtitle_text, trans.text)
-            segment_results.append(output.SegmentResult(
-                index=i + 1,
-                start_ms=seg.start_ms,
-                score=score.f1,
-                wer=score.wer,
-                subtitle_text=seg.subtitle_text,
-                transcription=trans.text,
-            ))
-        finally:
-            wav_path.unlink(missing_ok=True)
+            print(f"Loading Whisper model '{args.model}'...")
+        model = transcribe.load_model(args.model)
 
-    if not args.json:
-        print()
+        segment_results: list[output.SegmentResult] = []
+        successful_segs: list[sampler.Segment] = []
+        audio_lang: str | None = None
 
-    # Language result
-    lang_result = language.build_result(
-        audio=audio_lang,
-        subtitle_detected=language.detect_from_text(subtitle_sample),
-        subtitle_filename=language.detect_from_filename(args.subtitle),
-        video_meta=language.detect_from_video(args.video),
-        expected=args.language,
-    )
+        for i, seg in enumerate(segments):
+            if not args.json:
+                print(f"  Transcribing segment {i + 1}/{len(segments)}...", end="\r")
+            try:
+                wav_path = audio.extract_segment(args.video, seg.start_ms, 30_000)
+                try:
+                    trans = transcribe.transcribe_segment(model, wav_path)
+                    if i == 0:
+                        audio_lang = trans.language
+                    score = compare.token_f1(seg.subtitle_text, trans.text)
+                    segment_results.append(output.SegmentResult(
+                        index=i + 1,
+                        start_ms=seg.start_ms,
+                        score=score.f1,
+                        wer=score.wer,
+                        subtitle_text=seg.subtitle_text,
+                        transcription=trans.text,
+                    ))
+                    successful_segs.append(seg)
+                finally:
+                    wav_path.unlink(missing_ok=True)
+            except Exception as exc:
+                print(f"\nWarning: segment {i + 1} failed: {exc}", file=sys.stderr)
 
-    # Confidence
-    seg_scores = [
-        compare.SegmentScore(
-            f1=sr.score,
-            wer=sr.wer,
-            subtitle_tokens=len(seg.subtitle_text.split()),
+        if not args.json:
+            print()
+
+        # Language result
+        lang_result = language.build_result(
+            audio=audio_lang,
+            subtitle_detected=language.detect_from_text(subtitle_sample),
+            subtitle_filename=language.detect_from_filename(args.subtitle),
+            video_meta=language.detect_from_video(args.video),
+            expected=args.language,
         )
-        for sr, seg in zip(segment_results, segments)
-    ]
-    confidence = compare.aggregate(seg_scores)
 
-    result = output.MatchResult(
-        confidence=confidence,
-        passed=confidence >= args.threshold,
-        threshold=args.threshold,
-        language=lang_result,
-        sync=sync_result,
-        segments=segment_results,
-        model=args.model,
-    )
+        # Confidence
+        seg_scores = [
+            compare.SegmentScore(
+                f1=sr.score,
+                wer=sr.wer,
+                subtitle_tokens=len(seg.subtitle_text.split()),
+            )
+            for sr, seg in zip(segment_results, successful_segs)
+        ]
+        confidence = compare.aggregate(seg_scores)
 
-    # --keep-synced
-    if args.keep_synced and sync_result:
-        kept = args.subtitle.with_stem(args.subtitle.stem + ".synced")
-        shutil.copy(sync_result.synced_srt_path, kept)
-        if not args.json:
-            print(f"Synced subtitle saved to {kept}")
+        result = output.MatchResult(
+            confidence=confidence,
+            passed=confidence >= args.threshold,
+            threshold=args.threshold,
+            language=lang_result,
+            sync=sync_result,
+            segments=segment_results,
+            model=args.model,
+        )
 
-    if args.json:
-        print(output.format_json(result))
-    else:
-        output.print_human(result, verbose=args.verbose)
+        # --keep-synced
+        if args.keep_synced and sync_result:
+            kept = args.subtitle.with_stem(args.subtitle.stem + ".synced")
+            shutil.copy(sync_result.synced_srt_path, kept)
+            if not args.json:
+                print(f"Synced subtitle saved to {kept}")
 
-    if _sync_tmp is not None:
-        _sync_tmp.unlink(missing_ok=True)
+        if args.json:
+            print(output.format_json(result))
+        else:
+            output.print_human(result, verbose=args.verbose)
 
-    sys.exit(0 if result.passed else 1)
+        sys.exit(0 if result.passed else 1)
+    finally:
+        if _sync_tmp is not None:
+            _sync_tmp.unlink(missing_ok=True)
