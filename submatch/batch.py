@@ -35,6 +35,7 @@ def find_subtitle_candidates(subtitle_dir: Path) -> list[Path]:
 
 
 def find_pairs_recursive(directory: Path) -> list[tuple[Path, Path]]:
+    """Walk directory tree (symlinks not followed) and return all video/subtitle pairs."""
     all_pairs: list[tuple[Path, Path]] = []
     for dirpath, _dirnames, _filenames in os.walk(directory):
         all_pairs.extend(find_pairs(Path(dirpath)))

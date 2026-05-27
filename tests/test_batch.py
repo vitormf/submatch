@@ -1,6 +1,6 @@
 from pathlib import Path
 import pytest
-from submatch.batch import find_pairs, find_subtitle_candidates
+from submatch.batch import find_pairs, find_subtitle_candidates, find_pairs_recursive, find_subtitle_candidates_recursive
 
 
 def test_find_pairs_by_stem(tmp_path):
@@ -92,9 +92,6 @@ def test_find_pairs_doesnt_cross_episode_match(tmp_path):
     assert pair_map["show.season1.mkv"] == "show.season1.srt"
 
 
-from submatch.batch import find_pairs_recursive, find_subtitle_candidates_recursive
-
-
 def test_find_pairs_recursive_nested(tmp_path):
     show = tmp_path / "Bluey" / "Season1"
     show.mkdir(parents=True)
@@ -106,6 +103,9 @@ def test_find_pairs_recursive_nested(tmp_path):
     assert len(pairs) == 2
     assert any(p[0].name == "ep01.mkv" for p in pairs)
     assert any(p[0].name == "ep02.mkv" for p in pairs)
+    for video, sub in pairs:
+        assert video.parent == show
+        assert sub.parent == show
 
 
 def test_find_pairs_recursive_per_directory_isolation(tmp_path):
@@ -131,6 +131,21 @@ def test_find_pairs_recursive_flat_dir(tmp_path):
 
 def test_find_pairs_recursive_empty(tmp_path):
     assert find_pairs_recursive(tmp_path) == []
+
+
+def test_find_pairs_recursive_mixed_levels(tmp_path):
+    # Files at root level
+    (tmp_path / "movie.mkv").touch()
+    (tmp_path / "movie.srt").touch()
+    # Files in subdirectory
+    nested = tmp_path / "TV Show" / "Season1"
+    nested.mkdir(parents=True)
+    (nested / "ep01.mkv").touch()
+    (nested / "ep01.srt").touch()
+    pairs = find_pairs_recursive(tmp_path)
+    assert len(pairs) == 2
+    names = {p[0].name for p in pairs}
+    assert names == {"movie.mkv", "ep01.mkv"}
 
 
 def test_find_subtitle_candidates_recursive(tmp_path):
