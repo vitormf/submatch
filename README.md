@@ -55,6 +55,14 @@ submatch /media/series/ --recursive          # Plex/Kodi library layout
 submatch movie.mkv subs/ -r                  # recurse into subs/ subdirectories
 ```
 
+**Filtering — process only specific subtitles:**
+```bash
+submatch /media/natal/ --sub-lang pt          # matches pt.srt, pt-BR.srt, pt-PT.srt
+submatch /media/natal/ --sub-lang en --sub-lang pt-BR   # multiple codes
+submatch movie.mkv subs/ --filter "*.en.*"    # glob on subtitle filename
+submatch /media/natal/ --sub-lang pt --filter "*.srt"   # both must pass
+```
+
 ## Supported subtitle formats
 
 SRT, WebVTT, ASS/SSA (and any other format supported by [pysubs2](https://github.com/tkarabela/pysubs2)).
@@ -70,6 +78,8 @@ SRT, WebVTT, ASS/SSA (and any other format supported by [pysubs2](https://github
 | `--no-sync` | off | Skip ffsubsync timing drift check |
 | `--keep-synced` | off | Save timing-corrected subtitle to disk |
 | `--recursive`, `-r` | off | Walk nested directories in batch mode |
+| `--sub-lang CODE` | off | Keep only subtitles whose filename language code starts with CODE (repeatable; infers from text for untagged files) |
+| `--filter GLOB` | off | Keep only subtitles whose filename matches the glob (e.g. `*.en.*`) |
 | `--json` | off | Machine-readable JSON output |
 | `--compact` | off | One-line-per-pair summary in batch mode |
 | `--verbose` | off | Show subtitle and transcription text per segment |
