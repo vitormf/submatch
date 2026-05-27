@@ -167,8 +167,8 @@ def _score_group_parallel(
         except Exception as exc:
             results.append(output.BatchPairResult(video=video, subtitle=sub,
                                                   result=None, error=str(exc)))
-        if bar is not None:
-            bar.update(1)
+            if bar is not None:
+                bar.update(1)
     return results
 
 
@@ -209,15 +209,16 @@ def _score_pair(
         if video_cache is None:
             duration_ms = audio.get_duration_ms(video)
             segments = sampler.select_segments(subtitles, duration_ms, n=args.segments)
+            n_seg = len(segments)
             audio_lang: str | None = None
 
             for i, seg in enumerate(segments):
                 if bar is not None:
                     bar.set_description(
-                        f"[{i + 1}/{len(segments)}] {video.name} / {subtitle_path.name}"
+                        f"[{i + 1}/{n_seg}] {video.name} / {subtitle_path.name}"
                     )
                 elif show_progress and not args.json:
-                    print(f"  Transcribing segment {i + 1}/{len(segments)}...", end="\r")
+                    print(f"  Transcribing segment {i + 1}/{n_seg}...", end="\r")
                 try:
                     wav_path = audio.extract_segment(video, seg.start_ms, 30_000)
                     try:
@@ -229,6 +230,9 @@ def _score_pair(
                         wav_path.unlink(missing_ok=True)
                 except Exception as exc:
                     print(f"\nWarning: segment {i + 1} failed: {exc}", file=sys.stderr)
+                finally:
+                    if bar is not None:
+                        bar.update(1 / n_seg)
 
             if show_progress and not args.json:
                 print()
@@ -251,6 +255,8 @@ def _score_pair(
                 for i, (seg, trans) in enumerate(zip(cached_segs, video_cache.transcriptions))
             ]
             new_cache = video_cache
+            if bar is not None:
+                bar.update(1)
 
         # Phase 2: determine scoring mode
         cross_lang = _is_cross_language(audio_lang, subtitle_lang)
@@ -359,13 +365,12 @@ def _run_batch(args: argparse.Namespace) -> int:
     results: list[output.BatchPairResult] = []
 
     if workers == 1:
-        if not args.json:
-            print(f"Loading Whisper model '{args.model}'...")
         model = transcribe.load_model(args.model, device=device)
         bar = tqdm(
             total=len(pairs_to_run),
             unit="pair",
             disable=args.json or not sys.stderr.isatty(),
+            dynamic_ncols=True,
         )
         video_caches: dict[Path, _VideoCache] = {}
         for video, sub in pairs_to_run:
@@ -384,7 +389,7 @@ def _run_batch(args: argparse.Namespace) -> int:
                 results.append(output.BatchPairResult(
                     video=video, subtitle=sub, result=None, error=str(exc),
                 ))
-            bar.update(1)
+                bar.update(1)
         bar.close()
     else:
         # Group pairs by video so each group shares one set of transcriptions.
@@ -400,6 +405,7 @@ def _run_batch(args: argparse.Namespace) -> int:
             total=len(pairs_to_run),
             unit="pair",
             disable=args.json or not sys.stderr.isatty(),
+            dynamic_ncols=True,
         )
         results_by_video: dict[Path, list[output.BatchPairResult]] = {}
         with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
@@ -472,8 +478,6 @@ def main() -> None:
         print(f"Error: no audio track in {args.video}", file=sys.stderr)
         sys.exit(2)
 
-    if not args.json:
-        print(f"Loading Whisper model '{args.model}'...")
     model = transcribe.load_model(args.model)
 
     result, _ = _score_pair(args.video, args.subtitle, args, model)
