@@ -5,6 +5,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+from tqdm import tqdm
+
 from submatch import __version__
 from submatch import audio, compare, language, output, sampler, subtitle, sync, transcribe
 
@@ -57,6 +59,7 @@ def _score_pair(
     subtitle_path: Path,
     args: argparse.Namespace,
     model,
+    show_progress: bool = True,
 ) -> output.MatchResult:
     subtitles = subtitle.parse(subtitle_path)
     subtitle_sample = " ".join(s.text for s in subtitles[:50])
@@ -83,7 +86,7 @@ def _score_pair(
         audio_lang: str | None = None
 
         for i, seg in enumerate(segments):
-            if not args.json:
+            if show_progress and not args.json:
                 print(f"  Transcribing segment {i + 1}/{len(segments)}...", end="\r")
             try:
                 wav_path = audio.extract_segment(video, seg.start_ms, 30_000)
@@ -106,7 +109,7 @@ def _score_pair(
             except Exception as exc:
                 print(f"\nWarning: segment {i + 1} failed: {exc}", file=sys.stderr)
 
-        if not args.json:
+        if show_progress and not args.json:
             print()
 
         lang_result = language.build_result(
@@ -173,11 +176,17 @@ def _run_batch(args: argparse.Namespace) -> int:
     model = transcribe.load_model(args.model)
 
     results: list[output.BatchPairResult] = []
+    bar = tqdm(
+        total=len(pairs_to_run),
+        unit="pair",
+        disable=args.json or not sys.stderr.isatty(),
+    )
     for video, sub in pairs_to_run:
+        bar.set_description(f"Batch [{video.name} / {sub.name}]")
         if not args.json:
-            print(f"  Processing {video.name} / {sub.name} ...")
+            tqdm.write(f"  Processing {video.name} / {sub.name} ...")
         try:
-            match_result = _score_pair(video, sub, args, model)
+            match_result = _score_pair(video, sub, args, model, show_progress=False)
             results.append(output.BatchPairResult(
                 video=video, subtitle=sub, result=match_result, error=None,
             ))
@@ -185,6 +194,8 @@ def _run_batch(args: argparse.Namespace) -> int:
             results.append(output.BatchPairResult(
                 video=video, subtitle=sub, result=None, error=str(exc),
             ))
+        bar.update(1)
+    bar.close()
 
     if args.json:
         print(output.format_batch_json(results))

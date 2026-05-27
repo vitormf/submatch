@@ -12,6 +12,7 @@ dependencies = [
     "ffsubsync>=0.4.22",
     "langdetect>=1.0.9",
     "pysubs2>=1.6",
+    "tqdm>=4.64",
 ]
 
 [project.optional-dependencies]

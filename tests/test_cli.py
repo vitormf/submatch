@@ -566,3 +566,17 @@ def test_batch_recursive_candidates_mode(tmp_path):
         with pytest.raises(SystemExit) as exc:
             cli.main()
     assert exc.value.code == 0
+
+
+def test_batch_suppresses_transcription_progress(tmp_path, capsys):
+    """In batch mode, per-segment 'Transcribing' messages are not shown."""
+    ctx = _make_batch_patches(tmp_path, ["--threshold", "0.01"])
+    [c.__enter__() for c in ctx]
+    try:
+        with pytest.raises(SystemExit):
+            cli.main()
+    finally:
+        for c in reversed(ctx):
+            c.__exit__(None, None, None)
+    out = capsys.readouterr().out
+    assert "Transcribing" not in out
