@@ -7,6 +7,7 @@ from submatch.transcribe import load_model, transcribe_segment, TranscriptionRes
 
 def test_load_model_selects_mps_when_available():
     mock_torch = MagicMock()
+    mock_torch.cuda.is_available.return_value = False
     mock_torch.backends.mps.is_available.return_value = True
     mock_whisper = MagicMock()
 
@@ -18,6 +19,7 @@ def test_load_model_selects_mps_when_available():
 
 def test_load_model_selects_cpu_when_mps_unavailable():
     mock_torch = MagicMock()
+    mock_torch.cuda.is_available.return_value = False
     mock_torch.backends.mps.is_available.return_value = False
     mock_whisper = MagicMock()
 
@@ -29,6 +31,7 @@ def test_load_model_selects_cpu_when_mps_unavailable():
 
 def test_load_model_returns_whisper_model():
     mock_torch = MagicMock()
+    mock_torch.cuda.is_available.return_value = False
     mock_torch.backends.mps.is_available.return_value = False
     mock_whisper = MagicMock()
     expected_model = MagicMock()
@@ -58,3 +61,27 @@ def test_transcribe_segment_passes_fp16_false():
     transcribe_segment(mock_model, Path("/tmp/audio.wav"))
 
     mock_model.transcribe.assert_called_once_with("/tmp/audio.wav", fp16=False)
+
+
+def test_load_model_uses_explicit_device():
+    mock_torch = MagicMock()
+    mock_torch.cuda.is_available.return_value = False
+    mock_torch.backends.mps.is_available.return_value = True
+    mock_whisper = MagicMock()
+
+    with patch.dict(sys.modules, {"torch": mock_torch, "whisper": mock_whisper}):
+        load_model("base", device="cpu")
+
+    mock_whisper.load_model.assert_called_once_with("base", device="cpu")
+
+
+def test_load_model_auto_selects_cuda_when_available():
+    mock_torch = MagicMock()
+    mock_torch.cuda.is_available.return_value = True
+    mock_torch.backends.mps.is_available.return_value = False
+    mock_whisper = MagicMock()
+
+    with patch.dict(sys.modules, {"torch": mock_torch, "whisper": mock_whisper}):
+        load_model("base")
+
+    mock_whisper.load_model.assert_called_once_with("base", device="cuda")

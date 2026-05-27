@@ -10,10 +10,16 @@ class TranscriptionResult:
     language: str
 
 
-def load_model(model_name: str = "base") -> Any:
+def load_model(model_name: str = "base", device: str | None = None) -> Any:
     import torch
     import whisper
-    device = "mps" if torch.backends.mps.is_available() else "cpu"
+    if device is None:
+        if torch.cuda.is_available():
+            device = "cuda"
+        elif torch.backends.mps.is_available():
+            device = "mps"
+        else:
+            device = "cpu"
     return whisper.load_model(model_name, device=device)
 
 
