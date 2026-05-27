@@ -83,6 +83,8 @@ SRT, WebVTT, ASS/SSA (and any other format supported by [pysubs2](https://github
 | `--json` | off | Machine-readable JSON output |
 | `--compact` | off | One-line-per-pair summary in batch mode |
 | `--verbose` | off | Show subtitle and transcription text per segment |
+| `--device` | `auto` | Whisper inference device: `cpu`, `mps` (Apple Silicon), `cuda` (NVIDIA), `auto` |
+| `--workers` | `auto` | Parallel pairs in batch mode; auto selects 1 for GPU, up to 4 for CPU |
 
 Segment count auto-selection: `< 30 min` → 5, `30–90 min` → 8, `> 90 min` → 12.
 
