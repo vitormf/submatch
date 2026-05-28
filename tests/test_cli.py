@@ -816,7 +816,7 @@ def test_score_pair_cross_language_uses_embeddings(tmp_path):
     lang = LanguageResult(
         audio="en", subtitle_detected="pt", subtitle_filename="pt",
         video_metadata=None, expected=None, mismatch=True,
-        mismatch_details=["audio=en but subtitle text detected as pt"],
+        mismatch_details=["subtitle filename says en but text detected as pt"],
     )
     mock_embed_score = MagicMock(f1=0.72, wer=0.0)
     mock_cross_fn = MagicMock(return_value=mock_embed_score)
@@ -873,7 +873,7 @@ def test_cross_threshold_used_for_cross_language_pair(tmp_path):
     lang = LanguageResult(
         audio="en", subtitle_detected="pt", subtitle_filename="pt",
         video_metadata=None, expected=None, mismatch=True,
-        mismatch_details=["audio=en but subtitle text detected as pt"],
+        mismatch_details=["subtitle filename says en but text detected as pt"],
     )
     mock_embed_score = MagicMock(f1=0.72, wer=0.0)
 

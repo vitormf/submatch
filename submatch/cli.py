@@ -435,12 +435,13 @@ def _run_batch(args: argparse.Namespace) -> int:
         video_caches: dict[Path, _VideoCache] = {}
         _t0 = time.monotonic()
         _done = 0
+        _ema_pair_time: float | None = None
+        _EMA_ALPHA = 0.3
         _tty = not args.json and sys.stderr.isatty()
 
         def _print_progress(n: int) -> None:
-            if _done > 0:
-                elapsed = time.monotonic() - _t0
-                eta = _fmt_eta(int(elapsed / _done * (n_total - _done)))
+            if _ema_pair_time is not None:
+                eta = _fmt_eta(int(_ema_pair_time * (n_total - _done)))
                 pct = int(100 * _done / n_total)
                 line = f"[{n}/{n_total}  {pct}%  {eta}]"
             else:
@@ -492,6 +493,11 @@ def _run_batch(args: argparse.Namespace) -> int:
                     print(f"\r\033[K{_result_line}", file=sys.stderr)
                 else:
                     print(_result_line, file=sys.stderr)
+            _pair_elapsed = time.monotonic() - _pair_t0
+            if _ema_pair_time is None:
+                _ema_pair_time = _pair_elapsed
+            else:
+                _ema_pair_time = _EMA_ALPHA * _pair_elapsed + (1 - _EMA_ALPHA) * _ema_pair_time
             _done += 1
     else:
         # Group pairs by video so each group shares one set of transcriptions.
