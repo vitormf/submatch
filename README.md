@@ -28,29 +28,33 @@ ffmpeg is bundled automatically. Whisper model weights download on first run.
 
 ## Usage
 
-**Single file:**
+**Single pair:**
 ```bash
 submatch video.mkv subtitle.en.srt
 submatch video.mkv subtitle.pt.srt --model small --threshold 0.4 --verbose
 submatch video.mkv subtitle.en.srt --no-sync --json
 ```
 
+**Auto-discover — pass what you have:**
+```bash
+submatch video.mkv              # find all subtitles alongside the video
+submatch subtitle.en.srt        # find the video alongside the subtitle
+submatch v1.mkv v2.mkv          # each video finds its own subtitles
+submatch s1.srt s2.srt          # each subtitle finds its own video
+submatch video.mkv s1.srt s2.srt  # explicit subtitles for one video
+```
+
 **Batch mode — directory of paired files:**
 ```bash
-submatch /media/movies/            # pairs each video with its same-stem subtitle
+submatch /media/movies/            # recursive by default; pairs each video with its subtitles
 submatch /media/movies/ --compact  # one line per pair
 submatch /media/movies/ --json     # machine-readable JSON array
+submatch /media/movies/ --no-recursive  # flat directory only
 ```
 
 **Batch mode — one video against a subtitle directory:**
 ```bash
 submatch movie.mkv subs/           # scores every subtitle in subs/ against movie.mkv
-```
-
-**Recursive — walk nested directory trees:**
-```bash
-submatch /media/series/ --recursive          # Plex/Kodi library layout
-submatch movie.mkv subs/ -r                  # recurse into subs/ subdirectories
 ```
 
 **Filtering — process only specific subtitles:**
@@ -89,7 +93,7 @@ SRT, WebVTT, ASS/SSA (and any other format supported by [pysubs2](https://github
 | `--drift-threshold` | `2.0` | Seconds of timing offset before flagging as drift |
 | `--no-sync` | off | Skip ffsubsync timing drift check |
 | `--keep-synced` | off | Save timing-corrected subtitle to disk |
-| `--recursive`, `-r` | off | Walk nested directories in batch mode |
+| `--no-recursive` | off | Do not recurse into subdirectories when expanding directories (default: recursive) |
 | `--sub-lang CODE` | off | Keep only subtitles whose filename language code starts with CODE (repeatable; infers from text for untagged files) |
 | `--filter GLOB` | off | Keep only subtitles whose filename matches the glob (e.g. `*.en.*`) |
 | `--json` | off | Machine-readable JSON output |
