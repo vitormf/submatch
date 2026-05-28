@@ -58,19 +58,34 @@ def test_build_result_no_mismatch():
     assert result.mismatch_details == []
 
 
-def test_build_result_detects_mismatch():
+def test_build_result_subtitle_internal_mismatch():
+    """Subtitle filename claims 'en' but text is detected as 'fr' → mismatch."""
     result = build_result(
-        audio="en",
-        subtitle_detected="pt",
-        subtitle_filename=None,
+        audio="fr",
+        subtitle_detected="fr",
+        subtitle_filename="en",
         video_meta=None,
         expected=None,
     )
     assert result.mismatch
-    assert len(result.mismatch_details) >= 1
+    assert any("filename says en" in d for d in result.mismatch_details)
+
+
+def test_build_result_cross_language_no_mismatch():
+    """English audio with Portuguese subtitle is valid cross-language — no warning."""
+    result = build_result(
+        audio="en",
+        subtitle_detected="pt",
+        subtitle_filename="pt",
+        video_meta=None,
+        expected=None,
+    )
+    assert not result.mismatch
+    assert result.mismatch_details == []
 
 
 def test_build_result_expected_overrides():
+    """Explicit expected language doesn't match subtitle → mismatch."""
     result = build_result(
         audio="en",
         subtitle_detected="en",
@@ -82,6 +97,7 @@ def test_build_result_expected_overrides():
 
 
 def test_build_result_video_meta_mismatch():
+    """Whisper says audio=en but ffprobe says pt → mismatch."""
     result = build_result(
         audio="en",
         subtitle_detected=None,
@@ -93,7 +109,8 @@ def test_build_result_video_meta_mismatch():
     assert any("video metadata" in d for d in result.mismatch_details)
 
 
-def test_build_result_filename_mismatch():
+def test_build_result_subtitle_filename_only_no_mismatch():
+    """Subtitle filename saying 'pt' with English audio is cross-language — no warning."""
     result = build_result(
         audio="en",
         subtitle_detected=None,
@@ -101,10 +118,11 @@ def test_build_result_filename_mismatch():
         video_meta=None,
         expected=None,
     )
-    assert result.mismatch
+    assert not result.mismatch
 
 
 def test_build_result_multiple_mismatches():
+    """Subtitle filename vs detected text mismatch plus audio vs video_meta mismatch."""
     result = build_result(
         audio="en",
         subtitle_detected="pt",
@@ -112,7 +130,7 @@ def test_build_result_multiple_mismatches():
         video_meta="fr",
         expected=None,
     )
-    assert len(result.mismatch_details) == 3
+    assert len(result.mismatch_details) == 2
 
 
 def test_detect_from_video_returns_language(tmp_path):

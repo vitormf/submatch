@@ -12,7 +12,7 @@ from submatch.sync import SyncResult
 
 class MatchState(str, Enum):
     PASS = "PASS"
-    WARN = "WARN"
+    DRIFT = "DRIFT"
     FAIL = "FAIL"
     UNSURE = "UNSURE"
 
@@ -74,11 +74,11 @@ def print_human(
         print(f"{_BOLD}── {video.name} / {subtitle.name}{_RESET}")
 
     state_color = {
-        MatchState.PASS: _GREEN, MatchState.WARN: _YELLOW,
+        MatchState.PASS: _GREEN, MatchState.DRIFT: _YELLOW,
         MatchState.FAIL: _RED,   MatchState.UNSURE: _YELLOW,
     }[result.state]
     state_symbol = {
-        MatchState.PASS: "✓", MatchState.WARN: "⚠",
+        MatchState.PASS: "✓", MatchState.DRIFT: "⚠",
         MatchState.FAIL: "✗", MatchState.UNSURE: "?",
     }[result.state]
     meta = [f"thr {result.threshold}", result.model, f"{len(result.segments)} segs"]
@@ -142,25 +142,25 @@ def fmt_progress_result(
     if error:
         return f"{_RED}ERROR{_RESET}  {sub_name}  {secs}"
     color = {
-        MatchState.PASS: _GREEN, MatchState.WARN: _YELLOW,
+        MatchState.PASS: _GREEN, MatchState.DRIFT: _YELLOW,
         MatchState.FAIL: _RED,   MatchState.UNSURE: _YELLOW,
     }[result.state]
-    return f"{color}{result.state.value}{_RESET}  {result.confidence:.2f}  {sub_name}  {secs}"
+    return f"{color}{result.state.value:<6}{_RESET} {result.confidence:.2f}  {sub_name}  {secs}"
 
 
 def print_batch_compact(pairs: list[BatchPairResult]) -> None:
     for p in pairs:
         if p.error:
-            label = f"{_RED}ERROR{_RESET}"
-            score = "  n/a"
+            label = f"{_RED}{'ERROR':<6}{_RESET}"
+            score = " n/a"
         else:
             state_color = {
-                MatchState.PASS: _GREEN, MatchState.WARN: _YELLOW,
+                MatchState.PASS: _GREEN, MatchState.DRIFT: _YELLOW,
                 MatchState.FAIL: _RED,   MatchState.UNSURE: _YELLOW,
             }[p.result.state]
-            label = f"{state_color}{p.result.state.value}{_RESET}"
+            label = f"{state_color}{p.result.state.value:<6}{_RESET}"
             score = f"{p.result.confidence:.2f}"
-        print(f"{label}  {score}  {p.subtitle.name}")
+        print(f"{label} {score}  {p.subtitle.name}")
 
 
 def print_batch_summary(pairs: list[BatchPairResult]) -> None:
@@ -169,7 +169,7 @@ def print_batch_summary(pairs: list[BatchPairResult]) -> None:
         p.result.state.value for p in pairs if p.result is not None
     )
     errors = sum(1 for p in pairs if p.error)
-    parts = [f"{state_counts.get(s, 0)} {s}" for s in ("PASS", "WARN", "FAIL", "UNSURE") if state_counts.get(s, 0) > 0]
+    parts = [f"{state_counts.get(s, 0)} {s}" for s in ("PASS", "DRIFT", "FAIL", "UNSURE") if state_counts.get(s, 0) > 0]
     if errors:
         parts.append(f"{errors} error{'s' if errors != 1 else ''}")
     print(f"\nResults: {', '.join(parts) if parts else '0 processed'}")

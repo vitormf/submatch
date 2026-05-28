@@ -64,9 +64,11 @@ def parse_args() -> argparse.Namespace:
         help="pass/fail threshold for cross-language pairs (default: same as --threshold)",
     )
     parser.add_argument("--resync", action="store_true",
-                        help="if timing drift detected (WARN), resync subtitle in place and re-score")
+                        help="if timing drift detected (DRIFT), resync subtitle in place and re-score")
     parser.add_argument("--pass-unsure", action="store_true", dest="pass_unsure",
                         help="exit 0 for UNSURE results (insufficient transcription data)")
+    parser.add_argument("--timing", action="store_true",
+                        help="print per-phase timing breakdown (single-pair mode only)")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return parser.parse_args()
 
@@ -146,7 +148,7 @@ def _determine_state(result: output.MatchResult) -> output.MatchState:
     if not result.passed:
         return output.MatchState.FAIL
     if result.sync and result.sync.drift_detected:
-        return output.MatchState.WARN
+        return output.MatchState.DRIFT
     return output.MatchState.PASS
 
 
@@ -191,7 +193,7 @@ def _score_group_parallel(
         try:
             result, new_cache = _score_pair(video, sub, args, model, show_progress=False,
                                             video_cache=cache)
-            if result.state == output.MatchState.WARN and getattr(args, 'resync', False):
+            if result.state == output.MatchState.DRIFT and getattr(args, 'resync', False):
                 synced_path = result.sync.synced_srt_path
                 shutil.copy(synced_path, sub)
                 synced_path.unlink(missing_ok=True)
@@ -227,9 +229,19 @@ def _score_pair(
     subtitle_lang = (language.detect_from_filename(subtitle_path) or
                      language.detect_from_text(subtitle_sample))
 
+    _timing = getattr(args, 'timing', False) and show_progress
+    _t_start = time.monotonic()
+
+    def _phase(label: str, t_prev: float) -> float:
+        t_now = time.monotonic()
+        if _timing:
+            print(f"  {label:<30} {t_now - t_prev:.2f}s", file=sys.stderr)
+        return t_now
+
     sync_result = None
     _sync_tmp: Path | None = None
     try:
+        _t = time.monotonic()
         if not args.no_sync:
             try:
                 tmp = tempfile.NamedTemporaryFile(suffix=".srt", delete=False)
@@ -242,6 +254,7 @@ def _score_pair(
                     f"Warning: ffsubsync failed ({exc}), proceeding without sync",
                     file=sys.stderr,
                 )
+        _t = _phase("sync", _t)
 
         # Phase 1: transcribe (first subtitle for this video) or reuse cache
         transcription_pairs: list[tuple[int, sampler.Segment, str]] = []
@@ -252,21 +265,32 @@ def _score_pair(
             segments = sampler.select_segments(subtitles, duration_ms, n=args.segments)
             n_seg = len(segments)
             audio_lang: str | None = None
+            _t = _phase("segment selection", _t)
 
             for i, seg in enumerate(segments):
                 if show_progress and not args.json:
                     print(f"  [{i + 1}/{n_seg}]", end="\r", file=sys.stderr)
+                _t_seg = time.monotonic()
                 try:
                     wav_path = audio.extract_segment(video, seg.start_ms, 30_000)
+                    _t_extract = time.monotonic()
                     try:
                         trans = transcribe.transcribe_segment(model, wav_path)
+                        _t_transcribe = time.monotonic()
                         if i == 0:
                             audio_lang = trans.language
                         transcription_pairs.append((i + 1, seg, trans.text))
                     finally:
                         wav_path.unlink(missing_ok=True)
+                    if _timing:
+                        print(
+                            f"  seg {i+1}/{n_seg}  extract {_t_extract-_t_seg:.2f}s"
+                            f"  transcribe {_t_transcribe-_t_extract:.2f}s",
+                            file=sys.stderr,
+                        )
                 except Exception as exc:
                     print(f"Warning: segment {i + 1} failed: {exc}", file=sys.stderr)
+            _t = _phase("transcription total", _t)
 
             if show_progress and not args.json:
                 print()
@@ -287,10 +311,12 @@ def _score_pair(
                 for i, (seg, trans) in enumerate(zip(cached_segs, video_cache.transcriptions))
             ]
             new_cache = video_cache
+            _t = _phase("cache lookup", _t)
 
         # Phase 2: determine scoring mode
         cross_lang = _is_cross_language(audio_lang, subtitle_lang)
         embed_model = _get_embed_model() if cross_lang else None
+        _t = _phase("embed model", _t)
 
         # Phase 3: score segments
         segment_results: list[output.SegmentResult] = []
@@ -308,6 +334,8 @@ def _score_pair(
                 transcription=trans_text,
             ))
 
+        _t = _phase("scoring", _t)
+
         lang_result = language.build_result(
             audio=audio_lang,
             subtitle_detected=language.detect_from_text(subtitle_sample),
@@ -315,6 +343,7 @@ def _score_pair(
             video_meta=language.detect_from_video(video),
             expected=args.language,
         )
+        _t = _phase("language detection", _t)
 
         seg_scores = [
             compare.SegmentScore(
@@ -344,6 +373,8 @@ def _score_pair(
             subtitle_language=subtitle_lang,
         )
         match_result.state = _determine_state(match_result)
+        if _timing:
+            print(f"  {'TOTAL':<30} {time.monotonic() - _t_start:.2f}s", file=sys.stderr)
         return match_result, new_cache
     except:
         if _sync_tmp is not None:
@@ -427,7 +458,7 @@ def _run_batch(args: argparse.Namespace) -> int:
                 match_result, new_cache = _score_pair(video, sub, args, model,
                                                       show_progress=False,
                                                       video_cache=cache)
-                if match_result.state == output.MatchState.WARN and getattr(args, 'resync', False):
+                if match_result.state == output.MatchState.DRIFT and getattr(args, 'resync', False):
                     synced_path = match_result.sync.synced_srt_path
                     shutil.copy(synced_path, sub)
                     synced_path.unlink(missing_ok=True)
@@ -561,7 +592,7 @@ def main() -> None:
 
     result, _ = _score_pair(args.video, args.subtitle, args, model)
 
-    if result.state == output.MatchState.WARN and args.resync:
+    if result.state == output.MatchState.DRIFT and args.resync:
         synced_path = result.sync.synced_srt_path
         shutil.copy(synced_path, args.subtitle)
         synced_path.unlink(missing_ok=True)

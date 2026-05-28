@@ -611,7 +611,7 @@ def test_batch_tty_progress_overwrites(tmp_path, capsys):
         for c in reversed(ctx):
             c.__exit__(None, None, None)
     err = capsys.readouterr().err
-    assert "PASS" in err or "FAIL" in err or "WARN" in err or "UNSURE" in err
+    assert "PASS" in err or "FAIL" in err or "DRIFT" in err or "UNSURE" in err
 
 
 def test_parse_args_sub_lang_single(tmp_path):
@@ -1163,9 +1163,9 @@ def test_determine_state_pass():
     assert cli._determine_state(result) == cli.output.MatchState.PASS
 
 
-def test_determine_state_warn():
+def test_determine_state_drift():
     result = _make_match_result(passed=True, drift_detected=True)
-    assert cli._determine_state(result) == cli.output.MatchState.WARN
+    assert cli._determine_state(result) == cli.output.MatchState.DRIFT
 
 
 def test_determine_state_fail():
@@ -1250,8 +1250,8 @@ def test_main_unsure_pass_unsure_exits_0(tmp_path):
     assert exc.value.code == 0
 
 
-def test_main_warn_exits_1(tmp_path):
-    """Content passes threshold but drift detected → WARN → exit 1."""
+def test_main_drift_exits_1(tmp_path):
+    """Content passes threshold but drift detected → DRIFT → exit 1."""
     from submatch.sync import SyncResult
     video = tmp_path / "video.mp4"
     video.touch()
@@ -1290,7 +1290,7 @@ def test_main_warn_exits_1(tmp_path):
 
 
 def test_main_resync_replaces_subtitle(tmp_path):
-    """WARN + --resync → file replaced, second score gives PASS → exit 0."""
+    """DRIFT + --resync → file replaced, second score gives PASS → exit 0."""
     from submatch.sync import SyncResult
     video = tmp_path / "video.mp4"
     video.touch()
@@ -1330,7 +1330,7 @@ def test_main_resync_replaces_subtitle(tmp_path):
 
 
 def test_batch_sequential_resync(tmp_path):
-    """Batch sequential mode: WARN + --resync → subtitle replaced, second score gives PASS."""
+    """Batch sequential mode: DRIFT + --resync → subtitle replaced, second score gives PASS."""
     from submatch.sync import SyncResult
     video = tmp_path / "show.mp4"
     video.touch()
@@ -1370,7 +1370,7 @@ def test_batch_sequential_resync(tmp_path):
 
 
 def test_batch_parallel_resync(tmp_path):
-    """Batch parallel mode: WARN + --resync → subtitle replaced, second score gives PASS."""
+    """Batch parallel mode: DRIFT + --resync → subtitle replaced, second score gives PASS."""
     from submatch.sync import SyncResult
     video = tmp_path / "show.mp4"
     video.touch()

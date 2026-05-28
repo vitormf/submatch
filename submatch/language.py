@@ -115,20 +115,26 @@ def build_result(
     video_meta: str | None,
     expected: str | None,
 ) -> LanguageResult:
-    reference = expected or audio
     details = []
 
-    if reference and subtitle_detected and subtitle_detected != reference:
+    # Subtitle internal consistency: does the detected text match what the filename claims?
+    if subtitle_filename and subtitle_detected and subtitle_detected != subtitle_filename:
         details.append(
-            f"audio={reference} but subtitle text detected as {subtitle_detected}"
+            f"subtitle filename says {subtitle_filename} but text detected as {subtitle_detected}"
         )
-    if reference and subtitle_filename and subtitle_filename != reference:
+
+    # If an explicit expected language is set, check subtitle signals against it.
+    if expected:
+        ref = subtitle_filename or subtitle_detected
+        if ref and ref != expected:
+            details.append(
+                f"expected subtitle language {expected} but got {ref}"
+            )
+
+    # Audio consistency: Whisper vs ffprobe audio tag.
+    if audio and video_meta and video_meta != audio:
         details.append(
-            f"audio={reference} but subtitle filename says {subtitle_filename}"
-        )
-    if reference and video_meta and video_meta != reference:
-        details.append(
-            f"audio={reference} but video metadata says {video_meta}"
+            f"whisper detected audio={audio} but video metadata says {video_meta}"
         )
 
     return LanguageResult(
