@@ -6,7 +6,23 @@ build-backend = "setuptools.build_meta"
 name = "submatch"
 version = "0.1.0"
 description = "Verify subtitle files match video audio content"
+readme = "README.md"
+license = { file = "LICENSE" }
 requires-python = ">=3.10"
+authors = [{ name = "Vitor Maciel", email = "vitormf@yahoo.com" }]
+keywords = ["subtitles", "whisper", "plex", "jellyfin", "kodi", "ffmpeg", "subtitle-verification", "media"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Video",
+    "Topic :: Utilities",
+]
 dependencies = [
     "openai-whisper>=20231117",
     "ffsubsync>=0.4.22",
@@ -21,6 +37,11 @@ dev = [
     "pytest-cov>=4.0",
     "ruff>=0.1",
 ]
+
+[project.urls]
+Homepage = "https://github.com/vitormf/submatch"
+Repository = "https://github.com/vitormf/submatch"
+"Bug Tracker" = "https://github.com/vitormf/submatch/issues"
 
 [project.scripts]
 submatch = "submatch.cli:main"

@@ -21,7 +21,7 @@ sync  no drift  ✓
 ## Install
 
 ```bash
-pip install -e .
+pip install submatch
 ```
 
 System dependencies (must be on PATH):
