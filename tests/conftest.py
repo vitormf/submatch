@@ -1,3 +1,9 @@
+import shutil
+import static_ffmpeg
+
+if not shutil.which("ffmpeg"):
+    static_ffmpeg.add_paths()
+
 SAMPLE_SRT = """\
 1
 00:00:01,000 --> 00:00:03,500
