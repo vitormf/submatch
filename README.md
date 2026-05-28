@@ -105,7 +105,7 @@ SRT, WebVTT, ASS/SSA (and any other format supported by [pysubs2](https://github
 | `--device` | `auto` | Whisper inference device: `cpu`, `mps` (Apple Silicon), `cuda` (NVIDIA), `auto` |
 | `--workers` | `auto` | Parallel pairs in batch mode; auto selects 1 for GPU, up to 4 for CPU |
 | `--delete-failures` | off | Delete subtitle files that fail the match check |
-| `--resync` | off | On WARN (drift detected), copy synced subtitle over original and re-score |
+| `--resync` | off | On DRIFT (drift detected), copy synced subtitle over original and re-score |
 | `--pass-unsure` | off | Exit 0 for UNSURE results (not enough transcription data) |
 
 Segment count auto-selection: `< 30 min` → 5, `30–90 min` → 8, `> 90 min` → 12.
@@ -127,7 +127,7 @@ Each pair is assigned one of four states:
 | State | Meaning | Exit code |
 |---|---|---|
 | `PASS` | Content matches, no timing drift | `0` |
-| `WARN` | Content matches, but timing drift detected | `1` (use `--resync` to fix in place) |
+| `DRIFT` | Content matches, but timing drift detected | `1` (use `--resync` to fix in place) |
 | `FAIL` | Content does not match | `1` |
 | `UNSURE` | Not enough transcription data to decide | `1` (use `--pass-unsure` to exit `0`) |
 | — | Error (missing dependency, unreadable file, no audio track) | `2` |
