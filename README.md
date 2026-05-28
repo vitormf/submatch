@@ -6,10 +6,12 @@ Subtitle download tools (like [subliminal](https://github.com/Diaoul/subliminal)
 
 ```
 submatch video.mkv subtitle.en.srt
-✔  Match confidence: 0.61  [████████████░░░░░░░░] PASS
-   Audio language : en
-   Subtitle lang  : en
-   Drift          : 0.2 s
+
+PASS ✓  0.61  (thr 0.35 · base · 5 segs)
+lang  audio=en  ·  sub=en
+sync  no drift  ✓
+  #1  00:04:12  0.68  ██████░░
+  #2  00:18:44  0.55  ████░░░░
 ```
 
 ## Install
@@ -98,6 +100,9 @@ SRT, WebVTT, ASS/SSA (and any other format supported by [pysubs2](https://github
 | `--verbose` | off | Show subtitle and transcription text per segment |
 | `--device` | `auto` | Whisper inference device: `cpu`, `mps` (Apple Silicon), `cuda` (NVIDIA), `auto` |
 | `--workers` | `auto` | Parallel pairs in batch mode; auto selects 1 for GPU, up to 4 for CPU |
+| `--delete-failures` | off | Delete subtitle files that fail the match check |
+| `--resync` | off | On WARN (drift detected), copy synced subtitle over original and re-score |
+| `--pass-unsure` | off | Exit 0 for UNSURE results (not enough transcription data) |
 
 Segment count auto-selection: `< 30 min` → 5, `30–90 min` → 8, `> 90 min` → 12.
 
@@ -111,15 +116,19 @@ Segment count auto-selection: `< 30 min` → 5, `30–90 min` → 8, `> 90 min` 
 
 The default threshold of 0.35 is intentionally low — subtitle text often paraphrases rather than quoting verbatim.
 
-## Exit codes
+## States and exit codes
 
-| Code | Meaning |
-|---|---|
-| `0` | Confidence at or above threshold — subtitles match |
-| `1` | Confidence below threshold — subtitles likely wrong |
-| `2` | Error (missing dependency, unreadable file, no audio track, etc.) |
+Each pair is assigned one of four states:
+
+| State | Meaning | Exit code |
+|---|---|---|
+| `PASS` | Content matches, no timing drift | `0` |
+| `WARN` | Content matches, but timing drift detected | `1` (use `--resync` to fix in place) |
+| `FAIL` | Content does not match | `1` |
+| `UNSURE` | Not enough transcription data to decide | `1` (use `--pass-unsure` to exit `0`) |
+| — | Error (missing dependency, unreadable file, no audio track) | `2` |
 
 ## Limitations
 
-- Same-language only. Token F1 requires the subtitle and audio to be in the same language; translated subtitles will score near zero even if correct.
 - Requires a local Whisper install (`pip install openai-whisper`). No API key needed.
+- Cross-language scoring uses multilingual sentence embeddings and is less precise than same-language token F1 — consider lowering `--cross-threshold` if you get too many false negatives.
