@@ -1,6 +1,7 @@
 from __future__ import annotations
 import argparse
 import concurrent.futures
+import copy
 import dataclasses
 import os
 import shutil
@@ -63,6 +64,10 @@ def parse_args() -> argparse.Namespace:
         "--cross-threshold", type=float, default=None, dest="cross_threshold",
         help="pass/fail threshold for cross-language pairs (default: same as --threshold)",
     )
+    parser.add_argument("--resync", action="store_true",
+                        help="if timing drift detected (WARN), resync subtitle in place and re-score")
+    parser.add_argument("--pass-unsure", action="store_true", dest="pass_unsure",
+                        help="exit 0 for UNSURE results (insufficient transcription data)")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return parser.parse_args()
 
@@ -128,6 +133,24 @@ def _is_cross_language(audio_lang: str | None, subtitle_lang: str | None) -> boo
     return audio_lang.split("-")[0].lower() != subtitle_lang.split("-")[0].lower()
 
 
+def _determine_state(result: output.MatchResult) -> output.MatchState:
+    if len(result.segments) == 0:
+        return output.MatchState.UNSURE
+    if not result.passed:
+        return output.MatchState.FAIL
+    if result.sync and result.sync.drift_detected:
+        return output.MatchState.WARN
+    return output.MatchState.PASS
+
+
+def _should_fail(result: output.MatchResult, pass_unsure: bool) -> bool:
+    if result.state == output.MatchState.PASS:
+        return False
+    if result.state == output.MatchState.UNSURE and pass_unsure:
+        return False
+    return True
+
+
 _embed_local = threading.local()
 
 
@@ -160,8 +183,23 @@ def _score_group_parallel(
     cache: _VideoCache | None = None
     for sub in subs:
         try:
-            result, cache = _score_pair(video, sub, args, model, show_progress=False,
-                                        video_cache=cache)
+            result, new_cache = _score_pair(video, sub, args, model, show_progress=False,
+                                            video_cache=cache, bar=bar)
+            if result.state == output.MatchState.WARN and getattr(args, 'resync', False):
+                synced_path = result.sync.synced_srt_path
+                shutil.copy(synced_path, sub)
+                synced_path.unlink(missing_ok=True)
+                _ra = copy.copy(args)
+                _ra.no_sync = True
+                result, _ = _score_pair(video, sub, _ra, model, show_progress=False,
+                                        bar=None, video_cache=new_cache)
+                result.state = _determine_state(result)
+                result.resynced = True
+            else:
+                if result.sync and result.sync.synced_srt_path:
+                    result.sync.synced_srt_path.unlink(missing_ok=True)
+            if cache is None:
+                cache = new_cache
             results.append(output.BatchPairResult(video=video, subtitle=sub,
                                                   result=result, error=None))
         except Exception as exc:
@@ -302,7 +340,7 @@ def _score_pair(
             else args.threshold
         )
 
-        return output.MatchResult(
+        match_result = output.MatchResult(
             confidence=confidence,
             passed=confidence >= effective_threshold,
             threshold=effective_threshold,
@@ -312,10 +350,13 @@ def _score_pair(
             model=args.model,
             cross_language=cross_lang,
             subtitle_language=subtitle_lang,
-        ), new_cache
-    finally:
+        )
+        match_result.state = _determine_state(match_result)
+        return match_result, new_cache
+    except:
         if _sync_tmp is not None:
             _sync_tmp.unlink(missing_ok=True)
+        raise
 
 
 def _run_batch(args: argparse.Namespace) -> int:
@@ -380,6 +421,20 @@ def _run_batch(args: argparse.Namespace) -> int:
                 match_result, new_cache = _score_pair(video, sub, args, model,
                                                       show_progress=False, bar=bar,
                                                       video_cache=cache)
+                if match_result.state == output.MatchState.WARN and getattr(args, 'resync', False):
+                    synced_path = match_result.sync.synced_srt_path
+                    shutil.copy(synced_path, sub)
+                    synced_path.unlink(missing_ok=True)
+                    _ra = copy.copy(args)
+                    _ra.no_sync = True
+                    match_result, _ = _score_pair(video, sub, _ra, model,
+                                                  show_progress=False, bar=None,
+                                                  video_cache=new_cache)
+                    match_result.state = _determine_state(match_result)
+                    match_result.resynced = True
+                else:
+                    if match_result.sync and match_result.sync.synced_srt_path:
+                        match_result.sync.synced_srt_path.unlink(missing_ok=True)
                 if cache is None:
                     video_caches[video] = new_cache
                 results.append(output.BatchPairResult(
@@ -432,7 +487,7 @@ def _run_batch(args: argparse.Namespace) -> int:
 
     if args.delete_failures:
         for p in results:
-            if p.result is not None and not p.result.passed:
+            if p.result is not None and p.result.state == output.MatchState.FAIL:
                 p.subtitle.unlink(missing_ok=True)
                 if not args.json:
                     tqdm.write(f"Deleted: {p.subtitle}")
@@ -454,7 +509,7 @@ def _run_batch(args: argparse.Namespace) -> int:
 
     if any(p.error for p in results):
         return 2
-    if any(not p.result.passed for p in results):
+    if any(p.result and _should_fail(p.result, args.pass_unsure) for p in results):
         return 1
     return 0
 
@@ -482,20 +537,36 @@ def main() -> None:
 
     result, _ = _score_pair(args.video, args.subtitle, args, model)
 
-    if args.keep_synced and result.sync:
+    if result.state == output.MatchState.WARN and args.resync:
+        synced_path = result.sync.synced_srt_path
+        shutil.copy(synced_path, args.subtitle)
+        synced_path.unlink(missing_ok=True)
+        _ra = copy.copy(args)
+        _ra.no_sync = True
+        result, _ = _score_pair(args.video, args.subtitle, _ra, model)
+        result.state = _determine_state(result)
+        result.resynced = True
+        if not args.json:
+            print(f"Subtitle resynced: {args.subtitle}")
+
+    if args.keep_synced and result.sync and result.sync.synced_srt_path:
         kept = args.subtitle.with_stem(args.subtitle.stem + ".synced")
         shutil.copy(result.sync.synced_srt_path, kept)
         if not args.json:
             print(f"Synced subtitle saved to {kept}")
+
+    # Cleanup synced temp file
+    if result.sync and result.sync.synced_srt_path:
+        result.sync.synced_srt_path.unlink(missing_ok=True)
 
     if args.json:
         print(output.format_json(result))
     else:
         output.print_human(result, verbose=args.verbose)
 
-    if args.delete_failures and not result.passed:
+    if args.delete_failures and result.state == output.MatchState.FAIL:
         args.subtitle.unlink(missing_ok=True)
         if not args.json:
             print(f"Deleted: {args.subtitle}")
 
-    sys.exit(0 if result.passed else 1)
+    sys.exit(0 if not _should_fail(result, args.pass_unsure) else 1)

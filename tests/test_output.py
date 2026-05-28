@@ -1,6 +1,6 @@
 import json
 from submatch.output import (
-    SegmentResult, MatchResult, format_json, print_human,
+    SegmentResult, MatchResult, MatchState, format_json, print_human,
     _ms_to_ts, _bar,
 )
 from submatch.language import LanguageResult
@@ -26,7 +26,7 @@ def _make_result() -> MatchResult:
         subtitle_text="Hello world",
         transcription="hello world",
     )
-    return MatchResult(
+    result = MatchResult(
         confidence=0.75,
         passed=True,
         threshold=0.35,
@@ -35,6 +35,8 @@ def _make_result() -> MatchResult:
         segments=[seg],
         model="base",
     )
+    result.state = MatchState.PASS
+    return result
 
 
 def test_format_json_top_level_keys():
@@ -172,6 +174,7 @@ def test_print_human_failed_shows_cross(capsys):
     result = _make_result()
     result.passed = False
     result.confidence = 0.1
+    result.state = MatchState.FAIL
     print_human(result)
     assert "✗" in capsys.readouterr().out
 
@@ -194,15 +197,17 @@ from submatch.output import (
 
 
 def _make_batch_pairs() -> list[BatchPairResult]:
+    passed_result = _make_result()  # already has state=MatchState.PASS
     passed = BatchPairResult(
         video=Path("show.mkv"),
         subtitle=Path("show.en.srt"),
-        result=_make_result(),
+        result=passed_result,
         error=None,
     )
     failed_result = _make_result()
     failed_result.passed = False
     failed_result.confidence = 0.10
+    failed_result.state = MatchState.FAIL
     failed = BatchPairResult(
         video=Path("show.mkv"),
         subtitle=Path("show.pt.srt"),
@@ -243,8 +248,8 @@ def test_print_batch_compact_shows_filenames(capsys):
 def test_print_batch_summary_counts(capsys):
     print_batch_summary(_make_batch_pairs())
     out = capsys.readouterr().out
-    assert "1 passed" in out
-    assert "1 failed" in out
+    assert "1 PASS" in out
+    assert "1 FAIL" in out
     assert "1 error" in out
 
 
@@ -281,7 +286,7 @@ def test_print_batch_compact_shows_score(capsys):
 
 def test_print_batch_summary_empty(capsys):
     print_batch_summary([])
-    assert "0 passed, 0 failed, 0 errors" in capsys.readouterr().out
+    assert "0 processed" in capsys.readouterr().out
 
 
 # ── cross-language fields ─────────────────────────────────────────────────────

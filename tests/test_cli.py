@@ -34,6 +34,8 @@ def test_parse_args_defaults(tmp_path):
     assert args.device == "auto"
     assert args.workers is None
     assert args.cross_threshold is None
+    assert args.resync is False
+    assert args.pass_unsure is False
 
 
 def test_parse_args_all_flags(tmp_path):
@@ -45,6 +47,7 @@ def test_parse_args_all_flags(tmp_path):
         "--recursive", "--sub-lang", "en", "--filter", "*.en.*",
         "--device", "cpu", "--workers", "2",
         "--cross-threshold", "0.5",
+        "--resync", "--pass-unsure",
     ]):
         args = cli.parse_args()
     assert args.model == "small"
@@ -62,6 +65,8 @@ def test_parse_args_all_flags(tmp_path):
     assert args.device == "cpu"
     assert args.workers == 2
     assert args.cross_threshold == pytest.approx(0.5)
+    assert args.resync is True
+    assert args.pass_unsure is True
 
 
 # ── check_dependencies ────────────────────────────────────────────────────────
@@ -481,7 +486,7 @@ def test_batch_compact_output(tmp_path, capsys):
             c.__exit__(None, None, None)
     out = capsys.readouterr().out
     assert "PASS" in out
-    assert "passed" in out
+    assert "1 PASS" in out
 
 
 def test_batch_error_in_one_pair_exits_2(tmp_path):
@@ -1023,3 +1028,356 @@ def test_main_delete_failures_single(tmp_path):
             c.__exit__(None, None, None)
     assert exc.value.code == 1
     assert not subtitle.exists()
+
+
+def test_score_pair_exception_propagates_after_sync(tmp_path):
+    """When _score_pair raises after sync runs, exception propagates and temp file is cleaned."""
+    import argparse
+    from submatch.sync import SyncResult
+    video = tmp_path / "video.mp4"
+    video.touch()
+    subtitle = tmp_path / "sub.srt"
+    subtitle.write_text(SAMPLE_SRT)
+
+    subs = [Subtitle(1, 1_000, 3_500, "Hello world")]
+    args = argparse.Namespace(
+        no_sync=False, segments=None, model="base", language=None,
+        cross_threshold=None, threshold=0.35, json=False, resync=False,
+        pass_unsure=False,
+    )
+
+    created_tmp: list[Path] = []
+
+    def fake_sync(video, subtitle, out_path):
+        created_tmp.append(out_path)
+        out_path.write_text(SAMPLE_SRT)
+        return SyncResult(synced_srt_path=out_path, offset_seconds=0.0, drift_detected=False)
+
+    with patch("submatch.cli.sync.sync_subtitle", side_effect=fake_sync), \
+         patch("submatch.cli.subtitle.parse", return_value=subs), \
+         patch("submatch.cli.audio.get_duration_ms", side_effect=RuntimeError("ffprobe error")):
+        with pytest.raises(RuntimeError, match="ffprobe error"):
+            cli._score_pair(video, subtitle, args, MagicMock())
+
+    # The temp sync file created by _score_pair should have been cleaned up
+    assert created_tmp, "sync was called"
+    assert not created_tmp[0].exists(), "temp sync file should be deleted on exception"
+
+
+def test_batch_parallel_sync_cleans_up_synced_file(tmp_path):
+    """In parallel batch mode with sync (no resync), synced temp file is cleaned up after scoring."""
+    from submatch.sync import SyncResult
+    video = tmp_path / "show.mp4"
+    video.touch()
+    sub = tmp_path / "show.srt"
+    sub.write_text(SAMPLE_SRT)
+    synced_srt = tmp_path / "synced.srt"
+    synced_srt.write_text(SAMPLE_SRT)
+    sync_result = SyncResult(synced_srt_path=synced_srt, offset_seconds=0.0, drift_detected=False)
+
+    subs_parsed = [Subtitle(1, 1_000, 3_500, "Hello world")]
+    segs = [Segment(60_000, 90_000, "Hello world", 2)]
+    mock_trans = MagicMock(text="hello world", language="en")
+    lang = LanguageResult(
+        audio="en", subtitle_detected="en", subtitle_filename="en",
+        video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
+    )
+
+    with patch("sys.argv", ["submatch", str(tmp_path), "--threshold", "0.01",
+                            "--workers", "2", "--device", "cpu"]), \
+         patch("submatch.cli.check_dependencies"), \
+         patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
+         patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
+         patch("submatch.cli.subtitle.parse", return_value=subs_parsed), \
+         patch("submatch.cli.sampler.select_segments", return_value=segs), \
+         patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
+         patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
+         patch("submatch.cli.language.detect_from_text", return_value="en"), \
+         patch("submatch.cli.language.detect_from_filename", return_value="en"), \
+         patch("submatch.cli.language.detect_from_video", return_value=None), \
+         patch("submatch.cli.language.build_result", return_value=lang), \
+         patch("submatch.cli.sync.sync_subtitle", return_value=sync_result):
+        with pytest.raises(SystemExit) as exc:
+            cli.main()
+    assert exc.value.code == 0
+
+
+# ── state system ──────────────────────────────────────────────────────────────
+
+def _make_match_result(segments=None, passed=True, drift_detected=False, sync=None):
+    """Helper to build a MatchResult for state-system tests."""
+    from submatch.output import MatchResult, MatchState, SegmentResult
+    from submatch.language import LanguageResult
+    lang = LanguageResult(
+        audio="en", subtitle_detected="en", subtitle_filename="en",
+        video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
+    )
+    if segments is None:
+        seg = SegmentResult(index=1, start_ms=1000, score=0.8, wer=0.1,
+                            subtitle_text="hello", transcription="hello")
+        segments = [seg]
+    if sync is None and drift_detected:
+        from submatch.sync import SyncResult
+        sync = SyncResult(synced_srt_path=None, offset_seconds=3.0, drift_detected=True)
+    result = MatchResult(
+        confidence=0.8 if passed else 0.1,
+        passed=passed,
+        threshold=0.35,
+        language=lang,
+        sync=sync,
+        segments=segments,
+        model="base",
+    )
+    return result
+
+
+def test_determine_state_pass():
+    result = _make_match_result(passed=True, drift_detected=False)
+    assert cli._determine_state(result) == cli.output.MatchState.PASS
+
+
+def test_determine_state_warn():
+    result = _make_match_result(passed=True, drift_detected=True)
+    assert cli._determine_state(result) == cli.output.MatchState.WARN
+
+
+def test_determine_state_fail():
+    result = _make_match_result(passed=False, drift_detected=False)
+    assert cli._determine_state(result) == cli.output.MatchState.FAIL
+
+
+def test_determine_state_unsure():
+    result = _make_match_result(segments=[], passed=False)
+    assert cli._determine_state(result) == cli.output.MatchState.UNSURE
+
+
+def test_parse_args_resync_flag(tmp_path):
+    v, s = tmp_path / "v.mp4", tmp_path / "s.srt"
+    with patch("sys.argv", ["submatch", str(v), str(s), "--resync"]):
+        args = cli.parse_args()
+    assert args.resync is True
+
+
+def test_parse_args_pass_unsure_flag(tmp_path):
+    v, s = tmp_path / "v.mp4", tmp_path / "s.srt"
+    with patch("sys.argv", ["submatch", str(v), str(s), "--pass-unsure"]):
+        args = cli.parse_args()
+    assert args.pass_unsure is True
+
+
+def test_should_fail_pass_result():
+    from submatch.output import MatchState
+    result = _make_match_result(passed=True)
+    result.state = MatchState.PASS
+    assert cli._should_fail(result, False) is False
+
+
+def test_should_fail_unsure_with_pass_unsure():
+    from submatch.output import MatchState
+    result = _make_match_result(segments=[], passed=False)
+    result.state = MatchState.UNSURE
+    assert cli._should_fail(result, True) is False
+
+
+def test_should_fail_unsure_without_pass_unsure():
+    from submatch.output import MatchState
+    result = _make_match_result(segments=[], passed=False)
+    result.state = MatchState.UNSURE
+    assert cli._should_fail(result, False) is True
+
+
+def test_should_fail_fail_result_with_pass_unsure():
+    from submatch.output import MatchState
+    result = _make_match_result(passed=False)
+    result.state = MatchState.FAIL
+    assert cli._should_fail(result, True) is True
+
+
+def test_main_unsure_exits_1(tmp_path):
+    """0 segments scored (all transcriptions fail) → UNSURE → exit 1."""
+    _, _, ctx = _make_pipeline_patches(tmp_path, ["--threshold", "0.01"])
+    ctx.append(patch("submatch.cli.transcribe.transcribe_segment",
+                     side_effect=RuntimeError("GPU exploded")))
+    [c.__enter__() for c in ctx]
+    try:
+        with pytest.raises(SystemExit) as exc:
+            cli.main()
+    finally:
+        for c in reversed(ctx):
+            c.__exit__(None, None, None)
+    assert exc.value.code == 1
+
+
+def test_main_unsure_pass_unsure_exits_0(tmp_path):
+    """0 segments scored → UNSURE, but --pass-unsure → exit 0."""
+    _, _, ctx = _make_pipeline_patches(tmp_path, ["--threshold", "0.01", "--pass-unsure"])
+    ctx.append(patch("submatch.cli.transcribe.transcribe_segment",
+                     side_effect=RuntimeError("GPU exploded")))
+    [c.__enter__() for c in ctx]
+    try:
+        with pytest.raises(SystemExit) as exc:
+            cli.main()
+    finally:
+        for c in reversed(ctx):
+            c.__exit__(None, None, None)
+    assert exc.value.code == 0
+
+
+def test_main_warn_exits_1(tmp_path):
+    """Content passes threshold but drift detected → WARN → exit 1."""
+    from submatch.sync import SyncResult
+    video = tmp_path / "video.mp4"
+    video.touch()
+    subtitle = tmp_path / "sub.srt"
+    subtitle.write_text(SAMPLE_SRT)
+    synced_srt = tmp_path / "synced.srt"
+    synced_srt.write_text(SAMPLE_SRT)
+    sync_result = SyncResult(synced_srt_path=synced_srt, offset_seconds=3.0, drift_detected=True)
+
+    subs = [Subtitle(1, 1_000, 3_500, "Hello world")]
+    segs = [Segment(60_000, 90_000, "Hello world", 2)]
+    mock_trans = MagicMock(text="hello world", language="en")
+    lang = LanguageResult(
+        audio="en", subtitle_detected="en", subtitle_filename="en",
+        video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
+    )
+
+    with patch("sys.argv", ["submatch", str(video), str(subtitle), "--threshold", "0.01"]), \
+         patch("submatch.cli.check_dependencies"), \
+         patch("submatch.cli.audio.has_audio_track", return_value=True), \
+         patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
+         patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
+         patch("submatch.cli.subtitle.parse", return_value=subs), \
+         patch("submatch.cli.sampler.select_segments", return_value=segs), \
+         patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
+         patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
+         patch("submatch.cli.language.detect_from_text", return_value="en"), \
+         patch("submatch.cli.language.detect_from_filename", return_value="en"), \
+         patch("submatch.cli.language.detect_from_video", return_value=None), \
+         patch("submatch.cli.language.build_result", return_value=lang), \
+         patch("submatch.cli.sync.sync_subtitle", return_value=sync_result):
+        with pytest.raises(SystemExit) as exc:
+            cli.main()
+
+    assert exc.value.code == 1
+
+
+def test_main_resync_replaces_subtitle(tmp_path):
+    """WARN + --resync → file replaced, second score gives PASS → exit 0."""
+    from submatch.sync import SyncResult
+    video = tmp_path / "video.mp4"
+    video.touch()
+    subtitle = tmp_path / "sub.srt"
+    subtitle.write_text(SAMPLE_SRT)
+    synced_srt = tmp_path / "synced.srt"
+    synced_srt.write_text(SAMPLE_SRT)
+    sync_result = SyncResult(synced_srt_path=synced_srt, offset_seconds=3.0, drift_detected=True)
+
+    subs = [Subtitle(1, 1_000, 3_500, "Hello world")]
+    segs = [Segment(60_000, 90_000, "Hello world", 2)]
+    mock_trans = MagicMock(text="hello world", language="en")
+    lang = LanguageResult(
+        audio="en", subtitle_detected="en", subtitle_filename="en",
+        video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
+    )
+
+    with patch("sys.argv", ["submatch", str(video), str(subtitle),
+                            "--threshold", "0.01", "--resync"]), \
+         patch("submatch.cli.check_dependencies"), \
+         patch("submatch.cli.audio.has_audio_track", return_value=True), \
+         patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
+         patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
+         patch("submatch.cli.subtitle.parse", return_value=subs), \
+         patch("submatch.cli.sampler.select_segments", return_value=segs), \
+         patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
+         patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
+         patch("submatch.cli.language.detect_from_text", return_value="en"), \
+         patch("submatch.cli.language.detect_from_filename", return_value="en"), \
+         patch("submatch.cli.language.detect_from_video", return_value=None), \
+         patch("submatch.cli.language.build_result", return_value=lang), \
+         patch("submatch.cli.sync.sync_subtitle", return_value=sync_result):
+        with pytest.raises(SystemExit) as exc:
+            cli.main()
+
+    assert exc.value.code == 0
+
+
+def test_batch_sequential_resync(tmp_path):
+    """Batch sequential mode: WARN + --resync → subtitle replaced, second score gives PASS."""
+    from submatch.sync import SyncResult
+    video = tmp_path / "show.mp4"
+    video.touch()
+    sub = tmp_path / "show.srt"
+    sub.write_text(SAMPLE_SRT)
+    synced_srt = tmp_path / "synced.srt"
+    synced_srt.write_text(SAMPLE_SRT)
+    sync_result = SyncResult(synced_srt_path=synced_srt, offset_seconds=3.0, drift_detected=True)
+
+    subs = [Subtitle(1, 1_000, 3_500, "Hello world")]
+    segs = [Segment(60_000, 90_000, "Hello world", 2)]
+    mock_trans = MagicMock(text="hello world", language="en")
+    lang = LanguageResult(
+        audio="en", subtitle_detected="en", subtitle_filename="en",
+        video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
+    )
+
+    with patch("sys.argv", ["submatch", str(tmp_path),
+                            "--threshold", "0.01", "--resync"]), \
+         patch("submatch.cli.check_dependencies"), \
+         patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
+         patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
+         patch("submatch.cli.subtitle.parse", return_value=subs), \
+         patch("submatch.cli.sampler.select_segments", return_value=segs), \
+         patch("submatch.cli.sampler.segments_from_starts", return_value=segs), \
+         patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
+         patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
+         patch("submatch.cli.language.detect_from_text", return_value="en"), \
+         patch("submatch.cli.language.detect_from_filename", return_value="en"), \
+         patch("submatch.cli.language.detect_from_video", return_value=None), \
+         patch("submatch.cli.language.build_result", return_value=lang), \
+         patch("submatch.cli.sync.sync_subtitle", return_value=sync_result):
+        with pytest.raises(SystemExit) as exc:
+            cli.main()
+
+    assert exc.value.code == 0
+
+
+def test_batch_parallel_resync(tmp_path):
+    """Batch parallel mode: WARN + --resync → subtitle replaced, second score gives PASS."""
+    from submatch.sync import SyncResult
+    video = tmp_path / "show.mp4"
+    video.touch()
+    sub = tmp_path / "show.srt"
+    sub.write_text(SAMPLE_SRT)
+    synced_srt = tmp_path / "synced.srt"
+    synced_srt.write_text(SAMPLE_SRT)
+    sync_result = SyncResult(synced_srt_path=synced_srt, offset_seconds=3.0, drift_detected=True)
+
+    subs = [Subtitle(1, 1_000, 3_500, "Hello world")]
+    segs = [Segment(60_000, 90_000, "Hello world", 2)]
+    mock_trans = MagicMock(text="hello world", language="en")
+    lang = LanguageResult(
+        audio="en", subtitle_detected="en", subtitle_filename="en",
+        video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
+    )
+
+    with patch("sys.argv", ["submatch", str(tmp_path),
+                            "--threshold", "0.01", "--resync", "--workers", "2",
+                            "--device", "cpu"]), \
+         patch("submatch.cli.check_dependencies"), \
+         patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
+         patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
+         patch("submatch.cli.subtitle.parse", return_value=subs), \
+         patch("submatch.cli.sampler.select_segments", return_value=segs), \
+         patch("submatch.cli.sampler.segments_from_starts", return_value=segs), \
+         patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
+         patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
+         patch("submatch.cli.language.detect_from_text", return_value="en"), \
+         patch("submatch.cli.language.detect_from_filename", return_value="en"), \
+         patch("submatch.cli.language.detect_from_video", return_value=None), \
+         patch("submatch.cli.language.build_result", return_value=lang), \
+         patch("submatch.cli.sync.sync_subtitle", return_value=sync_result):
+        with pytest.raises(SystemExit) as exc:
+            cli.main()
+
+    assert exc.value.code == 0

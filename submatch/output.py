@@ -2,11 +2,19 @@ from __future__ import annotations
 import dataclasses
 import json
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
 from submatch.language import LanguageResult
 from submatch.sync import SyncResult
+
+
+class MatchState(str, Enum):
+    PASS = "PASS"
+    WARN = "WARN"
+    FAIL = "FAIL"
+    UNSURE = "UNSURE"
 
 _GREEN = "\033[32m"
 _YELLOW = "\033[33m"
@@ -43,6 +51,8 @@ class MatchResult:
     model: str
     cross_language: bool = False
     subtitle_language: str | None = None
+    state: MatchState = MatchState.FAIL
+    resynced: bool = False
 
 
 @dataclass
@@ -113,11 +123,18 @@ def print_human(
             print(f"       transcription: {seg.transcription}")
     print()
 
-    color = _GREEN if result.passed else _RED
-    symbol = "✓" if result.passed else "✗"
+    state_color = {
+        MatchState.PASS: _GREEN, MatchState.WARN: _YELLOW,
+        MatchState.FAIL: _RED,   MatchState.UNSURE: _YELLOW,
+    }[result.state]
+    state_symbol = {
+        MatchState.PASS: "✓", MatchState.WARN: "⚠",
+        MatchState.FAIL: "✗", MatchState.UNSURE: "?",
+    }[result.state]
+    resync_note = f"  {_YELLOW}(resynced in place){_RESET}" if result.resynced else ""
     print(
-        f"Overall confidence: {color}{_BOLD}{result.confidence:.2f}"
-        f"  {symbol}{_RESET}  (threshold: {result.threshold})"
+        f"Result: {state_color}{_BOLD}{result.state.value}  {state_symbol}{_RESET}{resync_note}"
+        f"  —  confidence: {result.confidence:.2f}  (threshold: {result.threshold})"
     )
     print()
 
@@ -132,18 +149,25 @@ def print_batch_compact(pairs: list[BatchPairResult]) -> None:
             label = f"{_RED}ERROR{_RESET}"
             score = "  n/a"
         else:
-            color = _GREEN if p.result.passed else _RED
-            label = f"{color}{'PASS' if p.result.passed else 'FAIL'}{_RESET}"
+            state_color = {
+                MatchState.PASS: _GREEN, MatchState.WARN: _YELLOW,
+                MatchState.FAIL: _RED,   MatchState.UNSURE: _YELLOW,
+            }[p.result.state]
+            label = f"{state_color}{p.result.state.value}{_RESET}"
             score = f"{p.result.confidence:.2f}"
         print(f"{label}  {score}  {p.video.name:<40}  {p.subtitle.name}")
 
 
 def print_batch_summary(pairs: list[BatchPairResult]) -> None:
-    passed = sum(1 for p in pairs if p.result and p.result.passed)
-    failed = sum(1 for p in pairs if p.result and not p.result.passed)
+    from collections import Counter
+    state_counts = Counter(
+        p.result.state.value for p in pairs if p.result is not None
+    )
     errors = sum(1 for p in pairs if p.error)
-    e_word = "error" if errors == 1 else "errors"
-    print(f"\nResults: {passed} passed, {failed} failed, {errors} {e_word}")
+    parts = [f"{state_counts.get(s, 0)} {s}" for s in ("PASS", "WARN", "FAIL", "UNSURE") if state_counts.get(s, 0) > 0]
+    if errors:
+        parts.append(f"{errors} error{'s' if errors != 1 else ''}")
+    print(f"\nResults: {', '.join(parts) if parts else '0 processed'}")
 
 
 def format_batch_json(pairs: list[BatchPairResult]) -> str:
