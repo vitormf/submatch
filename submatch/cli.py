@@ -487,7 +487,7 @@ def _run_batch(args: argparse.Namespace) -> int:
                 _result_line = output.fmt_progress_result(
                     None, str(exc), sub.name, time.monotonic() - _pair_t0,
                 )
-            if not args.json and not args.compact and _result_line:
+            if not args.json and _result_line:
                 if _tty:
                     print(f"\r\033[K{_result_line}", file=sys.stderr)
                 else:
@@ -550,7 +550,6 @@ def _run_batch(args: argparse.Namespace) -> int:
     if args.json:
         print(output.format_batch_json(results))
     elif args.compact:
-        output.print_batch_compact(results)
         output.print_batch_summary(results)
     else:
         for p in results:

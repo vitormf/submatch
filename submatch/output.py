@@ -140,12 +140,12 @@ def fmt_progress_result(
     """One-line result string for in-place progress display."""
     secs = f"{took:.0f}s"
     if error:
-        return f"{_RED}ERROR{_RESET}  {sub_name}  {secs}"
+        return f"{_RED}{'ERROR':<6}{_RESET} {'n/a':<4}  {secs}  {sub_name}"
     color = {
         MatchState.PASS: _GREEN, MatchState.DRIFT: _YELLOW,
         MatchState.FAIL: _RED,   MatchState.UNSURE: _YELLOW,
     }[result.state]
-    return f"{color}{result.state.value:<6}{_RESET} {result.confidence:.2f}  {sub_name}  {secs}"
+    return f"{color}{result.state.value:<6}{_RESET} {result.confidence:.2f}  {secs}  {sub_name}"
 
 
 def print_batch_compact(pairs: list[BatchPairResult]) -> None:
