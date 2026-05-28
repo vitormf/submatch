@@ -71,57 +71,7 @@ def print_human(
 ) -> None:
     print()
     if video is not None and subtitle is not None:
-        print(f"{_BOLD}{'─' * 60}{_RESET}")
-        print(f"{_BOLD}{video.name}  /  {subtitle.name}{_RESET}")
-        print()
-
-    print(f"{_BOLD}Language check{_RESET}")
-    lang = result.language
-    _lang_row("Audio (Whisper):", lang.audio)
-    _lang_row("Subtitle (detected):", lang.subtitle_detected)
-    _lang_row("Subtitle (filename):", lang.subtitle_filename)
-    if lang.video_metadata:
-        _lang_row("Video metadata:", lang.video_metadata)
-    if lang.mismatch:
-        for detail in lang.mismatch_details:
-            print(f"  {_YELLOW}⚠  {detail}{_RESET}")
-    print()
-
-    print(f"{_BOLD}Timing check (ffsubsync){_RESET}")
-    if result.sync is None:
-        print("  Skipped (--no-sync)")
-    elif result.sync.drift_detected:
-        sign = "+" if result.sync.offset_seconds >= 0 else ""
-        print(
-            f"  Drift detected: {sign}{result.sync.offset_seconds:.1f}s"
-            f"  {_YELLOW}⚠{_RESET}  (synced subtitle used for sampling)"
-        )
-    else:
-        print(f"  No significant drift  {_GREEN}✓{_RESET}")
-    print()
-
-    if result.cross_language:
-        audio_lbl = result.language.audio or "?"
-        sub_lbl = result.subtitle_language or "?"
-        print(
-            f"{_BOLD}Content check — cross-language"
-            f"  ({audio_lbl} audio → {sub_lbl} subtitle,"
-            f" {len(result.segments)} segments, {result.model} model){_RESET}"
-        )
-    else:
-        print(
-            f"{_BOLD}Content check"
-            f" ({len(result.segments)} segments, {result.model} model){_RESET}"
-        )
-    for seg in result.segments:
-        ts = _ms_to_ts(seg.start_ms)
-        color = _GREEN if seg.score >= result.threshold else _RED
-        bar = _bar(seg.score)
-        print(f"  #{seg.index:<3} {ts}  score: {color}{seg.score:.2f}{_RESET}  {bar}")
-        if verbose:
-            print(f"       subtitle:      {seg.subtitle_text}")
-            print(f"       transcription: {seg.transcription}")
-    print()
+        print(f"{_BOLD}── {video.name} / {subtitle.name}{_RESET}")
 
     state_color = {
         MatchState.PASS: _GREEN, MatchState.WARN: _YELLOW,
@@ -131,11 +81,49 @@ def print_human(
         MatchState.PASS: "✓", MatchState.WARN: "⚠",
         MatchState.FAIL: "✗", MatchState.UNSURE: "?",
     }[result.state]
-    resync_note = f"  {_YELLOW}(resynced in place){_RESET}" if result.resynced else ""
+    meta = [f"thr {result.threshold}", result.model, f"{len(result.segments)} segs"]
+    if result.cross_language:
+        meta.append(f"{result.language.audio or '?'}→{result.subtitle_language or '?'}")
+    if result.resynced:
+        meta.append(f"{_YELLOW}resynced{_RESET}")
     print(
-        f"Result: {state_color}{_BOLD}{result.state.value}  {state_symbol}{_RESET}{resync_note}"
-        f"  —  confidence: {result.confidence:.2f}  (threshold: {result.threshold})"
+        f"{state_color}{_BOLD}{result.state.value} {state_symbol}{_RESET}"
+        f"  {result.confidence:.2f}  ({' · '.join(meta)})"
     )
+
+    lang = result.language
+    lang_parts = []
+    if lang.audio:
+        lang_parts.append(f"audio={lang.audio}")
+    if lang.subtitle_filename:
+        lang_parts.append(f"sub={lang.subtitle_filename}")
+    elif lang.subtitle_detected:
+        lang_parts.append(f"sub={lang.subtitle_detected}")
+    if lang.video_metadata:
+        lang_parts.append(f"meta={lang.video_metadata}")
+    lang_str = "  ·  ".join(lang_parts) if lang_parts else "unknown"
+    mismatch_str = (
+        f"  {_YELLOW}⚠  {',  '.join(lang.mismatch_details)}{_RESET}"
+        if lang.mismatch else ""
+    )
+    print(f"lang  {lang_str}{mismatch_str}")
+
+    if result.sync is None:
+        print("sync  skipped")
+    elif result.sync.drift_detected:
+        sign = "+" if result.sync.offset_seconds >= 0 else ""
+        print(f"sync  {sign}{result.sync.offset_seconds:.1f}s  {_YELLOW}⚠{_RESET}")
+    else:
+        print(f"sync  no drift  {_GREEN}✓{_RESET}")
+
+    for seg in result.segments:
+        ts = _ms_to_ts(seg.start_ms)
+        color = _GREEN if seg.score >= result.threshold else _RED
+        bar = _bar(seg.score, width=8)
+        print(f"  #{seg.index:<2} {ts}  {color}{seg.score:.2f}{_RESET}  {bar}")
+        if verbose:
+            print(f"      sub: {seg.subtitle_text}")
+            print(f"      asr: {seg.transcription}")
     print()
 
 
@@ -155,7 +143,7 @@ def print_batch_compact(pairs: list[BatchPairResult]) -> None:
             }[p.result.state]
             label = f"{state_color}{p.result.state.value}{_RESET}"
             score = f"{p.result.confidence:.2f}"
-        print(f"{label}  {score}  {p.video.name} / {p.subtitle.name}")
+        print(f"{label}  {score}  {p.subtitle.name}")
 
 
 def print_batch_summary(pairs: list[BatchPairResult]) -> None:
@@ -183,10 +171,6 @@ def format_batch_json(pairs: list[BatchPairResult]) -> str:
             d["error"] = p.error
         items.append(d)
     return json.dumps(items, cls=_PathEncoder, indent=2)
-
-
-def _lang_row(label: str, value: str | None) -> None:
-    print(f"  {label:<28} {value or 'unknown'}")
 
 
 def _ms_to_ts(ms: int) -> str:

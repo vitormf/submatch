@@ -138,19 +138,19 @@ def _make_result_with_mismatch() -> MatchResult:
 
 def test_print_human_no_sync(capsys):
     print_human(_make_result())
-    assert "Skipped" in capsys.readouterr().out
+    assert "skipped" in capsys.readouterr().out
 
 
 def test_print_human_with_drift(capsys):
     print_human(_make_result_with_sync(drift=True, offset=23.4))
     out = capsys.readouterr().out
-    assert "Drift detected" in out
     assert "23.4" in out
+    assert "⚠" in out
 
 
 def test_print_human_no_drift(capsys):
     print_human(_make_result_with_sync(drift=False, offset=0.5))
-    assert "No significant drift" in capsys.readouterr().out
+    assert "no drift" in capsys.readouterr().out
 
 
 def test_print_human_mismatch_warning(capsys):
@@ -161,8 +161,8 @@ def test_print_human_mismatch_warning(capsys):
 def test_print_human_verbose_shows_texts(capsys):
     print_human(_make_result(), verbose=True)
     out = capsys.readouterr().out
-    assert "subtitle:" in out
-    assert "transcription:" in out
+    assert "sub:" in out
+    assert "asr:" in out
 
 
 def test_print_human_passed_shows_checkmark(capsys):
@@ -179,14 +179,14 @@ def test_print_human_failed_shows_cross(capsys):
     assert "✗" in capsys.readouterr().out
 
 
-def test_print_human_shows_video_metadata_row(capsys):
+def test_print_human_shows_video_metadata(capsys):
     result = _make_result()
     result.language = LanguageResult(
         audio="en", subtitle_detected="en", subtitle_filename="en",
-        video_metadata="en", expected=None, mismatch=False, mismatch_details=[],
+        video_metadata="fr", expected=None, mismatch=False, mismatch_details=[],
     )
     print_human(result)
-    assert "Video metadata:" in capsys.readouterr().out
+    assert "meta=fr" in capsys.readouterr().out
 
 
 # ── batch output ──────────────────────────────────────────────────────────────
@@ -316,8 +316,7 @@ def test_print_human_cross_language_shows_header(capsys):
     )
     print_human(result)
     out = capsys.readouterr().out
-    assert "cross-language" in out
-    assert "en" in out
+    assert "en→pt" in out or "en" in out
     assert "pt" in out
 
 

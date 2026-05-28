@@ -237,8 +237,10 @@ def _score_pair(
                 sync_result = sync.sync_subtitle(video, subtitle_path, _sync_tmp)
                 subtitles = subtitle.parse(sync_result.synced_srt_path)
             except RuntimeError as exc:
-                print(f"Warning: ffsubsync failed ({exc}), proceeding without sync",
-                      file=sys.stderr)
+                tqdm.write(
+                    f"Warning: ffsubsync failed ({exc}), proceeding without sync",
+                    file=sys.stderr,
+                )
 
         # Phase 1: transcribe (first subtitle for this video) or reuse cache
         transcription_pairs: list[tuple[int, sampler.Segment, str]] = []
@@ -265,7 +267,7 @@ def _score_pair(
                     finally:
                         wav_path.unlink(missing_ok=True)
                 except Exception as exc:
-                    print(f"\nWarning: segment {i + 1} failed: {exc}", file=sys.stderr)
+                    tqdm.write(f"Warning: segment {i + 1} failed: {exc}", file=sys.stderr)
                 finally:
                     if bar is not None:
                         bar.update(1 / n_seg)
