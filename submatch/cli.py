@@ -10,8 +10,6 @@ import tempfile
 import threading
 from pathlib import Path
 
-from tqdm import tqdm
-
 from submatch import __version__
 from submatch import audio, compare, embeddings, language, output, sampler, subtitle, sync, transcribe
 
@@ -175,7 +173,6 @@ def _score_group_parallel(
     args: argparse.Namespace,
     model_name: str,
     device: str,
-    bar=None,
 ) -> list[output.BatchPairResult]:
     """Process all subtitles for one video in a single thread, sharing transcriptions."""
     model = _get_model(model_name, device)
@@ -184,7 +181,7 @@ def _score_group_parallel(
     for sub in subs:
         try:
             result, new_cache = _score_pair(video, sub, args, model, show_progress=False,
-                                            video_cache=cache, bar=bar)
+                                            video_cache=cache)
             if result.state == output.MatchState.WARN and getattr(args, 'resync', False):
                 synced_path = result.sync.synced_srt_path
                 shutil.copy(synced_path, sub)
@@ -192,7 +189,7 @@ def _score_group_parallel(
                 _ra = copy.copy(args)
                 _ra.no_sync = True
                 result, _ = _score_pair(video, sub, _ra, model, show_progress=False,
-                                        bar=None, video_cache=new_cache)
+                                        video_cache=new_cache)
                 result.state = _determine_state(result)
                 result.resynced = True
             else:
@@ -205,8 +202,6 @@ def _score_group_parallel(
         except Exception as exc:
             results.append(output.BatchPairResult(video=video, subtitle=sub,
                                                   result=None, error=str(exc)))
-            if bar is not None:
-                bar.update(1)
     return results
 
 
@@ -216,7 +211,6 @@ def _score_pair(
     args: argparse.Namespace,
     model,
     show_progress: bool = True,
-    bar=None,
     video_cache: _VideoCache | None = None,
 ) -> tuple[output.MatchResult, _VideoCache]:
     subtitles = subtitle.parse(subtitle_path)
@@ -232,12 +226,10 @@ def _score_pair(
                 tmp = tempfile.NamedTemporaryFile(suffix=".srt", delete=False)
                 _sync_tmp = Path(tmp.name)
                 tmp.close()
-                if bar is not None:
-                    bar.set_description("sync")
                 sync_result = sync.sync_subtitle(video, subtitle_path, _sync_tmp)
                 subtitles = subtitle.parse(sync_result.synced_srt_path)
             except RuntimeError as exc:
-                tqdm.write(
+                print(
                     f"Warning: ffsubsync failed ({exc}), proceeding without sync",
                     file=sys.stderr,
                 )
@@ -253,10 +245,8 @@ def _score_pair(
             audio_lang: str | None = None
 
             for i, seg in enumerate(segments):
-                if bar is not None:
-                    bar.set_description(f"[{i + 1}/{n_seg}]")
-                elif show_progress and not args.json:
-                    print(f"  Transcribing segment {i + 1}/{n_seg}...", end="\r")
+                if show_progress and not args.json:
+                    print(f"  [{i + 1}/{n_seg}]", end="\r", file=sys.stderr)
                 try:
                     wav_path = audio.extract_segment(video, seg.start_ms, 30_000)
                     try:
@@ -267,10 +257,7 @@ def _score_pair(
                     finally:
                         wav_path.unlink(missing_ok=True)
                 except Exception as exc:
-                    tqdm.write(f"Warning: segment {i + 1} failed: {exc}", file=sys.stderr)
-                finally:
-                    if bar is not None:
-                        bar.update(1 / n_seg)
+                    print(f"Warning: segment {i + 1} failed: {exc}", file=sys.stderr)
 
             if show_progress and not args.json:
                 print()
@@ -284,8 +271,6 @@ def _score_pair(
             # Reuse transcriptions from the first subtitle for this video.
             # Still re-syncs per subtitle (each has its own drift), then looks up
             # subtitle text at the pre-transcribed timestamps.
-            if bar is not None:
-                bar.set_description("scoring")
             audio_lang = video_cache.audio_lang
             cached_segs = sampler.segments_from_starts(subtitles, video_cache.segment_starts)
             transcription_pairs = [
@@ -293,8 +278,6 @@ def _score_pair(
                 for i, (seg, trans) in enumerate(zip(cached_segs, video_cache.transcriptions))
             ]
             new_cache = video_cache
-            if bar is not None:
-                bar.update(1)
 
         # Phase 2: determine scoring mode
         cross_lang = _is_cross_language(audio_lang, subtitle_lang)
@@ -405,21 +388,18 @@ def _run_batch(args: argparse.Namespace) -> int:
 
     results: list[output.BatchPairResult] = []
 
+    n_total = len(pairs_to_run)
+
     if workers == 1:
         model = transcribe.load_model(args.model, device=device)
-        bar = tqdm(
-            total=len(pairs_to_run),
-            unit="pair",
-            disable=args.json or not sys.stderr.isatty(),
-            dynamic_ncols=True,
-        )
         video_caches: dict[Path, _VideoCache] = {}
-        for video, sub in pairs_to_run:
-            bar.set_description("processing")
+        for i, (video, sub) in enumerate(pairs_to_run):
+            if not args.json:
+                print(f"[{i + 1}/{n_total}] {sub.name}", file=sys.stderr)
             try:
                 cache = video_caches.get(video)
                 match_result, new_cache = _score_pair(video, sub, args, model,
-                                                      show_progress=False, bar=bar,
+                                                      show_progress=False,
                                                       video_cache=cache)
                 if match_result.state == output.MatchState.WARN and getattr(args, 'resync', False):
                     synced_path = match_result.sync.synced_srt_path
@@ -428,7 +408,7 @@ def _run_batch(args: argparse.Namespace) -> int:
                     _ra = copy.copy(args)
                     _ra.no_sync = True
                     match_result, _ = _score_pair(video, sub, _ra, model,
-                                                  show_progress=False, bar=None,
+                                                  show_progress=False,
                                                   video_cache=new_cache)
                     match_result.state = _determine_state(match_result)
                     match_result.resynced = True
@@ -444,8 +424,6 @@ def _run_batch(args: argparse.Namespace) -> int:
                 results.append(output.BatchPairResult(
                     video=video, subtitle=sub, result=None, error=str(exc),
                 ))
-                bar.update(1)
-        bar.close()
     else:
         # Group pairs by video so each group shares one set of transcriptions.
         video_groups: dict[Path, list[Path]] = {}
@@ -456,18 +434,14 @@ def _run_batch(args: argparse.Namespace) -> int:
                 video_order.append(video)
             video_groups[video].append(sub)
 
-        bar = tqdm(
-            total=len(pairs_to_run),
-            unit="pair",
-            disable=args.json or not sys.stderr.isatty(),
-            dynamic_ncols=True,
-        )
+        if not args.json:
+            print(f"Processing {n_total} pairs ({workers} workers)...", file=sys.stderr)
         results_by_video: dict[Path, list[output.BatchPairResult]] = {}
         with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
             future_to_video: dict[concurrent.futures.Future, Path] = {}
             for video in video_order:
                 future = executor.submit(
-                    _score_group_parallel, video, video_groups[video], args, args.model, device, bar,
+                    _score_group_parallel, video, video_groups[video], args, args.model, device,
                 )
                 future_to_video[future] = video
             for future in concurrent.futures.as_completed(future_to_video):
@@ -480,7 +454,6 @@ def _run_batch(args: argparse.Namespace) -> int:
                                                result=None, error=str(exc))
                         for sub in video_groups[video]
                     ]
-        bar.close()
         results = []
         for video in video_order:
             results.extend(results_by_video.get(video, []))
@@ -490,7 +463,7 @@ def _run_batch(args: argparse.Namespace) -> int:
             if p.result is not None and p.result.state == output.MatchState.FAIL:
                 p.subtitle.unlink(missing_ok=True)
                 if not args.json:
-                    tqdm.write(f"Deleted: {p.subtitle}")
+                    print(f"Deleted: {p.subtitle}")
 
     if args.json:
         print(output.format_batch_json(results))
