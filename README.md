@@ -29,7 +29,6 @@ System dependencies (must be on PATH):
 ```bash
 # macOS
 brew install ffmpeg
-pip install ffsubsync   # provides the 'ffs' command
 ```
 
 Whisper model weights download automatically on first run.
