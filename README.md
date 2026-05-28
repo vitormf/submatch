@@ -132,6 +132,16 @@ Each pair is assigned one of four states:
 | `UNSURE` | Not enough transcription data to decide | `1` (use `--pass-unsure` to exit `0`) |
 | — | Error (missing dependency, unreadable file, no audio track) | `2` |
 
+## Acknowledgements
+
+`submatch` is a complement to the existing subtitle ecosystem, not a replacement for it. It wouldn't exist without:
+
+- [openai/whisper](https://github.com/openai/whisper) — the speech recognition engine that powers transcription
+- [smacke/ffsubsync](https://github.com/smacke/ffsubsync) — timing drift correction used before scoring
+- [tkarabela/pysubs2](https://github.com/tkarabela/pysubs2) — multi-format subtitle parsing (SRT, VTT, ASS/SSA)
+- [UKPLab/sentence-transformers](https://github.com/UKPLab/sentence-transformers) — multilingual embeddings for cross-language scoring
+- [Diaoul/subliminal](https://github.com/Diaoul/subliminal) and [morpheus65535/bazarr](https://github.com/morpheus65535/bazarr) — the subtitle download tools that `submatch` is designed to work alongside
+
 ## Limitations
 
 - Requires a local Whisper install (`pip install openai-whisper`). No API key needed.
