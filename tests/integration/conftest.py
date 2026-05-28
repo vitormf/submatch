@@ -307,6 +307,12 @@ def whisper_tiny():
     return load_model("tiny")
 
 
+@pytest.fixture(scope="session")
+def whisper_base():
+    from submatch.transcribe import load_model
+    return load_model("base")
+
+
 # English video (Omar, English speaker discussing Jamaican Patois)
 @pytest.fixture(scope="session")
 def english_video() -> Path:

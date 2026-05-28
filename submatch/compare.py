@@ -13,10 +13,22 @@ class SegmentScore:
 
 _FILLER_WORDS = frozenset({"um", "uh", "hmm", "hm", "ah", "oh", "er"})
 
+# CJK Unified Ideographs and common CJK extension blocks (no spaces between chars)
+_CJK_RE = re.compile(
+    r"[一-鿿"      # CJK Unified Ideographs
+    r"㐀-䶿"       # CJK Extension A
+    r"豈-﫿"       # CJK Compatibility Ideographs
+    r"぀-ゟ"       # Hiragana
+    r"゠-ヿ"       # Katakana
+    r"가-힯]"      # Hangul
+)
+
 
 def normalize(text: str) -> list[str]:
     text = text.lower()
     text = re.sub(r"[^\w\s]", "", text)
+    # CJK scripts have no spaces between characters; split each character individually
+    text = _CJK_RE.sub(r" \g<0> ", text)
     return [w for w in text.split() if w not in _FILLER_WORDS]
 
 

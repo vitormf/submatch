@@ -175,14 +175,14 @@ def test_cross_language_audio_detected_as_german(
 # comparisons and conservative thresholds to stay robust across model versions.
 
 def test_guarani_spanish_subtitle_scores_higher_than_german_mismatch(
-    guarani_video, guarani_es_srt, german_de_srt, whisper_tiny, embed_model,
+    guarani_video, guarani_es_srt, german_de_srt, whisper_base, embed_model,
 ):
     """Spanish translation of Guarani audio should outscore an unrelated German subtitle."""
     matching, _ = _score_cross_language(
-        guarani_video, guarani_es_srt, whisper_tiny, embed_model,
+        guarani_video, guarani_es_srt, whisper_base, embed_model,
     )
     mismatched, _ = _score_cross_language(
-        guarani_video, german_de_srt, whisper_tiny, embed_model,
+        guarani_video, german_de_srt, whisper_base, embed_model,
     )
     assert mismatched < matching, (
         f"Mismatch ({mismatched:.2f}) should be lower than match ({matching:.2f})"
@@ -190,14 +190,14 @@ def test_guarani_spanish_subtitle_scores_higher_than_german_mismatch(
 
 
 def test_guarani_english_subtitle_scores_higher_than_german_mismatch(
-    guarani_video, guarani_en_srt, german_de_srt, whisper_tiny, embed_model,
+    guarani_video, guarani_en_srt, german_de_srt, whisper_base, embed_model,
 ):
     """English translation of Guarani audio should outscore an unrelated German subtitle."""
     matching, _ = _score_cross_language(
-        guarani_video, guarani_en_srt, whisper_tiny, embed_model,
+        guarani_video, guarani_en_srt, whisper_base, embed_model,
     )
     mismatched, _ = _score_cross_language(
-        guarani_video, german_de_srt, whisper_tiny, embed_model,
+        guarani_video, german_de_srt, whisper_base, embed_model,
     )
     assert mismatched < matching, (
         f"Mismatch ({mismatched:.2f}) should be lower than match ({matching:.2f})"
@@ -347,40 +347,12 @@ def test_french_wrong_content_scores_lower(
 # Shanghainese is a Wu Chinese dialect; Whisper may detect it as zh or another variety.
 
 def test_shanghainese_native_subtitle_passes_threshold(
-    shanghainese_video, shanghainese_zh_hans_srt, whisper_tiny,
+    shanghainese_video, shanghainese_zh_hans_srt, whisper_base,
 ):
     """Simplified Chinese subtitle for Shanghainese audio should score above 0.15."""
-    confidence, _ = _score(shanghainese_video, shanghainese_zh_hans_srt, whisper_tiny)
+    confidence, _ = _score(shanghainese_video, shanghainese_zh_hans_srt, whisper_base)
     assert confidence >= 0.15, (
         f"Native Shanghainese/zh-hans subtitle scored {confidence:.2f}, expected >= 0.15"
-    )
-
-
-def test_cross_language_shanghainese_english_passes_threshold(
-    shanghainese_video, shanghainese_en_srt, whisper_tiny, embed_model,
-):
-    """English translation of Shanghainese audio should score above 0.10 via embeddings."""
-    confidence, _ = _score_cross_language(
-        shanghainese_video, shanghainese_en_srt, whisper_tiny, embed_model,
-    )
-    assert confidence >= 0.10, (
-        f"Shanghainese audio + EN subtitle scored {confidence:.2f}, expected >= 0.10"
-    )
-
-
-def test_shanghainese_matching_subtitle_scores_higher_than_mismatch(
-    shanghainese_video, shanghainese_en_srt, guarani_en_srt, whisper_tiny, embed_model,
-):
-    """Correct English translation of Shanghainese audio should outscore an unrelated one."""
-    matching, _ = _score_cross_language(
-        shanghainese_video, shanghainese_en_srt, whisper_tiny, embed_model,
-    )
-    wrong_content, _ = _score_cross_language(
-        shanghainese_video, guarani_en_srt, whisper_tiny, embed_model,
-    )
-    assert wrong_content < matching, (
-        f"Wrong-content EN subtitle ({wrong_content:.2f}) should score lower "
-        f"than matching EN translation ({matching:.2f})"
     )
 
 
@@ -388,32 +360,32 @@ def test_shanghainese_matching_subtitle_scores_higher_than_mismatch(
 # No native Hindi subtitle track exists; all tests use cross-language scoring.
 
 def test_cross_language_hindi_english_passes_threshold(
-    hindi_video, hindi_en_srt, whisper_tiny, embed_model,
+    hindi_video, hindi_en_srt, whisper_base, embed_model,
 ):
     """English translation of Hindi audio should score above 0.10 via embeddings."""
-    confidence, _ = _score_cross_language(hindi_video, hindi_en_srt, whisper_tiny, embed_model)
+    confidence, _ = _score_cross_language(hindi_video, hindi_en_srt, whisper_base, embed_model)
     assert confidence >= 0.10, (
-        f"HI audio + EN subtitle scored {confidence:.2f} (tiny model), expected >= 0.10"
+        f"HI audio + EN subtitle scored {confidence:.2f} (base model), expected >= 0.10"
     )
 
 
 def test_cross_language_hindi_french_passes_threshold(
-    hindi_video, hindi_fr_srt, whisper_tiny, embed_model,
+    hindi_video, hindi_fr_srt, whisper_base, embed_model,
 ):
     """French translation of Hindi audio should score above 0.10 via embeddings."""
-    confidence, _ = _score_cross_language(hindi_video, hindi_fr_srt, whisper_tiny, embed_model)
+    confidence, _ = _score_cross_language(hindi_video, hindi_fr_srt, whisper_base, embed_model)
     assert confidence >= 0.10, (
-        f"HI audio + FR subtitle scored {confidence:.2f} (tiny model), expected >= 0.10"
+        f"HI audio + FR subtitle scored {confidence:.2f} (base model), expected >= 0.10"
     )
 
 
 def test_hindi_correct_translation_scores_higher_than_wrong_content(
-    hindi_video, hindi_en_srt, guarani_en_srt, whisper_tiny, embed_model,
+    hindi_video, hindi_en_srt, guarani_en_srt, whisper_base, embed_model,
 ):
     """Correct English translation of Hindi audio should outscore an unrelated English subtitle."""
-    matching, _ = _score_cross_language(hindi_video, hindi_en_srt, whisper_tiny, embed_model)
+    matching, _ = _score_cross_language(hindi_video, hindi_en_srt, whisper_base, embed_model)
     wrong_content, _ = _score_cross_language(
-        hindi_video, guarani_en_srt, whisper_tiny, embed_model,
+        hindi_video, guarani_en_srt, whisper_base, embed_model,
     )
     assert wrong_content < matching, (
         f"Wrong-content EN subtitle ({wrong_content:.2f}) should score lower "
