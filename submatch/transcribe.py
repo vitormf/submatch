@@ -11,6 +11,7 @@ class TranscriptionResult:
 
 
 def load_model(model_name: str = "base", device: str | None = None) -> Any:
+    import warnings
     import torch
     import whisper
     if device is None:
@@ -20,7 +21,9 @@ def load_model(model_name: str = "base", device: str | None = None) -> Any:
             device = "mps"
         else:
             device = "cpu"
-    return whisper.load_model(model_name, device=device)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return whisper.load_model(model_name, device=device)
 
 
 def transcribe_segment(model: Any, audio_path: Path) -> TranscriptionResult:

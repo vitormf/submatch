@@ -14,6 +14,10 @@ _SCALE = 1.0 - _BASELINE
 def load_embedding_model(
     model_name: str = "paraphrase-multilingual-MiniLM-L12-v2",
 ) -> Any:
+    import logging
+    logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
+    logging.getLogger("transformers").setLevel(logging.ERROR)
+    logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
     from sentence_transformers import SentenceTransformer
     return SentenceTransformer(model_name)
 

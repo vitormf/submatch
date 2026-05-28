@@ -233,7 +233,7 @@ def _score_pair(
                 _sync_tmp = Path(tmp.name)
                 tmp.close()
                 if bar is not None:
-                    bar.set_description(f"sync  [{video.name} / {subtitle_path.name}]")
+                    bar.set_description("sync")
                 sync_result = sync.sync_subtitle(video, subtitle_path, _sync_tmp)
                 subtitles = subtitle.parse(sync_result.synced_srt_path)
             except RuntimeError as exc:
@@ -252,9 +252,7 @@ def _score_pair(
 
             for i, seg in enumerate(segments):
                 if bar is not None:
-                    bar.set_description(
-                        f"[{i + 1}/{n_seg}] {video.name} / {subtitle_path.name}"
-                    )
+                    bar.set_description(f"[{i + 1}/{n_seg}]")
                 elif show_progress and not args.json:
                     print(f"  Transcribing segment {i + 1}/{n_seg}...", end="\r")
                 try:
@@ -285,7 +283,7 @@ def _score_pair(
             # Still re-syncs per subtitle (each has its own drift), then looks up
             # subtitle text at the pre-transcribed timestamps.
             if bar is not None:
-                bar.set_description(f"scoring [{video.name} / {subtitle_path.name}]")
+                bar.set_description("scoring")
             audio_lang = video_cache.audio_lang
             cached_segs = sampler.segments_from_starts(subtitles, video_cache.segment_starts)
             transcription_pairs = [
@@ -415,7 +413,7 @@ def _run_batch(args: argparse.Namespace) -> int:
         )
         video_caches: dict[Path, _VideoCache] = {}
         for video, sub in pairs_to_run:
-            bar.set_description(f"Batch [{video.name} / {sub.name}]")
+            bar.set_description("processing")
             try:
                 cache = video_caches.get(video)
                 match_result, new_cache = _score_pair(video, sub, args, model,

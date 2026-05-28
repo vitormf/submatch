@@ -155,7 +155,7 @@ def print_batch_compact(pairs: list[BatchPairResult]) -> None:
             }[p.result.state]
             label = f"{state_color}{p.result.state.value}{_RESET}"
             score = f"{p.result.confidence:.2f}"
-        print(f"{label}  {score}  {p.video.name:<40}  {p.subtitle.name}")
+        print(f"{label}  {score}  {p.video.name} / {p.subtitle.name}")
 
 
 def print_batch_summary(pairs: list[BatchPairResult]) -> None:
