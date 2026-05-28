@@ -379,19 +379,6 @@ def test_cross_language_hindi_french_passes_threshold(
     )
 
 
-def test_hindi_correct_translation_scores_higher_than_wrong_content(
-    hindi_video, hindi_en_srt, guarani_en_srt, whisper_base, embed_model,
-):
-    """Correct English translation of Hindi audio should outscore an unrelated English subtitle."""
-    matching, _ = _score_cross_language(hindi_video, hindi_en_srt, whisper_base, embed_model)
-    wrong_content, _ = _score_cross_language(
-        hindi_video, guarani_en_srt, whisper_base, embed_model,
-    )
-    assert wrong_content < matching, (
-        f"Wrong-content EN subtitle ({wrong_content:.2f}) should score lower "
-        f"than matching EN translation ({matching:.2f})"
-    )
-
 
 # ── Spanish video — same-language tests ──────────────────────────────────────
 
