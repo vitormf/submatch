@@ -1,6 +1,7 @@
 from pathlib import Path
 import pytest
 from unittest.mock import patch, MagicMock
+import submatch.batch as batch
 from submatch.batch import (
     find_pairs, find_subtitle_candidates,
     find_pairs_recursive, find_subtitle_candidates_recursive,
@@ -371,3 +372,84 @@ def test_classify_inputs_all_subtitle_extensions(tmp_path):
     videos, subs = classify_inputs([tmp_path], recursive=False)
     assert len(subs) == 5
     assert videos == []
+
+
+# ── resolve_pairs ─────────────────────────────────────────────────────────────
+
+def test_resolve_pairs_video_only_auto_discovers_subtitle(tmp_path):
+    v = tmp_path / "movie.mkv"
+    v.touch()
+    s = tmp_path / "movie.en.srt"
+    s.touch()
+    pairs = batch.resolve_pairs([v], [])
+    assert pairs == [(v, s)]
+
+
+def test_resolve_pairs_subtitle_only_finds_video(tmp_path):
+    v = tmp_path / "movie.mkv"
+    v.touch()
+    s = tmp_path / "movie.en.srt"
+    s.touch()
+    pairs = batch.resolve_pairs([], [s])
+    assert pairs == [(v, s)]
+
+
+def test_resolve_pairs_explicit_pair(tmp_path):
+    v = tmp_path / "movie.mkv"
+    v.touch()
+    s = tmp_path / "movie.en.srt"
+    s.touch()
+    pairs = batch.resolve_pairs([v], [s])
+    assert pairs == [(v, s)]
+
+
+def test_resolve_pairs_video_with_multiple_explicit_subs(tmp_path):
+    v = tmp_path / "movie.mkv"
+    v.touch()
+    s1 = tmp_path / "movie.en.srt"
+    s1.touch()
+    s2 = tmp_path / "movie.pt.srt"
+    s2.touch()
+    pairs = batch.resolve_pairs([v], [s1, s2])
+    assert set(pairs) == {(v, s1), (v, s2)}
+
+
+def test_resolve_pairs_unmatched_subtitle_warns_and_skips(tmp_path, capsys):
+    v = tmp_path / "movie.mkv"
+    v.touch()
+    s = tmp_path / "other.en.srt"
+    s.touch()
+    pairs = batch.resolve_pairs([v], [s])
+    assert pairs == []
+    assert "Warning" in capsys.readouterr().err
+
+
+def test_resolve_pairs_video_no_subs_warns_and_skips(tmp_path, capsys):
+    v = tmp_path / "movie.mkv"
+    v.touch()
+    pairs = batch.resolve_pairs([v], [])
+    assert pairs == []
+    assert "Warning" in capsys.readouterr().err
+
+
+def test_resolve_pairs_multiple_videos_explicit_and_auto(tmp_path):
+    """v1 has an explicit subtitle; v2 has none so auto-discovers from disk."""
+    v1 = tmp_path / "v1.mkv"
+    v1.touch()
+    v2 = tmp_path / "v2.mkv"
+    v2.touch()
+    s1 = tmp_path / "v1.en.srt"
+    s1.touch()
+    s2 = tmp_path / "v2.en.srt"
+    s2.touch()
+    pairs = batch.resolve_pairs([v1, v2], [s1])
+    assert (v1, s1) in pairs
+    assert (v2, s2) in pairs
+
+
+def test_resolve_pairs_subtitle_only_no_video_warns(tmp_path, capsys):
+    s = tmp_path / "orphan.en.srt"
+    s.touch()
+    pairs = batch.resolve_pairs([], [s])
+    assert pairs == []
+    assert "Warning" in capsys.readouterr().err

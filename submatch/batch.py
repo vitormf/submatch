@@ -112,3 +112,49 @@ def filter_pairs(
             continue
         result.append((video, sub))
     return result
+
+
+def resolve_pairs(
+    videos: list[Path],
+    subtitles: list[Path],
+) -> list[tuple[Path, Path]]:
+    import sys
+    pairs: list[tuple[Path, Path]] = []
+
+    if videos:
+        video_to_subs: dict[Path, list[Path]] = {}
+        for sub in subtitles:
+            matches = [
+                v for v in videos
+                if sub.stem == v.stem or sub.stem.startswith(v.stem + ".")
+            ]
+            if not matches:
+                print(f"Warning: no matching video for subtitle: {sub.name}", file=sys.stderr)
+                continue
+            best = max(matches, key=lambda v: len(v.stem))
+            video_to_subs.setdefault(best, []).append(sub)
+
+        for video in videos:
+            if video in video_to_subs:
+                for sub in sorted(video_to_subs[video]):
+                    pairs.append((video, sub))
+            else:
+                discovered = [s for v, s in find_pairs(video.parent) if v == video]
+                if not discovered:
+                    print(f"Warning: no subtitles found for video: {video.name}", file=sys.stderr)
+                else:
+                    pairs.extend((video, s) for s in discovered)
+    else:
+        for sub in subtitles:
+            video_candidates = [
+                p for p in sub.parent.iterdir()
+                if p.suffix.lower() in VIDEO_EXTENSIONS
+                and (sub.stem == p.stem or sub.stem.startswith(p.stem + "."))
+            ]
+            if not video_candidates:
+                print(f"Warning: no matching video for subtitle: {sub.name}", file=sys.stderr)
+                continue
+            best = max(video_candidates, key=lambda p: len(p.stem))
+            pairs.append((best, sub))
+
+    return pairs
