@@ -24,14 +24,7 @@ sync  no drift  ✓
 pip install submatch
 ```
 
-System dependencies (must be on PATH):
-
-```bash
-# macOS
-brew install ffmpeg
-```
-
-Whisper model weights download automatically on first run.
+ffmpeg is bundled automatically. Whisper model weights download on first run.
 
 ## Usage
 

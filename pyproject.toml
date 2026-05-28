@@ -29,6 +29,7 @@ dependencies = [
     "langdetect>=1.0.9",
     "pysubs2>=1.6",
     "sentence-transformers>=2.2",
+    "static-ffmpeg>=2.5",
 ]
 
 [project.optional-dependencies]

@@ -575,6 +575,10 @@ def _run_batch(args: argparse.Namespace) -> int:
 
 
 def main() -> None:
+    if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
+        import static_ffmpeg
+        static_ffmpeg.add_paths()
+
     args = parse_args()
 
     if args.video.is_dir() or (args.subtitle is not None and args.subtitle.is_dir()):
