@@ -418,12 +418,11 @@ def _run_batch(args: argparse.Namespace) -> int:
 
     if workers > 1 and device in ("mps", "cuda"):
         print(
-            f"Warning: --workers {workers} ignored with --device {device} — "
-            "GPU devices are not thread-safe. Falling back to --workers 1. "
-            "Use --device cpu for parallel processing.",
+            f"Warning: --workers {workers} with --device {device} may cause GPU "
+            "contention and hangs. Use --device cpu for parallel processing, or "
+            "--workers 1 to keep GPU acceleration.",
             file=sys.stderr,
         )
-        workers = 1
 
     check_dependencies(skip_sync=args.no_sync)
 
