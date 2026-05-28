@@ -1,5 +1,9 @@
 # submatch
 
+[![PyPI version](https://img.shields.io/pypi/v/submatch)](https://pypi.org/project/submatch/)
+[![Python versions](https://img.shields.io/pypi/pyversions/submatch)](https://pypi.org/project/submatch/)
+[![License](https://img.shields.io/github/license/vitormf/submatch)](LICENSE)
+
 Verify that a subtitle file matches the audio content of a video.
 
 Subtitle download tools (like [subliminal](https://github.com/Diaoul/subliminal)) sometimes return correctly-timed but wrong-content subtitles — a different episode, a different release, or the wrong language track. `submatch` catches this by transcribing short audio segments with [Whisper](https://github.com/openai/whisper) and comparing against the subtitle text using token F1 scoring.
