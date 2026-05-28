@@ -51,6 +51,29 @@ def find_subtitle_candidates_recursive(subtitle_dir: Path) -> list[Path]:
     )
 
 
+def classify_inputs(
+    inputs: list[Path],
+    recursive: bool = True,
+) -> tuple[list[Path], list[Path]]:
+    """Classify paths into videos and subtitles, expanding directories."""
+    videos: list[Path] = []
+    subtitles: list[Path] = []
+    for path in inputs:
+        if path.is_dir():
+            if recursive:
+                files = sorted(f for f in path.rglob("*") if f.is_file())
+            else:
+                files = sorted(f for f in path.iterdir() if f.is_file())
+        else:
+            files = [path]
+        for f in files:
+            if f.suffix.lower() in SUBTITLE_EXTENSIONS:
+                subtitles.append(f)
+            else:
+                videos.append(f)
+    return videos, subtitles
+
+
 _LANG_TAG_RE = re.compile(r'^[a-zA-Z]{2,3}(-[a-zA-Z]{2,4})?$')
 
 

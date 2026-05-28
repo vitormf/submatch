@@ -4,7 +4,7 @@ from unittest.mock import patch, MagicMock
 from submatch.batch import (
     find_pairs, find_subtitle_candidates,
     find_pairs_recursive, find_subtitle_candidates_recursive,
-    filter_pairs, _extract_lang_tag, _lang_matches,
+    filter_pairs, _extract_lang_tag, _lang_matches, classify_inputs,
 )
 
 
@@ -300,3 +300,74 @@ def test_filter_pairs_combined(tmp_path):
         glob_pattern="*.srt",
     )
     assert result == [(v, en_srt)]
+
+
+# ── classify_inputs ───────────────────────────────────────────────────────────
+
+def test_classify_inputs_single_video(tmp_path):
+    v = tmp_path / "movie.mkv"
+    v.touch()
+    videos, subs = classify_inputs([v])
+    assert videos == [v]
+    assert subs == []
+
+
+def test_classify_inputs_single_subtitle(tmp_path):
+    s = tmp_path / "movie.en.srt"
+    s.touch()
+    videos, subs = classify_inputs([s])
+    assert videos == []
+    assert subs == [s]
+
+
+def test_classify_inputs_mixed_explicit_files(tmp_path):
+    v = tmp_path / "movie.mkv"
+    v.touch()
+    s = tmp_path / "movie.en.srt"
+    s.touch()
+    videos, subs = classify_inputs([v, s])
+    assert videos == [v]
+    assert subs == [s]
+
+
+def test_classify_inputs_directory_expands_flat(tmp_path):
+    v = tmp_path / "movie.mkv"
+    v.touch()
+    s = tmp_path / "movie.en.srt"
+    s.touch()
+    videos, subs = classify_inputs([tmp_path], recursive=False)
+    assert v in videos
+    assert s in subs
+
+
+def test_classify_inputs_recursive_default_finds_nested(tmp_path):
+    nested = tmp_path / "sub"
+    nested.mkdir()
+    s = nested / "movie.en.srt"
+    s.touch()
+    v = tmp_path / "movie.mkv"
+    v.touch()
+    videos, subs = classify_inputs([tmp_path], recursive=True)
+    assert s in subs
+    assert v in videos
+
+
+def test_classify_inputs_no_recursive_ignores_nested(tmp_path):
+    nested = tmp_path / "sub"
+    nested.mkdir()
+    s = nested / "movie.en.srt"
+    s.touch()
+    v = tmp_path / "movie.mkv"
+    v.touch()
+    videos, subs = classify_inputs([tmp_path], recursive=False)
+    assert s not in subs
+    assert v in videos
+
+
+def test_classify_inputs_all_subtitle_extensions(tmp_path):
+    for ext in (".srt", ".vtt", ".ass", ".ssa", ".sub"):
+        f = tmp_path / f"movie{ext}"
+        f.touch()
+    videos, subs = classify_inputs([tmp_path], recursive=False)
+    assert len(subs) == 5
+    assert videos == []
