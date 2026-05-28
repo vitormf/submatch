@@ -324,3 +324,33 @@ def test_print_human_same_language_no_cross_header(capsys):
     print_human(_make_result())
     out = capsys.readouterr().out
     assert "cross-language" not in out
+
+
+# ── fmt_progress_result ───────────────────────────────────────────────────────
+
+from submatch.output import fmt_progress_result
+
+
+def test_fmt_progress_result_pass():
+    line = fmt_progress_result(_make_result(), None, "movie.en.srt", 42.0)
+    assert "PASS" in line
+    assert "0.75" in line
+    assert "movie.en.srt" in line
+    assert "42s" in line
+
+
+def test_fmt_progress_result_error():
+    line = fmt_progress_result(None, "no audio track", "broken.srt", 5.0)
+    assert "ERROR" in line
+    assert "broken.srt" in line
+    assert "5s" in line
+
+
+def test_fmt_progress_result_fail():
+    result = _make_result()
+    result.passed = False
+    result.confidence = 0.10
+    result.state = MatchState.FAIL
+    line = fmt_progress_result(result, None, "movie.pt.srt", 30.0)
+    assert "FAIL" in line
+    assert "0.10" in line

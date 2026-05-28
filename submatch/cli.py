@@ -404,16 +404,24 @@ def _run_batch(args: argparse.Namespace) -> int:
         video_caches: dict[Path, _VideoCache] = {}
         _t0 = time.monotonic()
         _done = 0
+        _tty = not args.json and sys.stderr.isatty()
+
+        def _print_progress(n: int) -> None:
+            if _done > 0:
+                elapsed = time.monotonic() - _t0
+                eta = _fmt_eta(int(elapsed / _done * (n_total - _done)))
+                pct = int(100 * _done / n_total)
+                line = f"[{n}/{n_total}  {pct}%  {eta}]"
+            else:
+                line = f"[{n}/{n_total}]"
+            if _tty:
+                print(line, end="\r", file=sys.stderr, flush=True)
+
         for i, (video, sub) in enumerate(pairs_to_run):
-            if not args.json:
-                if _done > 0:
-                    elapsed = time.monotonic() - _t0
-                    eta = _fmt_eta(int(elapsed / _done * (n_total - _done)))
-                    pct = int(100 * _done / n_total)
-                    print(f"[{i + 1}/{n_total}  {pct}%  {eta}] {sub.name}", file=sys.stderr)
-                else:
-                    print(f"[{i + 1}/{n_total}] {sub.name}", file=sys.stderr)
+            if _tty:
+                _print_progress(i + 1)
             _pair_t0 = time.monotonic()
+            _result_line: str | None = None
             try:
                 cache = video_caches.get(video)
                 match_result, new_cache = _score_pair(video, sub, args, model,
@@ -438,13 +446,21 @@ def _run_batch(args: argparse.Namespace) -> int:
                 results.append(output.BatchPairResult(
                     video=video, subtitle=sub, result=match_result, error=None,
                 ))
+                _result_line = output.fmt_progress_result(
+                    match_result, None, sub.name, time.monotonic() - _pair_t0,
+                )
             except Exception as exc:
                 results.append(output.BatchPairResult(
                     video=video, subtitle=sub, result=None, error=str(exc),
                 ))
-            if not args.json:
-                took = time.monotonic() - _pair_t0
-                print(f"  {took:.0f}s", file=sys.stderr)
+                _result_line = output.fmt_progress_result(
+                    None, str(exc), sub.name, time.monotonic() - _pair_t0,
+                )
+            if not args.json and _result_line:
+                if _tty:
+                    print(f"\r\033[K{_result_line}", file=sys.stderr)
+                else:
+                    print(_result_line, file=sys.stderr)
             _done += 1
     else:
         # Group pairs by video so each group shares one set of transcriptions.

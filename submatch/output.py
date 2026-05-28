@@ -131,6 +131,23 @@ def format_json(result: MatchResult) -> str:
     return json.dumps(dataclasses.asdict(result), cls=_PathEncoder, indent=2)
 
 
+def fmt_progress_result(
+    result: MatchResult | None,
+    error: str | None,
+    sub_name: str,
+    took: float,
+) -> str:
+    """One-line result string for in-place progress display."""
+    secs = f"{took:.0f}s"
+    if error:
+        return f"{_RED}ERROR{_RESET}  {sub_name}  {secs}"
+    color = {
+        MatchState.PASS: _GREEN, MatchState.WARN: _YELLOW,
+        MatchState.FAIL: _RED,   MatchState.UNSURE: _YELLOW,
+    }[result.state]
+    return f"{color}{result.state.value}{_RESET}  {result.confidence:.2f}  {sub_name}  {secs}"
+
+
 def print_batch_compact(pairs: list[BatchPairResult]) -> None:
     for p in pairs:
         if p.error:

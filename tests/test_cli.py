@@ -599,6 +599,21 @@ def test_batch_suppresses_transcription_progress(tmp_path, capsys):
     assert "Transcribing" not in out
 
 
+def test_batch_tty_progress_overwrites(tmp_path, capsys):
+    """In TTY mode, each pair emits a result line to stderr."""
+    ctx = _make_batch_patches(tmp_path, ["--threshold", "0.01"])
+    [c.__enter__() for c in ctx]
+    try:
+        with pytest.raises(SystemExit), \
+             patch("sys.stderr.isatty", return_value=True):
+            cli.main()
+    finally:
+        for c in reversed(ctx):
+            c.__exit__(None, None, None)
+    err = capsys.readouterr().err
+    assert "PASS" in err or "FAIL" in err or "WARN" in err or "UNSURE" in err
+
+
 def test_parse_args_sub_lang_single(tmp_path):
     v = tmp_path / "v"
     v.mkdir()
