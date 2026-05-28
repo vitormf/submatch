@@ -7,7 +7,6 @@ from submatch.language import (
     detect_from_video,
     build_result,
     normalize_lang,
-    LanguageResult,
     _langdetect,
 )
 

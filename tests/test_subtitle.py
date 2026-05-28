@@ -1,5 +1,3 @@
-from pathlib import Path
-import pytest
 from submatch.subtitle import Subtitle, parse
 from tests.conftest import SAMPLE_SRT, SAMPLE_VTT, SAMPLE_ASS
 

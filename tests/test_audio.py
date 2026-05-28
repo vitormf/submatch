@@ -1,6 +1,5 @@
 import subprocess
 import pytest
-from pathlib import Path
 from submatch.audio import get_duration_ms, has_audio_track, extract_segment
 
 

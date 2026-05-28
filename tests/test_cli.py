@@ -1205,7 +1205,7 @@ def test_batch_parallel_sync_cleans_up_synced_file(tmp_path):
 
 def _make_match_result(segments=None, passed=True, drift_detected=False, sync=None):
     """Helper to build a MatchResult for state-system tests."""
-    from submatch.output import MatchResult, MatchState, SegmentResult
+    from submatch.output import MatchResult, SegmentResult
     from submatch.language import LanguageResult
     lang = LanguageResult(
         audio="en", subtitle_detected="en", subtitle_filename="en",
