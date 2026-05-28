@@ -17,8 +17,7 @@ def test_parse_args_defaults(tmp_path):
     v, s = tmp_path / "v.mp4", tmp_path / "s.srt"
     with patch("sys.argv", ["submatch", str(v), str(s)]):
         args = cli.parse_args()
-    assert args.video == v
-    assert args.subtitle == s
+    assert args.inputs == [v, s]
     assert args.model == "base"
     assert args.threshold == pytest.approx(0.35)
     assert args.segments is None
@@ -28,7 +27,7 @@ def test_parse_args_defaults(tmp_path):
     assert args.language is None
     assert args.no_sync is False
     assert args.keep_synced is False
-    assert args.recursive is False
+    assert args.no_recursive is False
     assert args.sub_lang is None
     assert args.filter is None
     assert args.device == "auto"
@@ -45,13 +44,14 @@ def test_parse_args_all_flags(tmp_path):
         "submatch", str(v), str(s),
         "--model", "small", "--threshold", "0.6", "--segments", "4",
         "--json", "--compact", "--verbose", "--language", "pt", "--no-sync", "--keep-synced",
-        "--recursive", "--sub-lang", "en", "--filter", "*.en.*",
+        "--no-recursive", "--sub-lang", "en", "--filter", "*.en.*",
         "--device", "cpu", "--workers", "2",
         "--cross-threshold", "0.5",
         "--resync", "--pass-unsure",
         "--drift-threshold", "5.0",
     ]):
         args = cli.parse_args()
+    assert args.inputs == [v, s]
     assert args.model == "small"
     assert args.threshold == pytest.approx(0.6)
     assert args.segments == 4
@@ -61,7 +61,7 @@ def test_parse_args_all_flags(tmp_path):
     assert args.language == "pt"
     assert args.no_sync is True
     assert args.keep_synced is True
-    assert args.recursive is True
+    assert args.no_recursive is True
     assert args.sub_lang == ["en"]
     assert args.filter == "*.en.*"
     assert args.device == "cpu"
@@ -508,14 +508,6 @@ def test_batch_error_in_one_pair_exits_2(tmp_path):
 
 # ── recursive flag ────────────────────────────────────────────────────────────
 
-def test_parse_args_recursive_short_flag(tmp_path):
-    v = tmp_path / "v"
-    v.mkdir()
-    with patch("sys.argv", ["submatch", str(v), "-r"]):
-        args = cli.parse_args()
-    assert args.recursive is True
-
-
 def test_batch_recursive_dir_mode(tmp_path):
     """--recursive finds pairs in nested subdirectory."""
     nested = tmp_path / "show" / "season1"
@@ -533,7 +525,7 @@ def test_batch_recursive_dir_mode(tmp_path):
         video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
     )
 
-    with patch("sys.argv", ["submatch", str(tmp_path), "--recursive", "--no-sync",
+    with patch("sys.argv", ["submatch", str(tmp_path), "--no-sync",
                             "--threshold", "0.01"]), \
          patch("submatch.cli.check_dependencies"), \
          patch("submatch.cli.audio.has_audio_track", return_value=True), \
@@ -550,6 +542,20 @@ def test_batch_recursive_dir_mode(tmp_path):
         with pytest.raises(SystemExit) as exc:
             cli.main()
     assert exc.value.code == 0
+
+
+def test_batch_no_recursive_dir_mode(tmp_path):
+    """--no-recursive does not find pairs in nested subdirectory."""
+    nested = tmp_path / "show" / "season1"
+    nested.mkdir(parents=True)
+    (nested / "ep01.mp4").touch()
+    (nested / "ep01.srt").write_text(SAMPLE_SRT)
+
+    with patch("sys.argv", ["submatch", str(tmp_path), "--no-recursive", "--no-sync",
+                            "--threshold", "0.01"]):
+        with pytest.raises(SystemExit) as exc:
+            cli.main()
+    assert exc.value.code == 2
 
 
 def test_batch_recursive_candidates_mode(tmp_path):
@@ -569,7 +575,7 @@ def test_batch_recursive_candidates_mode(tmp_path):
         video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
     )
 
-    with patch("sys.argv", ["submatch", str(video), str(subs_dir), "--recursive",
+    with patch("sys.argv", ["submatch", str(video), str(subs_dir),
                             "--no-sync", "--threshold", "0.01"]), \
          patch("submatch.cli.check_dependencies"), \
          patch("submatch.cli.audio.has_audio_track", return_value=True), \

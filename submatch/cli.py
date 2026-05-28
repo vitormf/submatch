@@ -29,10 +29,8 @@ def parse_args() -> argparse.Namespace:
         prog="submatch",
         description="Verify a subtitle file matches the audio content of a video.",
     )
-    parser.add_argument("video", type=Path,
-                        help="video file to check, or a directory for batch mode")
-    parser.add_argument("subtitle", type=Path, nargs="?", default=None,
-                        help="subtitle file to verify, or a directory of subtitles for batch mode")
+    parser.add_argument("inputs", type=Path, nargs="+",
+                        help="video files, subtitle files, or directories to process")
     parser.add_argument(
         "--model", default="base",
         choices=["tiny", "base", "small", "medium", "large"],
@@ -54,8 +52,8 @@ def parse_args() -> argparse.Namespace:
                         help="skip ffsubsync timing alignment")
     parser.add_argument("--keep-synced", action="store_true",
                         help="save the timing-corrected subtitle alongside the original")
-    parser.add_argument("--recursive", "-r", action="store_true",
-                        help="scan subdirectories when in batch mode")
+    parser.add_argument("--no-recursive", action="store_true", dest="no_recursive",
+                        help="do not recurse into subdirectories when expanding directories (default: recursive)")
     parser.add_argument("--sub-lang", action="append", dest="sub_lang", metavar="CODE",
                         help="only process subtitles matching this language prefix (repeatable, e.g. --sub-lang pt --sub-lang en)")
     parser.add_argument("--filter", metavar="GLOB",
