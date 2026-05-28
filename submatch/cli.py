@@ -8,6 +8,7 @@ import shutil
 import sys
 import tempfile
 import threading
+import time
 from pathlib import Path
 
 from submatch import __version__
@@ -129,6 +130,14 @@ def _is_cross_language(audio_lang: str | None, subtitle_lang: str | None) -> boo
     if not audio_lang or not subtitle_lang:
         return False
     return audio_lang.split("-")[0].lower() != subtitle_lang.split("-")[0].lower()
+
+
+def _fmt_eta(secs: int) -> str:
+    if secs < 60:
+        return f"~{secs}s"
+    if secs < 3600:
+        return f"~{secs // 60}:{secs % 60:02d}"
+    return f"~{secs // 3600}:{(secs % 3600) // 60:02d}:{secs % 60:02d}"
 
 
 def _determine_state(result: output.MatchResult) -> output.MatchState:
@@ -393,9 +402,18 @@ def _run_batch(args: argparse.Namespace) -> int:
     if workers == 1:
         model = transcribe.load_model(args.model, device=device)
         video_caches: dict[Path, _VideoCache] = {}
+        _t0 = time.monotonic()
+        _done = 0
         for i, (video, sub) in enumerate(pairs_to_run):
             if not args.json:
-                print(f"[{i + 1}/{n_total}] {sub.name}", file=sys.stderr)
+                if _done > 0:
+                    elapsed = time.monotonic() - _t0
+                    eta = _fmt_eta(int(elapsed / _done * (n_total - _done)))
+                    pct = int(100 * _done / n_total)
+                    print(f"[{i + 1}/{n_total}  {pct}%  {eta}] {sub.name}", file=sys.stderr)
+                else:
+                    print(f"[{i + 1}/{n_total}] {sub.name}", file=sys.stderr)
+            _pair_t0 = time.monotonic()
             try:
                 cache = video_caches.get(video)
                 match_result, new_cache = _score_pair(video, sub, args, model,
@@ -424,6 +442,10 @@ def _run_batch(args: argparse.Namespace) -> int:
                 results.append(output.BatchPairResult(
                     video=video, subtitle=sub, result=None, error=str(exc),
                 ))
+            if not args.json:
+                took = time.monotonic() - _pair_t0
+                print(f"  {took:.0f}s", file=sys.stderr)
+            _done += 1
     else:
         # Group pairs by video so each group shares one set of transcriptions.
         video_groups: dict[Path, list[Path]] = {}
@@ -434,8 +456,9 @@ def _run_batch(args: argparse.Namespace) -> int:
                 video_order.append(video)
             video_groups[video].append(sub)
 
-        if not args.json:
-            print(f"Processing {n_total} pairs ({workers} workers)...", file=sys.stderr)
+        _t0 = time.monotonic()
+        _done = 0
+        _done_lock = threading.Lock()
         results_by_video: dict[Path, list[output.BatchPairResult]] = {}
         with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
             future_to_video: dict[concurrent.futures.Future, Path] = {}
@@ -447,13 +470,25 @@ def _run_batch(args: argparse.Namespace) -> int:
             for future in concurrent.futures.as_completed(future_to_video):
                 video = future_to_video[future]
                 try:
-                    results_by_video[video] = future.result()
+                    group = future.result()
+                    results_by_video[video] = group
                 except Exception as exc:
-                    results_by_video[video] = [
+                    group = [
                         output.BatchPairResult(video=video, subtitle=sub,
                                                result=None, error=str(exc))
                         for sub in video_groups[video]
                     ]
+                    results_by_video[video] = group
+                if not args.json:
+                    with _done_lock:
+                        _done += len(group)
+                        elapsed = time.monotonic() - _t0
+                        pct = int(100 * _done / n_total)
+                        if _done < n_total:
+                            eta = _fmt_eta(int(elapsed / _done * (n_total - _done)))
+                            print(f"[{_done}/{n_total}  {pct}%  {eta}]", file=sys.stderr)
+                        else:
+                            print(f"[{_done}/{n_total}  100%]", file=sys.stderr)
         results = []
         for video in video_order:
             results.extend(results_by_video.get(video, []))

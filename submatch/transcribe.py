@@ -1,4 +1,6 @@
 from __future__ import annotations
+import contextlib
+import io
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -21,7 +23,7 @@ def load_model(model_name: str = "base", device: str | None = None) -> Any:
             device = "mps"
         else:
             device = "cpu"
-    with warnings.catch_warnings():
+    with warnings.catch_warnings(), contextlib.redirect_stderr(io.StringIO()):
         warnings.simplefilter("ignore")
         return whisper.load_model(model_name, device=device)
 

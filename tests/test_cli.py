@@ -1131,6 +1131,18 @@ def _make_match_result(segments=None, passed=True, drift_detected=False, sync=No
     return result
 
 
+def test_fmt_eta_seconds():
+    assert cli._fmt_eta(45) == "~45s"
+
+
+def test_fmt_eta_minutes():
+    assert cli._fmt_eta(150) == "~2:30"
+
+
+def test_fmt_eta_hours():
+    assert cli._fmt_eta(3661) == "~1:01:01"
+
+
 def test_determine_state_pass():
     result = _make_match_result(passed=True, drift_detected=False)
     assert cli._determine_state(result) == cli.output.MatchState.PASS
