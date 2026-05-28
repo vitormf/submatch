@@ -95,8 +95,8 @@ SRT, WebVTT, ASS/SSA (and any other format supported by [pysubs2](https://github
 | `--json` | off | Machine-readable JSON output |
 | `--compact` | off | One-line-per-pair summary in batch mode |
 | `--verbose` | off | Show subtitle and transcription text per segment |
-| `--device` | `auto` | Whisper inference device: `cpu`, `mps` (Apple Silicon), `cuda` (NVIDIA), `auto` |
-| `--workers` | `auto` | Parallel pairs in batch mode; auto selects 1 for GPU, up to 4 for CPU |
+| `--device` | `auto` | Whisper inference device: `cpu`, `mps` (Apple Silicon), `cuda` (NVIDIA), `auto` (CUDA > MPS > CPU) |
+| `--workers` | `auto` | Parallel pairs in batch mode; auto selects up to 4 |
 | `--delete-failures` | off | Delete subtitle files that fail the match check |
 | `--resync` | off | On DRIFT (drift detected), copy synced subtitle over original and re-score |
 | `--pass-unsure` | off | Exit 0 for UNSURE results (not enough transcription data) |

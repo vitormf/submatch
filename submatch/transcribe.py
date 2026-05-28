@@ -29,7 +29,10 @@ def load_model(model_name: str = "base", device: str | None = None) -> Any:
 
 
 def transcribe_segment(model: Any, audio_path: Path) -> TranscriptionResult:
-    result = model.transcribe(str(audio_path), fp16=False)
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        result = model.transcribe(str(audio_path), fp16=False)
     return TranscriptionResult(
         text=result["text"].strip(),
         language=result["language"],

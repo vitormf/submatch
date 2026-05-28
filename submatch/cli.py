@@ -62,10 +62,10 @@ def parse_args() -> argparse.Namespace:
                         help="only process subtitle files matching this glob pattern (e.g. '*.en.*')")
     parser.add_argument(
         "--device", choices=["cpu", "mps", "cuda", "auto"], default="auto",
-        help="Whisper inference device (default: auto — MPS > CUDA > CPU)",
+        help="Whisper inference device (default: auto — CUDA > MPS > CPU)",
     )
     parser.add_argument("--workers", type=int, default=None,
-                        help="parallel pairs in batch mode (default: auto — 1 for GPU, up to 4 for CPU)")
+                        help="parallel pairs in batch mode (default: auto — up to 4)")
     parser.add_argument("--delete-failures", action="store_true", dest="delete_failures",
                         help="delete subtitle files that fail the match check")
     parser.add_argument(
@@ -117,8 +117,6 @@ def _resolve_device(requested: str) -> str:
 def _resolve_workers(requested: int | None, device: str) -> int:
     if requested is not None:
         return requested
-    if device in ("mps", "cuda"):
-        return 1
     return min(4, os.cpu_count() or 1)
 
 
@@ -426,14 +424,6 @@ def _run_batch(args: argparse.Namespace) -> int:
 
     device = _resolve_device(args.device)
     workers = _resolve_workers(args.workers, device)
-
-    if workers > 1 and device in ("mps", "cuda"):
-        print(
-            f"Warning: --workers {workers} with --device {device} may cause GPU "
-            "contention and hangs. Use --device cpu for parallel processing, or "
-            "--workers 1 to keep GPU acceleration.",
-            file=sys.stderr,
-        )
 
     check_dependencies(skip_sync=args.no_sync)
 

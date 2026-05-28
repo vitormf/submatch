@@ -604,7 +604,7 @@ def test_batch_suppresses_transcription_progress(tmp_path, capsys):
 
 def test_batch_tty_progress_overwrites(tmp_path, capsys):
     """In TTY mode, each pair emits a result line to stderr."""
-    ctx = _make_batch_patches(tmp_path, ["--threshold", "0.01"])
+    ctx = _make_batch_patches(tmp_path, ["--threshold", "0.01", "--workers", "1"])
     [c.__enter__() for c in ctx]
     try:
         with pytest.raises(SystemExit), \
@@ -678,8 +678,10 @@ def test_resolve_device_auto_mps():
 
 
 def test_resolve_workers_auto_gpu():
-    assert cli._resolve_workers(None, "mps") == 1
-    assert cli._resolve_workers(None, "cuda") == 1
+    import os
+    expected = min(4, os.cpu_count() or 1)
+    for device in ("mps", "cuda"):
+        assert cli._resolve_workers(None, device) == expected
 
 
 def test_resolve_workers_auto_cpu():
@@ -693,23 +695,8 @@ def test_resolve_workers_explicit_overrides():
     assert cli._resolve_workers(1, "cpu") == 1
 
 
-def test_batch_warns_workers_plus_gpu(tmp_path, capsys):
+def test_batch_no_warn_multi_worker_gpu(tmp_path, capsys):
     ctx = _make_batch_patches(tmp_path, ["--workers", "2", "--device", "mps",
-                                          "--threshold", "0.01"])
-    [c.__enter__() for c in ctx]
-    try:
-        with pytest.raises(SystemExit):
-            cli.main()
-    finally:
-        for c in reversed(ctx):
-            c.__exit__(None, None, None)
-    err = capsys.readouterr().err
-    assert "Warning" in err
-    assert "contention" in err
-
-
-def test_batch_no_warn_single_worker_gpu(tmp_path, capsys):
-    ctx = _make_batch_patches(tmp_path, ["--workers", "1", "--device", "mps",
                                           "--threshold", "0.01"])
     [c.__enter__() for c in ctx]
     try:
