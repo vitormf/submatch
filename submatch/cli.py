@@ -15,6 +15,16 @@ from submatch import __version__
 from submatch import audio, compare, embeddings, language, output, sampler, subtitle, sync, transcribe
 
 
+def _ensure_utf8_stdout() -> None:
+    """Rewrap stdout/stderr with UTF-8 on Windows to prevent UnicodeEncodeError when piped."""
+    if sys.platform == 'win32':
+        import io
+        if hasattr(sys.stdout, 'buffer'):
+            sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+        if hasattr(sys.stderr, 'buffer'):
+            sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="submatch",
@@ -577,6 +587,8 @@ def _run_batch(args: argparse.Namespace) -> int:
 
 
 def main() -> None:
+    _ensure_utf8_stdout()
+
     if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
         import static_ffmpeg
         static_ffmpeg.add_paths()

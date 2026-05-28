@@ -1411,3 +1411,32 @@ def test_batch_parallel_resync(tmp_path):
             cli.main()
 
     assert exc.value.code == 0
+
+
+# ── Windows UTF-8 stdout fix ──────────────────────────────────────────────────
+
+def test_ensure_utf8_stdout_rewraps_on_windows():
+    """On Windows, stdout/stderr are rewrapped with UTF-8 to prevent UnicodeEncodeError when piped."""
+    import io
+    fake_stdout = io.TextIOWrapper(io.BytesIO(), encoding='cp1252')
+    fake_stderr = io.TextIOWrapper(io.BytesIO(), encoding='cp1252')
+
+    with patch('sys.platform', 'win32'), \
+         patch('sys.stdout', fake_stdout), \
+         patch('sys.stderr', fake_stderr):
+        cli._ensure_utf8_stdout()
+        assert sys.stdout.encoding.lower() == 'utf-8'
+        assert sys.stderr.encoding.lower() == 'utf-8'
+        sys.stdout.write('PASS ✓')  # must not raise
+
+
+def test_ensure_utf8_stdout_noop_on_non_windows():
+    """Non-Windows platforms leave stdout untouched."""
+    import io
+    fake_stdout = io.TextIOWrapper(io.BytesIO(), encoding='cp1252')
+
+    with patch('sys.platform', 'darwin'), \
+         patch('sys.stdout', fake_stdout):
+        original = sys.stdout
+        cli._ensure_utf8_stdout()
+        assert sys.stdout is original
