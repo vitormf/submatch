@@ -702,7 +702,7 @@ def test_batch_warns_workers_plus_gpu(tmp_path, capsys):
             c.__exit__(None, None, None)
     err = capsys.readouterr().err
     assert "Warning" in err
-    assert "contention" in err
+    assert "not thread-safe" in err
 
 
 def test_batch_no_warn_single_worker_gpu(tmp_path, capsys):
