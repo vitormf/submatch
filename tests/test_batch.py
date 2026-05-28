@@ -336,8 +336,8 @@ def test_classify_inputs_directory_expands_flat(tmp_path):
     s = tmp_path / "movie.en.srt"
     s.touch()
     videos, subs = classify_inputs([tmp_path], recursive=False)
-    assert v in videos
-    assert s in subs
+    assert videos == [v]
+    assert subs == [s]
 
 
 def test_classify_inputs_recursive_default_finds_nested(tmp_path):
@@ -348,8 +348,8 @@ def test_classify_inputs_recursive_default_finds_nested(tmp_path):
     v = tmp_path / "movie.mkv"
     v.touch()
     videos, subs = classify_inputs([tmp_path], recursive=True)
-    assert s in subs
-    assert v in videos
+    assert subs == [s]
+    assert videos == [v]
 
 
 def test_classify_inputs_no_recursive_ignores_nested(tmp_path):
@@ -361,7 +361,7 @@ def test_classify_inputs_no_recursive_ignores_nested(tmp_path):
     v.touch()
     videos, subs = classify_inputs([tmp_path], recursive=False)
     assert s not in subs
-    assert v in videos
+    assert videos == [v]
 
 
 def test_classify_inputs_all_subtitle_extensions(tmp_path):

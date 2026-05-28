@@ -55,7 +55,6 @@ def classify_inputs(
     inputs: list[Path],
     recursive: bool = True,
 ) -> tuple[list[Path], list[Path]]:
-    """Classify paths into videos and subtitles, expanding directories."""
     videos: list[Path] = []
     subtitles: list[Path] = []
     for path in inputs:
