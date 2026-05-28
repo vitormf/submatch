@@ -67,6 +67,8 @@ def parse_args() -> argparse.Namespace:
                         help="if timing drift detected (DRIFT), resync subtitle in place and re-score")
     parser.add_argument("--pass-unsure", action="store_true", dest="pass_unsure",
                         help="exit 0 for UNSURE results (insufficient transcription data)")
+    parser.add_argument("--drift-threshold", type=float, default=2.0, dest="drift_threshold",
+                        help="seconds of timing offset before flagging as drift (default: 2.0)")
     parser.add_argument("--timing", action="store_true",
                         help="print per-phase timing breakdown (single-pair mode only)")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -247,7 +249,7 @@ def _score_pair(
                 tmp = tempfile.NamedTemporaryFile(suffix=".srt", delete=False)
                 _sync_tmp = Path(tmp.name)
                 tmp.close()
-                sync_result = sync.sync_subtitle(video, subtitle_path, _sync_tmp)
+                sync_result = sync.sync_subtitle(video, subtitle_path, _sync_tmp, drift_threshold=args.drift_threshold)
                 subtitles = subtitle.parse(sync_result.synced_srt_path)
             except RuntimeError as exc:
                 print(

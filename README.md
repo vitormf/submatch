@@ -86,6 +86,7 @@ SRT, WebVTT, ASS/SSA (and any other format supported by [pysubs2](https://github
 | `--cross-threshold` | same as `--threshold` | Pass/fail threshold for cross-language pairs |
 | `--segments` | auto | Number of audio segments to sample |
 | `--language` | auto | Expected audio language (e.g. `en`, `pt`) |
+| `--drift-threshold` | `2.0` | Seconds of timing offset before flagging as drift |
 | `--no-sync` | off | Skip ffsubsync timing drift check |
 | `--keep-synced` | off | Save timing-corrected subtitle to disk |
 | `--recursive`, `-r` | off | Walk nested directories in batch mode |

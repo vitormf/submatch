@@ -36,6 +36,7 @@ def test_parse_args_defaults(tmp_path):
     assert args.cross_threshold is None
     assert args.resync is False
     assert args.pass_unsure is False
+    assert args.drift_threshold == pytest.approx(2.0)
 
 
 def test_parse_args_all_flags(tmp_path):
@@ -48,6 +49,7 @@ def test_parse_args_all_flags(tmp_path):
         "--device", "cpu", "--workers", "2",
         "--cross-threshold", "0.5",
         "--resync", "--pass-unsure",
+        "--drift-threshold", "5.0",
     ]):
         args = cli.parse_args()
     assert args.model == "small"
@@ -67,6 +69,7 @@ def test_parse_args_all_flags(tmp_path):
     assert args.cross_threshold == pytest.approx(0.5)
     assert args.resync is True
     assert args.pass_unsure is True
+    assert args.drift_threshold == pytest.approx(5.0)
 
 
 # ── check_dependencies ────────────────────────────────────────────────────────
@@ -1058,12 +1061,12 @@ def test_score_pair_exception_propagates_after_sync(tmp_path):
     args = argparse.Namespace(
         no_sync=False, segments=None, model="base", language=None,
         cross_threshold=None, threshold=0.35, json=False, resync=False,
-        pass_unsure=False,
+        pass_unsure=False, drift_threshold=2.0,
     )
 
     created_tmp: list[Path] = []
 
-    def fake_sync(video, subtitle, out_path):
+    def fake_sync(video, subtitle, out_path, drift_threshold=2.0):
         created_tmp.append(out_path)
         out_path.write_text(SAMPLE_SRT)
         return SyncResult(synced_srt_path=out_path, offset_seconds=0.0, drift_detected=False)

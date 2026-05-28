@@ -20,6 +20,7 @@ def sync_subtitle(
     video_path: Path,
     subtitle_path: Path,
     output_path: Path | None = None,
+    drift_threshold: float = DRIFT_THRESHOLD_SECONDS,
 ) -> SyncResult:
     if output_path is None:
         tmp = tempfile.NamedTemporaryFile(suffix=".srt", delete=False)
@@ -38,7 +39,7 @@ def sync_subtitle(
     return SyncResult(
         synced_srt_path=output_path,
         offset_seconds=offset,
-        drift_detected=abs(offset) > DRIFT_THRESHOLD_SECONDS,
+        drift_detected=abs(offset) > drift_threshold,
     )
 
 

@@ -92,6 +92,23 @@ def test_sync_subtitle_drift_detected(tmp_path):
     assert result.offset_seconds > DRIFT_THRESHOLD_SECONDS
 
 
+def test_sync_subtitle_custom_threshold_suppresses_drift(tmp_path):
+    """A custom threshold higher than the offset means no drift detected."""
+    video = tmp_path / "video.mp4"
+    video.touch()
+    subtitle = tmp_path / "sub.srt"
+    subtitle.write_text(SAMPLE_SRT)
+    output = tmp_path / "synced.srt"
+    output.write_text(_SHIFTED_SRT)  # 5s offset — exceeds default 2s but not custom 10s
+
+    with patch("submatch.sync.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0, stderr="")
+        result = sync_subtitle(video, subtitle, output, drift_threshold=10.0)
+
+    assert result.drift_detected is False
+    assert result.offset_seconds == pytest.approx(5.0)
+
+
 def test_sync_subtitle_auto_output_path(tmp_path):
     """output_path=None triggers internal tempfile creation."""
     video = tmp_path / "video.mp4"
