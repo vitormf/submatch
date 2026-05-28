@@ -151,6 +151,35 @@ ASSETS: dict[str, str] = {
         "&title=File%3AWIKITONGUES-_Krishna_speaking_Hindi.webm"
         "&lang=fr&trackformat=srt&origin=*"
     ),
+    # WIKITONGUES — Azariah speaking Spanish (CC BY-SA 4.0)
+    # Native Spanish speaker from Honduras, ~50 sec.
+    # Subtitles available in: es.  No English track.
+    "wikitongues_spanish.webm": (
+        "https://upload.wikimedia.org/wikipedia/commons/0/0a/"
+        "WIKITONGUES-_Azariah_speaking_Spanish.webm"
+    ),
+    "wikitongues_spanish.es.srt": (
+        "https://commons.wikimedia.org/w/api.php?action=timedtext"
+        "&title=File%3AWIKITONGUES-_Azariah_speaking_Spanish.webm"
+        "&lang=es&trackformat=srt&origin=*"
+    ),
+    # WIKITONGUES — Changjiu and Chaofen speaking Guiyangese (CC BY-SA 4.0)
+    # Native speakers of Guiyang dialect (Mandarin family), ~3 min.
+    # Subtitles available in: zh-hans, en.
+    "wikitongues_guiyangese.webm": (
+        "https://upload.wikimedia.org/wikipedia/commons/3/3b/"
+        "WIKITONGUES-_Changjiu_and_Chaofen_speaking_Guiyangese.webm"
+    ),
+    "wikitongues_guiyangese.zh-hans.srt": (
+        "https://commons.wikimedia.org/w/api.php?action=timedtext"
+        "&title=File%3AWIKITONGUES-_Changjiu_and_Chaofen_speaking_Guiyangese.webm"
+        "&lang=zh-hans&trackformat=srt&origin=*"
+    ),
+    "wikitongues_guiyangese.en.srt": (
+        "https://commons.wikimedia.org/w/api.php?action=timedtext"
+        "&title=File%3AWIKITONGUES-_Changjiu_and_Chaofen_speaking_Guiyangese.webm"
+        "&lang=en&trackformat=srt&origin=*"
+    ),
 }
 
 # Populated during pytest_sessionstart; checked by fixtures to skip dependent tests.
@@ -355,6 +384,33 @@ def hindi_en_srt() -> Path:
 @pytest.fixture(scope="session")
 def hindi_fr_srt() -> Path:
     return _fixture_path("wikitongues_hindi.fr.srt")
+
+
+# Spanish video (Azariah, native Spanish speaker from Honduras)
+@pytest.fixture(scope="session")
+def spanish_video() -> Path:
+    return _fixture_path("wikitongues_spanish.webm")
+
+
+@pytest.fixture(scope="session")
+def spanish_es_srt() -> Path:
+    return _fixture_path("wikitongues_spanish.es.srt")
+
+
+# Guiyangese video (Changjiu and Chaofen, Guiyang Mandarin dialect speakers)
+@pytest.fixture(scope="session")
+def guiyangese_video() -> Path:
+    return _fixture_path("wikitongues_guiyangese.webm")
+
+
+@pytest.fixture(scope="session")
+def guiyangese_zh_hans_srt() -> Path:
+    return _fixture_path("wikitongues_guiyangese.zh-hans.srt")
+
+
+@pytest.fixture(scope="session")
+def guiyangese_en_srt() -> Path:
+    return _fixture_path("wikitongues_guiyangese.en.srt")
 
 
 # Shared model fixtures

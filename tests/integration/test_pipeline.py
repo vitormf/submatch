@@ -5,9 +5,14 @@ Assets are downloaded to tests/fixtures/ and cached between runs.
 Run with: make integration-test
 
 Videos: WIKITONGUES project on Wikimedia Commons (CC BY-SA 4.0 / CC BY 3.0).
-  - Gereon speaking German  — German audio, subtitles in de/en/pt-br
-  - María speaking Guarani  — Guarani audio, subtitles in gn/en/es/de
-  - Omar speaking English   — English audio, subtitles in en/es/fr/pt
+  - Gereon speaking German        — German audio, subtitles in de/en/pt-br
+  - María speaking Guarani        — Guarani audio, subtitles in gn/en/es/de
+  - Omar speaking English         — English audio, subtitles in en/es/fr/pt
+  - Clara speaking French         — French audio, subtitles in fr/en/es
+  - Ivy speaking Shanghainese     — Shanghainese audio, subtitles in zh-hans/en
+  - Krishna speaking Hindi        — Hindi audio, subtitles in en/fr
+  - Azariah speaking Spanish      — Spanish audio, subtitle in es
+  - Changjiu & Chaofen speaking Guiyangese — Guiyangese (Mandarin) audio, subtitles in zh-hans/en
 
 Mismatch controls use subtitles from a different video in the same language:
   - Same language, wrong content → should score LOW (F1 failure)
@@ -409,6 +414,77 @@ def test_hindi_correct_translation_scores_higher_than_wrong_content(
     matching, _ = _score_cross_language(hindi_video, hindi_en_srt, whisper_tiny, embed_model)
     wrong_content, _ = _score_cross_language(
         hindi_video, guarani_en_srt, whisper_tiny, embed_model,
+    )
+    assert wrong_content < matching, (
+        f"Wrong-content EN subtitle ({wrong_content:.2f}) should score lower "
+        f"than matching EN translation ({matching:.2f})"
+    )
+
+
+# ── Spanish video — same-language tests ──────────────────────────────────────
+
+def test_spanish_native_subtitle_passes_threshold(
+    spanish_video, spanish_es_srt, whisper_tiny,
+):
+    """Spanish subtitle for Spanish audio should score above 0.25 with tiny model."""
+    confidence, _ = _score(spanish_video, spanish_es_srt, whisper_tiny)
+    assert confidence >= 0.25, (
+        f"Native Spanish subtitle scored {confidence:.2f} (tiny model), expected >= 0.25"
+    )
+
+
+def test_spanish_audio_detected_as_spanish(spanish_video, spanish_es_srt, whisper_tiny):
+    """Whisper should identify the audio language as Spanish."""
+    _, lang = _score(spanish_video, spanish_es_srt, whisper_tiny, n=1)
+    assert lang == "es", f"Expected audio language 'es', got '{lang}'"
+
+
+def test_spanish_mismatched_subtitle_scores_lower(
+    spanish_video, spanish_es_srt, guarani_es_srt, whisper_tiny,
+):
+    """Spanish subtitle from a different video should score lower than the native Spanish subtitle."""
+    matching, _ = _score(spanish_video, spanish_es_srt, whisper_tiny)
+    mismatched, _ = _score(spanish_video, guarani_es_srt, whisper_tiny)
+    assert mismatched < matching, (
+        f"Mismatch ({mismatched:.2f}) should be lower than match ({matching:.2f})"
+    )
+
+
+# ── Guiyangese video — same-language and cross-language tests ─────────────────
+# Guiyangese is a Guiyang dialect of Mandarin; Whisper detects it as zh or similar.
+# Conservative thresholds used since it is a regional dialect.
+
+def test_guiyangese_native_subtitle_passes_threshold(
+    guiyangese_video, guiyangese_zh_hans_srt, whisper_tiny,
+):
+    """Simplified Chinese subtitle for Guiyangese audio should score above 0.15."""
+    confidence, _ = _score(guiyangese_video, guiyangese_zh_hans_srt, whisper_tiny)
+    assert confidence >= 0.15, (
+        f"Native Guiyangese/zh-hans subtitle scored {confidence:.2f}, expected >= 0.15"
+    )
+
+
+def test_cross_language_guiyangese_english_passes_threshold(
+    guiyangese_video, guiyangese_en_srt, whisper_tiny, embed_model,
+):
+    """English translation of Guiyangese audio should score above 0.10 via embeddings."""
+    confidence, _ = _score_cross_language(
+        guiyangese_video, guiyangese_en_srt, whisper_tiny, embed_model,
+    )
+    assert confidence >= 0.10, (
+        f"Guiyangese audio + EN subtitle scored {confidence:.2f}, expected >= 0.10"
+    )
+
+
+def test_guiyangese_matching_subtitle_scores_higher_than_mismatch(
+    guiyangese_video, guiyangese_en_srt, guarani_en_srt, whisper_tiny, embed_model,
+):
+    """Correct English translation of Guiyangese audio should outscore an unrelated one."""
+    matching, _ = _score_cross_language(
+        guiyangese_video, guiyangese_en_srt, whisper_tiny, embed_model,
+    )
+    wrong_content, _ = _score_cross_language(
+        guiyangese_video, guarani_en_srt, whisper_tiny, embed_model,
     )
     assert wrong_content < matching, (
         f"Wrong-content EN subtitle ({wrong_content:.2f}) should score lower "
