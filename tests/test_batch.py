@@ -1,5 +1,4 @@
 from pathlib import Path
-import pytest
 from unittest.mock import patch, MagicMock
 import submatch.batch as batch
 from submatch.batch import (
@@ -246,7 +245,8 @@ def test_lang_matches_no_tag_empty_detected(tmp_path):
 def test_filter_pairs_no_filters(tmp_path):
     v = tmp_path / "movie.mkv"
     s = tmp_path / "movie.srt"
-    v.touch(); s.touch()
+    v.touch()
+    s.touch()
     pairs = [(v, s)]
     assert filter_pairs(pairs) == pairs
 
@@ -255,7 +255,9 @@ def test_filter_pairs_sub_lang_keeps_match(tmp_path):
     v = tmp_path / "movie.mkv"
     en = tmp_path / "movie.en.srt"
     pt = tmp_path / "movie.pt-BR.srt"
-    v.touch(); en.touch(); pt.touch()
+    v.touch()
+    en.touch()
+    pt.touch()
     result = filter_pairs([(v, en), (v, pt)], sub_langs=["en"])
     assert result == [(v, en)]
 
@@ -265,7 +267,10 @@ def test_filter_pairs_sub_lang_prefix(tmp_path):
     en = tmp_path / "movie.en.srt"
     pt_br = tmp_path / "movie.pt-BR.srt"
     pt_pt = tmp_path / "movie.pt-PT.srt"
-    v.touch(); en.touch(); pt_br.touch(); pt_pt.touch()
+    v.touch()
+    en.touch()
+    pt_br.touch()
+    pt_pt.touch()
     result = filter_pairs([(v, en), (v, pt_br), (v, pt_pt)], sub_langs=["pt"])
     assert {s.name for _, s in result} == {"movie.pt-BR.srt", "movie.pt-PT.srt"}
 
@@ -275,7 +280,10 @@ def test_filter_pairs_sub_lang_multiple_codes(tmp_path):
     en = tmp_path / "movie.en.srt"
     pt = tmp_path / "movie.pt.srt"
     de = tmp_path / "movie.de.srt"
-    v.touch(); en.touch(); pt.touch(); de.touch()
+    v.touch()
+    en.touch()
+    pt.touch()
+    de.touch()
     result = filter_pairs([(v, en), (v, pt), (v, de)], sub_langs=["en", "pt"])
     assert {s.name for _, s in result} == {"movie.en.srt", "movie.pt.srt"}
 
@@ -284,7 +292,9 @@ def test_filter_pairs_glob(tmp_path):
     v = tmp_path / "movie.mkv"
     en = tmp_path / "movie.en.srt"
     pt = tmp_path / "movie.pt-BR.srt"
-    v.touch(); en.touch(); pt.touch()
+    v.touch()
+    en.touch()
+    pt.touch()
     result = filter_pairs([(v, en), (v, pt)], glob_pattern="*.en.*")
     assert result == [(v, en)]
 
@@ -294,7 +304,10 @@ def test_filter_pairs_combined(tmp_path):
     en_srt = tmp_path / "movie.en.srt"
     en_vtt = tmp_path / "movie.en.vtt"
     pt = tmp_path / "movie.pt.srt"
-    v.touch(); en_srt.touch(); en_vtt.touch(); pt.touch()
+    v.touch()
+    en_srt.touch()
+    en_vtt.touch()
+    pt.touch()
     result = filter_pairs(
         [(v, en_srt), (v, en_vtt), (v, pt)],
         sub_langs=["en"],

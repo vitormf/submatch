@@ -191,7 +191,7 @@ def test_print_human_shows_video_metadata(capsys):
 
 # ── batch output ──────────────────────────────────────────────────────────────
 
-from submatch.output import (
+from submatch.output import (  # noqa: E402
     BatchPairResult, print_batch_compact, print_batch_summary, format_batch_json,
 )
 
@@ -328,7 +328,7 @@ def test_print_human_same_language_no_cross_header(capsys):
 
 # ── fmt_progress_result ───────────────────────────────────────────────────────
 
-from submatch.output import fmt_progress_result
+from submatch.output import fmt_progress_result  # noqa: E402
 
 
 def test_fmt_progress_result_pass():
