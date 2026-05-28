@@ -146,15 +146,10 @@ def resolve_pairs(
                     pairs.extend((video, s) for s in discovered)
     else:
         for sub in subtitles:
-            video_candidates = [
-                p for p in sub.parent.iterdir()
-                if p.suffix.lower() in VIDEO_EXTENSIONS
-                and (sub.stem == p.stem or sub.stem.startswith(p.stem + "."))
-            ]
-            if not video_candidates:
+            matched = [v for v, s in find_pairs(sub.parent) if s == sub]
+            if not matched:
                 print(f"Warning: no matching video for subtitle: {sub.name}", file=sys.stderr)
                 continue
-            best = max(video_candidates, key=lambda p: len(p.stem))
-            pairs.append((best, sub))
+            pairs.append((matched[0], sub))
 
-    return pairs
+    return sorted(pairs)

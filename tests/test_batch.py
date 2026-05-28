@@ -421,7 +421,9 @@ def test_resolve_pairs_unmatched_subtitle_warns_and_skips(tmp_path, capsys):
     s.touch()
     pairs = batch.resolve_pairs([v], [s])
     assert pairs == []
-    assert "Warning" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "Warning" in err
+    assert "other.en.srt" in err
 
 
 def test_resolve_pairs_video_no_subs_warns_and_skips(tmp_path, capsys):
@@ -429,7 +431,9 @@ def test_resolve_pairs_video_no_subs_warns_and_skips(tmp_path, capsys):
     v.touch()
     pairs = batch.resolve_pairs([v], [])
     assert pairs == []
-    assert "Warning" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "Warning" in err
+    assert "movie.mkv" in err
 
 
 def test_resolve_pairs_multiple_videos_explicit_and_auto(tmp_path):
@@ -452,4 +456,18 @@ def test_resolve_pairs_subtitle_only_no_video_warns(tmp_path, capsys):
     s.touch()
     pairs = batch.resolve_pairs([], [s])
     assert pairs == []
-    assert "Warning" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "Warning" in err
+    assert "orphan.en.srt" in err
+
+
+def test_resolve_pairs_video_auto_discovers_multiple_subs(tmp_path):
+    """A video with no explicit subs auto-discovers multiple subtitles from disk."""
+    v = tmp_path / "movie.mkv"
+    v.touch()
+    s_en = tmp_path / "movie.en.srt"
+    s_en.touch()
+    s_pt = tmp_path / "movie.pt.srt"
+    s_pt.touch()
+    pairs = batch.resolve_pairs([v], [])
+    assert set(pairs) == {(v, s_en), (v, s_pt)}
