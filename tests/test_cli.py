@@ -569,6 +569,85 @@ def test_batch_no_recursive_dir_mode(tmp_path):
     assert exc.value.code == 2
 
 
+# ── new input modes ───────────────────────────────────────────────────────────
+
+def test_main_video_only_auto_discovers_subtitle(tmp_path):
+    """Single video file — batch mode runs, subtitle auto-discovered."""
+    video = tmp_path / "show.mp4"
+    video.touch()
+    sub = tmp_path / "show.srt"
+    sub.write_text(SAMPLE_SRT)
+
+    subs_parsed = [Subtitle(1, 1_000, 3_500, "Hello world")]
+    segs = [Segment(60_000, 90_000, "Hello world", 2)]
+    mock_trans = MagicMock(text="hello world", language="en")
+    lang = LanguageResult(
+        audio="en", subtitle_detected="en", subtitle_filename="en",
+        video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
+    )
+
+    with patch("sys.argv", ["submatch", str(video), "--no-sync", "--threshold", "0.01"]), \
+         patch("submatch.cli.check_dependencies"), \
+         patch("submatch.cli.audio.has_audio_track", return_value=True), \
+         patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
+         patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
+         patch("submatch.cli.subtitle.parse", return_value=subs_parsed), \
+         patch("submatch.cli.sampler.select_segments", return_value=segs), \
+         patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
+         patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
+         patch("submatch.cli.language.detect_from_text", return_value="en"), \
+         patch("submatch.cli.language.detect_from_filename", return_value="en"), \
+         patch("submatch.cli.language.detect_from_video", return_value=None), \
+         patch("submatch.cli.language.build_result", return_value=lang):
+        with pytest.raises(SystemExit) as exc:
+            cli.main()
+    assert exc.value.code == 0
+
+
+def test_main_subtitle_only_finds_video(tmp_path):
+    """Single subtitle file — batch mode runs, video auto-discovered."""
+    video = tmp_path / "show.mp4"
+    video.touch()
+    sub = tmp_path / "show.srt"
+    sub.write_text(SAMPLE_SRT)
+
+    subs_parsed = [Subtitle(1, 1_000, 3_500, "Hello world")]
+    segs = [Segment(60_000, 90_000, "Hello world", 2)]
+    mock_trans = MagicMock(text="hello world", language="en")
+    lang = LanguageResult(
+        audio="en", subtitle_detected="en", subtitle_filename="en",
+        video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
+    )
+
+    with patch("sys.argv", ["submatch", str(sub), "--no-sync", "--threshold", "0.01"]), \
+         patch("submatch.cli.check_dependencies"), \
+         patch("submatch.cli.audio.has_audio_track", return_value=True), \
+         patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
+         patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
+         patch("submatch.cli.subtitle.parse", return_value=subs_parsed), \
+         patch("submatch.cli.sampler.select_segments", return_value=segs), \
+         patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
+         patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
+         patch("submatch.cli.language.detect_from_text", return_value="en"), \
+         patch("submatch.cli.language.detect_from_filename", return_value="en"), \
+         patch("submatch.cli.language.detect_from_video", return_value=None), \
+         patch("submatch.cli.language.build_result", return_value=lang):
+        with pytest.raises(SystemExit) as exc:
+            cli.main()
+    assert exc.value.code == 0
+
+
+def test_main_multiple_inputs_nonexistent_all_reported(tmp_path, capsys):
+    """All missing paths are reported before exit 2."""
+    with patch("sys.argv", ["submatch", str(tmp_path / "a.mp4"), str(tmp_path / "b.srt")]):
+        with pytest.raises(SystemExit) as exc:
+            cli.main()
+    assert exc.value.code == 2
+    err = capsys.readouterr().err
+    assert "a.mp4" in err
+    assert "b.srt" in err
+
+
 def test_batch_recursive_candidates_mode(tmp_path):
     """--recursive with subtitle dir finds subtitles in subdirectories."""
     video = tmp_path / "movie.mp4"
