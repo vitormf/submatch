@@ -1,4 +1,6 @@
 from __future__ import annotations
+import contextlib
+import io
 from typing import Any
 import numpy as np
 
@@ -19,7 +21,8 @@ def load_embedding_model(
     logging.getLogger("transformers").setLevel(logging.ERROR)
     logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
     from sentence_transformers import SentenceTransformer
-    return SentenceTransformer(model_name)
+    with contextlib.redirect_stderr(io.StringIO()):
+        return SentenceTransformer(model_name)
 
 
 def normalize_cross_score(cosine: float) -> float:
