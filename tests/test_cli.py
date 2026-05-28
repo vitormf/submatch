@@ -173,6 +173,16 @@ def test_main_subtitle_not_found(tmp_path):
     assert exc.value.code == 2
 
 
+def test_main_inputs_nonexistent_hard_error(tmp_path):
+    """Any non-existent path in inputs causes exit 2 before processing."""
+    v = tmp_path / "video.mp4"
+    v.touch()
+    with patch("sys.argv", ["submatch", str(v), str(tmp_path / "no.srt")]):
+        with pytest.raises(SystemExit) as exc:
+            cli.main()
+    assert exc.value.code == 2
+
+
 def test_main_no_audio_track(tmp_path):
     video = tmp_path / "video.mp4"
     video.touch()
@@ -552,7 +562,8 @@ def test_batch_no_recursive_dir_mode(tmp_path):
     (nested / "ep01.srt").write_text(SAMPLE_SRT)
 
     with patch("sys.argv", ["submatch", str(tmp_path), "--no-recursive", "--no-sync",
-                            "--threshold", "0.01"]):
+                            "--threshold", "0.01"]), \
+         patch("submatch.cli.check_dependencies"):
         with pytest.raises(SystemExit) as exc:
             cli.main()
     assert exc.value.code == 2
@@ -957,17 +968,15 @@ def test_batch_sync_bar_description(tmp_path):
 
 
 def test_batch_single_video_non_dir_subtitle_exits_2(tmp_path):
-    """_run_batch returns 2 when video is a file and subtitle argument is not a directory."""
+    """_run_batch returns 2 when no pairs can be resolved."""
     video = tmp_path / "movie.mp4"
     video.touch()
-    sub_file = tmp_path / "movie.srt"
-    sub_file.write_text(SAMPLE_SRT)
 
-    with patch("sys.argv", ["submatch", str(video), str(sub_file), "--no-sync"]):
+    with patch("sys.argv", ["submatch", str(video), "--no-sync"]):
         args = cli.parse_args()
 
     with patch("submatch.cli.check_dependencies"):
-        result = cli._run_batch(args)
+        result = cli._run_batch(args, [video], [])
     assert result == 2
 
 

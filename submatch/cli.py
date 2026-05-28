@@ -389,27 +389,10 @@ def _score_pair(
         raise
 
 
-def _run_batch(args: argparse.Namespace) -> int:
+def _run_batch(args: argparse.Namespace, videos: list[Path], subtitles: list[Path]) -> int:
     from submatch import batch as _batch
 
-    if args.video.is_dir():
-        pairs_to_run = (
-            _batch.find_pairs_recursive(args.video)
-            if args.recursive
-            else _batch.find_pairs(args.video)
-        )
-    else:
-        if not args.subtitle.is_dir():
-            print(f"Error: expected a directory for subtitle argument, got: {args.subtitle}",
-                  file=sys.stderr)
-            return 2
-        candidates = (
-            _batch.find_subtitle_candidates_recursive(args.subtitle)
-            if args.recursive
-            else _batch.find_subtitle_candidates(args.subtitle)
-        )
-        pairs_to_run = [(args.video, c) for c in candidates]
-
+    pairs_to_run = _batch.resolve_pairs(videos, subtitles)
     pairs_to_run = _batch.filter_pairs(
         pairs_to_run,
         sub_langs=args.sub_lang,
@@ -582,15 +565,21 @@ def main() -> None:
 
     args = parse_args()
 
-    if args.video.is_dir() or (args.subtitle is not None and args.subtitle.is_dir()):
-        sys.exit(_run_batch(args))
+    missing = [p for p in args.inputs if not p.exists()]
+    if missing:
+        for p in missing:
+            print(f"Error: not found: {p}", file=sys.stderr)
+        sys.exit(2)
 
-    if not args.video.exists():
-        print(f"Error: video not found: {args.video}", file=sys.stderr)
-        sys.exit(2)
-    if args.subtitle is None or not args.subtitle.exists():
-        print(f"Error: subtitle not found: {args.subtitle}", file=sys.stderr)
-        sys.exit(2)
+    from submatch import batch as _batch
+    had_dirs = any(p.is_dir() for p in args.inputs)
+    videos, subtitles = _batch.classify_inputs(args.inputs, recursive=not args.no_recursive)
+
+    if not had_dirs and len(videos) == 1 and len(subtitles) == 1:
+        args.video = videos[0]
+        args.subtitle = subtitles[0]
+    else:
+        sys.exit(_run_batch(args, videos, subtitles))
 
     check_dependencies(skip_sync=args.no_sync)
 
