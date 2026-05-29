@@ -89,6 +89,7 @@ SRT, WebVTT, ASS/SSA (and any other format supported by [pysubs2](https://github
 | `--threshold` | `0.35` | Pass/fail confidence cutoff (0–1) |
 | `--cross-threshold` | same as `--threshold` | Pass/fail threshold for cross-language pairs |
 | `--segments` | auto | Number of audio segments to sample |
+| `--audio-track` | `0` | Audio track to use: integer index (0-based) or comma-separated language preference list (`jp,en,pt`). Default: track 0. |
 | `--language` | auto | Expected audio language (e.g. `en`, `pt`) |
 | `--drift-threshold` | `2.0` | Seconds of timing offset before flagging as drift |
 | `--no-sync` | off | Skip ffsubsync timing drift check |
