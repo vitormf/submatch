@@ -20,3 +20,12 @@ def list_subtitle_tracks(video: Path) -> list[dict]:
         }
         for i, s in enumerate(streams)
     ]
+
+
+def extract_subtitle_track(video: Path, index: int, dest: Path) -> None:
+    """Extract subtitle stream at stream index `index` to `dest` as SRT."""
+    subprocess.run(
+        ["ffmpeg", "-y", "-i", str(video),
+         "-map", f"0:s:{index}", "-c:s", "srt", str(dest)],
+        capture_output=True, check=True,
+    )

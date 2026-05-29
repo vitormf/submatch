@@ -1,8 +1,10 @@
 import json
+import subprocess
 from pathlib import Path
 from unittest.mock import patch, MagicMock
+import pytest
 
-from submatch.embedded import list_subtitle_tracks
+from submatch.embedded import list_subtitle_tracks, extract_subtitle_track
 
 
 def _ffprobe_out(streams: list[dict]) -> str:
@@ -51,3 +53,33 @@ def test_list_subtitle_tracks_ffprobe_command():
     assert "-select_streams" in cmd
     assert "s" in cmd
     assert "movie.mkv" in cmd
+
+
+def test_extract_subtitle_track_calls_ffmpeg(tmp_path):
+    dest = tmp_path / "sub.srt"
+    with patch("subprocess.run") as mock_run:
+        extract_subtitle_track(Path("movie.mkv"), 0, dest)
+    cmd = mock_run.call_args[0][0]
+    assert cmd[0] == "ffmpeg"
+    assert "-map" in cmd
+    idx = cmd.index("-map")
+    assert cmd[idx + 1] == "0:s:0"
+    assert "-c:s" in cmd
+    assert "srt" in cmd
+    assert str(dest) in cmd
+
+
+def test_extract_subtitle_track_index_2(tmp_path):
+    dest = tmp_path / "sub.srt"
+    with patch("subprocess.run") as mock_run:
+        extract_subtitle_track(Path("movie.mkv"), 2, dest)
+    cmd = mock_run.call_args[0][0]
+    idx = cmd.index("-map")
+    assert cmd[idx + 1] == "0:s:2"
+
+
+def test_extract_subtitle_track_propagates_error(tmp_path):
+    dest = tmp_path / "sub.srt"
+    with patch("subprocess.run", side_effect=subprocess.CalledProcessError(1, "ffmpeg")):
+        with pytest.raises(subprocess.CalledProcessError):
+            extract_subtitle_track(Path("movie.mkv"), 0, dest)
