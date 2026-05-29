@@ -82,6 +82,8 @@ def parse_args() -> argparse.Namespace:
         "--audio-track", default=None, dest="audio_track",
         help="audio track to use: integer index (0-based) or comma-separated language preference list (e.g. jp,en,pt)",
     )
+    parser.add_argument("--embedded", action="store_true",
+                        help="score embedded subtitle tracks in the video container")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return parser.parse_args()
 
@@ -657,6 +659,13 @@ def main() -> None:
         static_ffmpeg.add_paths()
 
     args = parse_args()
+
+    if args.embedded and (args.resync or args.keep_synced):
+        print(
+            "Error: --embedded is incompatible with --resync and --keep-synced",
+            file=sys.stderr,
+        )
+        sys.exit(2)
 
     missing = [p for p in args.inputs if not p.exists()]
     if missing:
