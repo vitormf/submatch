@@ -1,6 +1,5 @@
 import concurrent.futures
 import sys
-import json
 import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -23,7 +22,9 @@ def test_parse_args_defaults(tmp_path):
     assert args.model == "base"
     assert args.threshold == pytest.approx(0.35)
     assert args.segments is None
-    assert args.json is False
+    assert args.json is None
+    assert args.csv is None
+    assert args.html is None
     assert args.compact is False
     assert args.verbose is False
     assert args.language is None
@@ -46,7 +47,8 @@ def test_parse_args_all_flags(tmp_path):
     with patch("sys.argv", [
         "submatch", str(v), str(s),
         "--model", "small", "--threshold", "0.6", "--segments", "4",
-        "--json", "--compact", "--verbose", "--language", "pt", "--no-sync", "--keep-synced",
+        "--json", "out.json", "--csv", "out.csv", "--html", "out.html",
+        "--compact", "--verbose", "--language", "pt", "--no-sync", "--keep-synced",
         "--no-recursive", "--sub-lang", "en", "--filter", "*.en.*",
         "--device", "cpu", "--workers", "2",
         "--cross-threshold", "0.5",
@@ -59,7 +61,9 @@ def test_parse_args_all_flags(tmp_path):
     assert args.model == "small"
     assert args.threshold == pytest.approx(0.6)
     assert args.segments == 4
-    assert args.json is True
+    assert args.json == "out.json"
+    assert args.csv == "out.csv"
+    assert args.html == "out.html"
     assert args.compact is True
     assert args.verbose is True
     assert args.language == "pt"
@@ -283,18 +287,19 @@ def test_main_pipeline_fails(tmp_path):
     assert exc.value.code == 1
 
 
-def test_main_json_output(tmp_path, capsys):
-    _, _, ctx = _make_pipeline_patches(tmp_path, ["--json", "--threshold", "0.01"])
-    [c.__enter__() for c in ctx]
-    try:
-        with pytest.raises(SystemExit):
-            cli.main()
-    finally:
-        for c in reversed(ctx):
-            c.__exit__(None, None, None)
-    data = json.loads(capsys.readouterr().out)
-    assert "confidence" in data
-    assert "passed" in data
+def test_main_json_output(tmp_path):
+    json_out = tmp_path / "out.json"
+    _, _, ctx = _make_pipeline_patches(tmp_path, ["--json", str(json_out), "--threshold", "0.01"])
+    with patch("submatch.report.write_json") as mock_write_json:
+        [c.__enter__() for c in ctx]
+        try:
+            with pytest.raises(SystemExit):
+                cli.main()
+        finally:
+            for c in reversed(ctx):
+                c.__exit__(None, None, None)
+    mock_write_json.assert_called_once()
+    assert mock_write_json.call_args[0][1] == str(json_out)
 
 
 def test_main_sync_success_reparses_srt(tmp_path):
@@ -535,20 +540,19 @@ def test_batch_candidates_mode(tmp_path):
     assert exc.value.code == 0
 
 
-def test_batch_json_output(tmp_path, capsys):
-    ctx = _make_batch_patches(tmp_path, ["--json", "--threshold", "0.01"])
-    [c.__enter__() for c in ctx]
-    try:
-        with pytest.raises(SystemExit):
-            cli.main()
-    finally:
-        for c in reversed(ctx):
-            c.__exit__(None, None, None)
-    data = json.loads(capsys.readouterr().out)
-    assert isinstance(data, list)
-    assert data[0]["passed"] is True
-    assert "video" in data[0]
-    assert "subtitle" in data[0]
+def test_batch_json_output(tmp_path):
+    json_out = tmp_path / "out.json"
+    ctx = _make_batch_patches(tmp_path, ["--json", str(json_out), "--threshold", "0.01"])
+    with patch("submatch.report.write_json") as mock_write_json:
+        [c.__enter__() for c in ctx]
+        try:
+            with pytest.raises(SystemExit):
+                cli.main()
+        finally:
+            for c in reversed(ctx):
+                c.__exit__(None, None, None)
+    mock_write_json.assert_called_once()
+    assert mock_write_json.call_args[0][1] == str(json_out)
 
 
 def test_batch_compact_output(tmp_path, capsys):
@@ -1430,7 +1434,7 @@ def test_score_pair_exception_propagates_after_sync(tmp_path):
     subs = [Subtitle(1, 1_000, 3_500, "Hello world")]
     args = argparse.Namespace(
         no_sync=False, segments=None, model="base", language=None,
-        cross_threshold=None, threshold=0.35, json=False, resync=False,
+        cross_threshold=None, threshold=0.35, json=None, resync=False,
         pass_unsure=False, drift_threshold=2.0,
     )
 
@@ -1790,7 +1794,7 @@ def test_batch_parallel_resync(tmp_path):
 def test_run_summary_single_pair(tmp_path, capsys):
     v = tmp_path / "movie.mkv"
     s = tmp_path / "movie.en.srt"
-    cli._print_run_summary([(v, s)], json_mode=False)
+    cli._print_run_summary([(v, s)])
     err = capsys.readouterr().err
     assert "Checking:" in err
     assert "movie.mkv" in err
@@ -1799,7 +1803,7 @@ def test_run_summary_single_pair(tmp_path, capsys):
 
 def test_run_summary_short_list(tmp_path, capsys):
     pairs = [(tmp_path / f"v{i}.mkv", tmp_path / f"v{i}.srt") for i in range(3)]
-    cli._print_run_summary(pairs, json_mode=False)
+    cli._print_run_summary(pairs)
     err = capsys.readouterr().err
     assert "Checking 3 pairs:" in err
     assert "v0.mkv" in err
@@ -1808,7 +1812,7 @@ def test_run_summary_short_list(tmp_path, capsys):
 
 def test_run_summary_long_list(tmp_path, capsys):
     pairs = [(tmp_path / f"v{i}.mkv", tmp_path / f"v{i}.srt") for i in range(10)]
-    cli._print_run_summary(pairs, json_mode=False)
+    cli._print_run_summary(pairs)
     err = capsys.readouterr().err
     assert "Checking 10 pairs" in err
     assert "10 videos" in err
@@ -1820,17 +1824,37 @@ def test_run_summary_long_list_counts_unique_videos(tmp_path, capsys):
     pairs = [(v, tmp_path / f"movie.{lang}.srt") for lang in ("en", "pt", "de",
                                                                 "fr", "es", "it",
                                                                 "ja", "zh", "ko")]
-    cli._print_run_summary(pairs, json_mode=False)
+    cli._print_run_summary(pairs)
     err = capsys.readouterr().err
     assert "1 video," in err
     assert "9 subtitles" in err
 
 
-def test_run_summary_suppressed_by_json(tmp_path, capsys):
-    v = tmp_path / "movie.mkv"
-    s = tmp_path / "movie.srt"
-    cli._print_run_summary([(v, s)], json_mode=True)
-    assert capsys.readouterr().err == ""
+def test_parse_args_json_file(tmp_path):
+    v, s = tmp_path / "v.mp4", tmp_path / "s.srt"
+    with patch("sys.argv", ["submatch", str(v), str(s), "--json", "out.json"]), \
+         patch("submatch.config.load_config", return_value={}):
+        args = cli.parse_args()
+    assert args.json == "out.json"
+
+
+def test_parse_args_bare_json_is_error(tmp_path):
+    v, s = tmp_path / "v.mp4", tmp_path / "s.srt"
+    with patch("sys.argv", ["submatch", str(v), str(s), "--json"]), \
+         patch("submatch.config.load_config", return_value={}), \
+         pytest.raises(SystemExit) as exc:
+        cli.parse_args()
+    assert exc.value.code == 2
+
+
+def test_parse_args_csv_html(tmp_path):
+    v, s = tmp_path / "v.mp4", tmp_path / "s.srt"
+    with patch("sys.argv", ["submatch", str(v), str(s),
+                            "--csv", "out.csv", "--html", "out.html"]), \
+         patch("submatch.config.load_config", return_value={}):
+        args = cli.parse_args()
+    assert args.csv == "out.csv"
+    assert args.html == "out.html"
 
 
 def test_main_single_pair_prints_summary(tmp_path, capsys):
@@ -1848,17 +1872,19 @@ def test_main_single_pair_prints_summary(tmp_path, capsys):
     assert "sub.srt" in err
 
 
-def test_main_single_pair_json_suppresses_summary(tmp_path, capsys):
-    _, _, ctx = _make_pipeline_patches(tmp_path, ["--json", "--threshold", "0.01"])
-    [c.__enter__() for c in ctx]
-    try:
-        with pytest.raises(SystemExit):
-            cli.main()
-    finally:
-        for c in reversed(ctx):
-            c.__exit__(None, None, None)
+def test_main_single_pair_json_still_shows_summary(tmp_path, capsys):
+    json_out = tmp_path / "out.json"
+    _, _, ctx = _make_pipeline_patches(tmp_path, ["--json", str(json_out), "--threshold", "0.01"])
+    with patch("submatch.report.write_json"):
+        [c.__enter__() for c in ctx]
+        try:
+            with pytest.raises(SystemExit):
+                cli.main()
+        finally:
+            for c in reversed(ctx):
+                c.__exit__(None, None, None)
     err = capsys.readouterr().err
-    assert "Checking:" not in err
+    assert "Checking:" in err
 
 
 def test_batch_dir_mode_prints_summary(tmp_path, capsys):

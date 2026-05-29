@@ -40,8 +40,12 @@ def parse_args() -> argparse.Namespace:
                         help="minimum confidence score to pass (default: 0.35)")
     parser.add_argument("--segments", type=int, default=None,
                         help="number of audio segments to sample (default: auto based on duration)")
-    parser.add_argument("--json", action="store_true",
-                        help="output results as JSON")
+    parser.add_argument("--json", default=None, metavar="FILE",
+                        help="write JSON report to FILE")
+    parser.add_argument("--csv", default=None, metavar="FILE",
+                        help="write CSV report to FILE")
+    parser.add_argument("--html", default=None, metavar="FILE",
+                        help="write self-contained HTML report to FILE")
     parser.add_argument("--compact", action="store_true",
                         help="one-line-per-pair output in batch mode")
     parser.add_argument("--verbose", action="store_true",
@@ -200,9 +204,7 @@ def _should_fail(result: output.MatchResult, pass_unsure: bool) -> bool:
 _SUMMARY_THRESHOLD = 8
 
 
-def _print_run_summary(pairs: list[tuple[Path, Path]], json_mode: bool) -> None:
-    if json_mode:
-        return
+def _print_run_summary(pairs: list[tuple[Path, Path]]) -> None:
     n = len(pairs)
     if n == 0:
         return
@@ -220,6 +222,16 @@ def _print_run_summary(pairs: list[tuple[Path, Path]], json_mode: bool) -> None:
             f"{n} subtitle{'s' if n != 1 else ''}.",
             file=sys.stderr,
         )
+
+
+def _write_reports(results: list[output.BatchPairResult], args: argparse.Namespace) -> None:
+    from submatch import report as _report
+    if args.json:
+        _report.write_json(results, args.json)
+    if args.csv:
+        _report.write_csv(results, args.csv)
+    if args.html:
+        _report.write_html(results, args.html)
 
 
 _embed_local = threading.local()
@@ -348,7 +360,7 @@ def _score_pair(
             for i, seg in enumerate(segments):
                 if on_segment is not None:
                     on_segment(i + 1, n_seg)
-                elif show_progress and not args.json:
+                elif show_progress:
                     print(f"  [{i + 1}/{n_seg}]", end="\r", file=sys.stderr)
                 _t_seg = time.monotonic()
                 try:
@@ -372,7 +384,7 @@ def _score_pair(
                     print(f"Warning: segment {i + 1} failed: {exc}", file=sys.stderr)
             _t = _phase("transcription total", _t)
 
-            if show_progress and not args.json:
+            if show_progress:
                 print()
 
             new_cache = _VideoCache(
@@ -489,7 +501,7 @@ def _run_batch(
         print("No video/subtitle pairs found.", file=sys.stderr)
         return 2
 
-    _print_run_summary(pairs_to_run, args.json)
+    _print_run_summary(pairs_to_run)
 
     device = _resolve_device(args.device)
     workers = _resolve_workers(args.workers, device)
@@ -500,8 +512,7 @@ def _run_batch(
 
     n_total = len(pairs_to_run)
 
-    if not args.json:
-        print(f"Loading model ({args.model})...", file=sys.stderr, flush=True)
+    print(f"Loading model ({args.model})...", file=sys.stderr, flush=True)
 
     if workers == 1:
         model = transcribe.load_model(args.model, device=device)
@@ -510,7 +521,7 @@ def _run_batch(
         _done = 0
         _ema_pair_time: float | None = None
         _EMA_ALPHA = 0.3
-        _tty = not args.json and sys.stderr.isatty()
+        _tty = sys.stderr.isatty()
 
         def _print_progress(n: int, sub_name: str) -> None:
             if _ema_pair_time is not None:
@@ -540,8 +551,7 @@ def _run_batch(
             return _cb
 
         for i, (video, sub) in enumerate(pairs_to_run):
-            if not args.json:
-                _print_progress(i + 1, sub.name)
+            _print_progress(i + 1, sub.name)
             _pair_t0 = time.monotonic()
             _on_seg = _make_on_seg(i + 1, sub.name)
             _match_result: output.MatchResult | None = None
@@ -577,16 +587,15 @@ def _run_batch(
                     video=video, subtitle=sub, result=None, error=_error,
                 ))
             _took = time.monotonic() - _pair_t0
-            if not args.json:
-                if _tty:
-                    print("\r\033[K", end="", file=sys.stderr, flush=True)
-                if _error:
-                    print(f"\nError: {video.name} / {sub.name}: {_error}", file=sys.stderr)
-                elif args.compact:
-                    output.print_batch_compact([results[-1]])
-                else:
-                    output.print_human(_match_result, verbose=args.verbose,
-                                       video=video, subtitle=sub)
+            if _tty:
+                print("\r\033[K", end="", file=sys.stderr, flush=True)
+            if _error:
+                print(f"\nError: {video.name} / {sub.name}: {_error}", file=sys.stderr)
+            elif args.compact:
+                output.print_batch_compact([results[-1]])
+            else:
+                output.print_human(_match_result, verbose=args.verbose,
+                                   video=video, subtitle=sub)
             if _ema_pair_time is None:
                 _ema_pair_time = _took
             else:
@@ -629,27 +638,26 @@ def _run_batch(
                         for sub in video_groups[video]
                     ]
                     results_by_video[video] = group
-                if not args.json:
-                    with _done_lock:
-                        _done += len(group)
-                        for pair_result in group:
-                            if pair_result.error:
-                                print(f"\nError: {pair_result.video.name} / "
-                                      f"{pair_result.subtitle.name}: {pair_result.error}",
-                                      file=sys.stderr)
-                            elif args.compact:
-                                output.print_batch_compact([pair_result])
-                            else:
-                                output.print_human(pair_result.result, verbose=args.verbose,
-                                                   video=pair_result.video,
-                                                   subtitle=pair_result.subtitle)
-                        elapsed = time.monotonic() - _t0
-                        pct = int(100 * _done / n_total)
-                        if _done < n_total:
-                            eta = _fmt_eta(int(elapsed / _done * (n_total - _done)))
-                            print(f"[{_done}/{n_total}  {pct}%  {eta}]", file=sys.stderr)
+                with _done_lock:
+                    _done += len(group)
+                    for pair_result in group:
+                        if pair_result.error:
+                            print(f"\nError: {pair_result.video.name} / "
+                                  f"{pair_result.subtitle.name}: {pair_result.error}",
+                                  file=sys.stderr)
+                        elif args.compact:
+                            output.print_batch_compact([pair_result])
                         else:
-                            print(f"[{_done}/{n_total}  100%]", file=sys.stderr)
+                            output.print_human(pair_result.result, verbose=args.verbose,
+                                               video=pair_result.video,
+                                               subtitle=pair_result.subtitle)
+                    elapsed = time.monotonic() - _t0
+                    pct = int(100 * _done / n_total)
+                    if _done < n_total:
+                        eta = _fmt_eta(int(elapsed / _done * (n_total - _done)))
+                        print(f"[{_done}/{n_total}  {pct}%  {eta}]", file=sys.stderr)
+                    else:
+                        print(f"[{_done}/{n_total}  100%]", file=sys.stderr)
         results = []
         for video in video_order:
             results.extend(results_by_video.get(video, []))
@@ -658,13 +666,10 @@ def _run_batch(
         for p in results:
             if p.result is not None and p.result.state == output.MatchState.FAIL:
                 p.subtitle.unlink(missing_ok=True)
-                if not args.json:
-                    print(f"Deleted: {p.subtitle}")
+                print(f"Deleted: {p.subtitle}")
 
-    if args.json:
-        print(output.format_batch_json(results))
-    else:
-        output.print_batch_summary(results)
+    output.print_batch_summary(results)
+    _write_reports(results, args)
 
     if any(p.error for p in results):
         return 2
@@ -774,8 +779,7 @@ def main() -> None:
     else:
         sys.exit(_run_batch(args, videos, subtitles, warn_missing=not had_dirs))
 
-    if not args.json:
-        print(f"Checking: {args.video.name} → {args.subtitle.name}", file=sys.stderr)
+    print(f"Checking: {args.video.name} → {args.subtitle.name}", file=sys.stderr)
 
     check_dependencies(skip_sync=args.no_sync)
 
@@ -796,28 +800,27 @@ def main() -> None:
         result, _ = _score_pair(args.video, args.subtitle, _ra, model)
         result.state = _determine_state(result)
         result.resynced = True
-        if not args.json:
-            print(f"Subtitle resynced: {args.subtitle}")
+        print(f"Subtitle resynced: {args.subtitle}")
 
     if args.keep_synced and result.sync and result.sync.synced_srt_path:
         kept = args.subtitle.with_stem(args.subtitle.stem + ".synced")
         shutil.copy(result.sync.synced_srt_path, kept)
-        if not args.json:
-            print(f"Synced subtitle saved to {kept}")
+        print(f"Synced subtitle saved to {kept}")
 
     # Cleanup synced temp file
     if result.sync and result.sync.synced_srt_path:
         result.sync.synced_srt_path.unlink(missing_ok=True)
 
-    if args.json:
-        print(output.format_json(result))
-    else:
-        output.print_human(result, verbose=args.verbose)
+    output.print_human(result, verbose=args.verbose)
+    _write_reports(
+        [output.BatchPairResult(video=args.video, subtitle=args.subtitle,
+                                result=result, error=None)],
+        args,
+    )
 
     if args.delete_failures and result.state == output.MatchState.FAIL:
         args.subtitle.unlink(missing_ok=True)
-        if not args.json:
-            print(f"Deleted: {args.subtitle}")
+        print(f"Deleted: {args.subtitle}")
 
     sys.exit(0 if not _should_fail(result, args.pass_unsure) else 1)
 
