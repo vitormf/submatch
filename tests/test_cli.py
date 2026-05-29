@@ -1927,3 +1927,39 @@ def test_score_pair_passes_audio_track_to_extract_segment(tmp_path):
     assert mock_extract.call_count >= 1
     for call in mock_extract.call_args_list:
         assert call.kwargs.get("audio_track") == 1 or (len(call.args) > 3 and call.args[3] == 1)
+
+
+def test_parse_args_embedded_default_false(tmp_path):
+    v = tmp_path / "v.mkv"
+    v.touch()
+    with patch("sys.argv", ["submatch", str(v)]):
+        args = cli.parse_args()
+    assert args.embedded is False
+
+
+def test_parse_args_embedded_true(tmp_path):
+    v = tmp_path / "v.mkv"
+    v.touch()
+    with patch("sys.argv", ["submatch", str(v), "--embedded"]):
+        args = cli.parse_args()
+    assert args.embedded is True
+
+
+def test_embedded_with_resync_exits_2(tmp_path, capsys):
+    v = tmp_path / "v.mkv"
+    v.touch()
+    with patch("sys.argv", ["submatch", str(v), "--embedded", "--resync"]):
+        with pytest.raises(SystemExit) as exc:
+            cli.main()
+    assert exc.value.code == 2
+    assert "incompatible" in capsys.readouterr().err.lower()
+
+
+def test_embedded_with_keep_synced_exits_2(tmp_path, capsys):
+    v = tmp_path / "v.mkv"
+    v.touch()
+    with patch("sys.argv", ["submatch", str(v), "--embedded", "--keep-synced"]):
+        with pytest.raises(SystemExit) as exc:
+            cli.main()
+    assert exc.value.code == 2
+    assert "incompatible" in capsys.readouterr().err.lower()
