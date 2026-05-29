@@ -20,9 +20,9 @@ Support a `~/.config/submatch/config.toml` (or `~/.submatchrc`) for personal def
 
 Implemented in v0.2.0. `--audio-track` accepts either an integer index (0-based) or a comma-separated language preference list (e.g. `--audio-track jp,en,pt`). If no track matches, falls back to track 0 with a warning.
 
-## Embedded subtitle track matching
+## Embedded subtitle track matching ✓
 
-Many MKV files ship with subtitle tracks embedded in the container. `submatch --embedded movie.mkv` would extract each internal subtitle stream via ffmpeg, score it against the audio, and report which tracks match — useful for verifying muxed subtitles without needing a separate file. This would also enable batch auditing of a library without requiring external `.srt` files at all.
+Implemented. `submatch --embedded movie.mkv` extracts each internal subtitle stream via ffmpeg, scores it against the audio, and reports which tracks match. Works with directories too (`submatch --embedded /library/`). `--sub-lang` filters by track language tag. Exits 1 if any track fails.
 
 ## Library report
 
