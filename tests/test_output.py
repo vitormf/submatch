@@ -1,6 +1,5 @@
-import json
 from submatch.output import (
-    SegmentResult, MatchResult, MatchState, format_json, print_human,
+    SegmentResult, MatchResult, MatchState, print_human,
     _ms_to_ts, _bar,
 )
 from submatch.language import LanguageResult
@@ -37,50 +36,6 @@ def _make_result() -> MatchResult:
     )
     result.state = MatchState.PASS
     return result
-
-
-def test_format_json_top_level_keys():
-    data = json.loads(format_json(_make_result()))
-    for key in ("confidence", "passed", "threshold", "language", "segments", "model"):
-        assert key in data
-
-
-def test_format_json_confidence_value():
-    data = json.loads(format_json(_make_result()))
-    assert data["confidence"] == 0.75
-    assert data["passed"] is True
-
-
-def test_format_json_segment_fields():
-    data = json.loads(format_json(_make_result()))
-    seg = data["segments"][0]
-    for key in ("index", "start_ms", "score", "wer", "subtitle_text", "transcription"):
-        assert key in seg
-
-
-def test_format_json_language_fields():
-    data = json.loads(format_json(_make_result()))
-    lang = data["language"]
-    for key in ("audio", "subtitle_detected", "subtitle_filename", "mismatch"):
-        assert key in lang
-
-
-def test_format_json_sync_none():
-    data = json.loads(format_json(_make_result()))
-    assert data["sync"] is None
-
-
-def test_format_json_with_sync():
-    result = _make_result()
-    result.sync = SyncResult(
-        synced_srt_path=Path("/tmp/synced.srt"),
-        offset_seconds=5.0,
-        drift_detected=True,
-    )
-    data = json.loads(format_json(result))
-    assert data["sync"]["offset_seconds"] == 5.0
-    assert data["sync"]["drift_detected"] is True
-    assert data["sync"]["synced_srt_path"] == "/tmp/synced.srt"
 
 
 # ── _ms_to_ts ────────────────────────────────────────────────────────────────
@@ -192,7 +147,7 @@ def test_print_human_shows_video_metadata(capsys):
 # ── batch output ──────────────────────────────────────────────────────────────
 
 from submatch.output import (  # noqa: E402
-    BatchPairResult, print_batch_compact, print_batch_summary, format_batch_json,
+    BatchPairResult, print_batch_compact, print_batch_summary,
 )
 
 
@@ -253,30 +208,6 @@ def test_print_batch_summary_counts(capsys):
     assert "1 error" in out
 
 
-def test_format_batch_json_is_array():
-    data = json.loads(format_batch_json(_make_batch_pairs()))
-    assert isinstance(data, list)
-    assert len(data) == 3
-
-
-def test_format_batch_json_includes_paths():
-    data = json.loads(format_batch_json(_make_batch_pairs()))
-    assert data[0]["video"] == "show.mkv"
-    assert data[0]["subtitle"] == "show.en.srt"
-
-
-def test_format_batch_json_error_entry_has_error_key():
-    data = json.loads(format_batch_json(_make_batch_pairs()))
-    error_entry = data[2]
-    assert error_entry["error"] == "no audio track"
-    assert "confidence" not in error_entry
-
-
-def test_format_batch_json_success_entry_has_confidence():
-    data = json.loads(format_batch_json(_make_batch_pairs()))
-    assert data[0]["confidence"] == 0.75
-
-
 def test_print_batch_compact_shows_score(capsys):
     print_batch_compact(_make_batch_pairs())
     out = capsys.readouterr().out
@@ -290,21 +221,6 @@ def test_print_batch_summary_empty(capsys):
 
 
 # ── cross-language fields ─────────────────────────────────────────────────────
-
-def test_format_json_cross_language_fields():
-    result = _make_result()
-    result.cross_language = True
-    result.subtitle_language = "pt"
-    data = json.loads(format_json(result))
-    assert data["cross_language"] is True
-    assert data["subtitle_language"] == "pt"
-
-
-def test_format_json_cross_language_defaults_false():
-    data = json.loads(format_json(_make_result()))
-    assert data["cross_language"] is False
-    assert data["subtitle_language"] is None
-
 
 def test_print_human_cross_language_shows_header(capsys):
     result = _make_result()
@@ -362,15 +278,6 @@ def test_match_result_default_audio_track_fields():
     result = _make_result()
     assert result.audio_track_index == 0
     assert result.audio_track_lang is None
-
-
-def test_format_json_includes_audio_track_fields():
-    result = _make_result()
-    result.audio_track_index = 1
-    result.audio_track_lang = "jpn"
-    data = json.loads(format_json(result))
-    assert data["audio_track_index"] == 1
-    assert data["audio_track_lang"] == "jpn"
 
 
 def test_print_human_omits_track_line_when_default(capsys):

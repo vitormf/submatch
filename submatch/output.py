@@ -1,10 +1,7 @@
 from __future__ import annotations
-import dataclasses
-import json
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any
 
 from submatch.language import LanguageResult
 from submatch.sync import SyncResult
@@ -21,13 +18,6 @@ _YELLOW = "\033[33m"
 _RED = "\033[31m"
 _BOLD = "\033[1m"
 _RESET = "\033[0m"
-
-
-class _PathEncoder(json.JSONEncoder):
-    def default(self, obj: Any) -> Any:
-        if isinstance(obj, Path):
-            return str(obj)
-        return super().default(obj)
 
 
 @dataclass
@@ -133,10 +123,6 @@ def print_human(
     print()
 
 
-def format_json(result: MatchResult) -> str:
-    return json.dumps(dataclasses.asdict(result), cls=_PathEncoder, indent=2)
-
-
 def fmt_progress_result(
     result: MatchResult | None,
     error: str | None,
@@ -179,21 +165,6 @@ def print_batch_summary(pairs: list[BatchPairResult]) -> None:
     if errors:
         parts.append(f"{errors} error{'s' if errors != 1 else ''}")
     print(f"\nResults: {', '.join(parts) if parts else '0 processed'}")
-
-
-def format_batch_json(pairs: list[BatchPairResult]) -> str:
-    items = []
-    for p in pairs:
-        if p.result is not None:
-            d = dataclasses.asdict(p.result)
-        else:
-            d = {}
-        d["video"] = str(p.video)
-        d["subtitle"] = str(p.subtitle)
-        if p.error is not None:
-            d["error"] = p.error
-        items.append(d)
-    return json.dumps(items, cls=_PathEncoder, indent=2)
 
 
 def _ms_to_ts(ms: int) -> str:
