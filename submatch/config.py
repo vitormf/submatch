@@ -28,8 +28,11 @@ def load_config() -> dict[str, Any]:
         try:
             with open(path, "rb") as f:
                 data = tomllib.load(f)
-        except Exception as exc:
-            print(f"Error: invalid config file {path}: {exc}", file=sys.stderr)
+        except OSError as exc:
+            print(f"Error: cannot read config file {path}: {exc}", file=sys.stderr)
+            sys.exit(2)
+        except tomllib.TOMLDecodeError as exc:
+            print(f"Error: invalid TOML in config file {path}: {exc}", file=sys.stderr)
             sys.exit(2)
         for key in data:
             if key not in _CONFIGURABLE_KEYS:
