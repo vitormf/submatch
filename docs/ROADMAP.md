@@ -4,6 +4,14 @@ Ideas for making submatch more useful to the community, roughly in order of impa
 
 ---
 
+## Community awareness
+
+- **Demo GIF** — record a short terminal session showing submatch catching a real subtitle mismatch. Embed in the README.
+- **Bazarr issue #1418** — comment on [morpheus65535/bazarr#1418](https://github.com/morpheus65535/bazarr/issues/1418); users there are hitting exactly the problem submatch solves.
+- **r/selfhosted, r/DataHoarder, r/Plex** — post announcing submatch with the framing that no existing tool verifies subtitle content (ffsubsync/alass fix timing; Bazarr scores metadata; subgen regenerates). Optional follow-ups: r/jellyfin, r/kodi.
+
+---
+
 ## Bazarr integration
 
 [Bazarr](https://www.bazarr.media/) is the most widely used subtitle manager for Plex and Jellyfin. A post-download hook that calls submatch and rejects low-confidence subtitles would bring submatch into existing automated workflows without requiring users to change anything else. Bazarr already supports custom scripts triggered after each subtitle download.
@@ -12,9 +20,9 @@ Ideas for making submatch more useful to the community, roughly in order of impa
 
 `submatch --watch /path/to/library` — monitor a directory tree for new video/subtitle pairs and automatically check them as they appear. Useful for fully automated setups where subtitles are downloaded in the background.
 
-## Config file
+## Config file ✓
 
-Support a `~/.config/submatch/config.toml` (or `~/.submatchrc`) for personal defaults: threshold, model, language, workers. Users running submatch regularly shouldn't need to repeat the same flags every time.
+Implemented. `~/.config/submatch/config.toml` (or a local `./submatch.toml`) sets personal defaults for any flag. CLI flags always override config. See the README for the full list of configurable keys.
 
 ## Multiple audio track selection ✓
 
