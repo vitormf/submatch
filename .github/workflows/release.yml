@@ -13,7 +13,11 @@ on:
         type: string
 
 jobs:
+  run-tests:
+    uses: ./.github/workflows/run-tests.yml
+
   release:
+    needs: run-tests
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -30,28 +34,6 @@ jobs:
 
       - name: Install dependencies
         run: pip install -e ".[dev]" build twine
-
-      - name: Lint
-        run: ruff check
-
-      - name: Unit tests
-        run: pytest
-
-      - name: Cache Whisper model
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/whisper
-          key: whisper-base-v1
-
-      - name: Cache integration fixtures
-        uses: actions/cache@v4
-        with:
-          path: tests/fixtures
-          key: integration-fixtures-${{ hashFiles('tests/integration/conftest.py') }}
-          restore-keys: integration-fixtures-
-
-      - name: Integration tests
-        run: pytest tests/integration/ -v
 
       - name: Bump version
         run: sed -i 's/^version = ".*"/version = "${{ inputs.version }}"/' pyproject.toml
