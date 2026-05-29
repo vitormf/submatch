@@ -255,6 +255,7 @@ def _score_pair(
     model,
     show_progress: bool = True,
     video_cache: _VideoCache | None = None,
+    on_segment=None,
 ) -> tuple[output.MatchResult, _VideoCache]:
     subtitles = subtitle.parse(subtitle_path)
     subtitle_sample = " ".join(s.text for s in subtitles[:50])
@@ -300,7 +301,9 @@ def _score_pair(
             _t = _phase("segment selection", _t)
 
             for i, seg in enumerate(segments):
-                if show_progress and not args.json:
+                if on_segment is not None:
+                    on_segment(i + 1, n_seg)
+                elif show_progress and not args.json:
                     print(f"  [{i + 1}/{n_seg}]", end="\r", file=sys.stderr)
                 _t_seg = time.monotonic()
                 try:
@@ -469,16 +472,32 @@ def _run_batch(
             else:
                 print(line, file=sys.stderr, flush=True)
 
+        def _make_on_seg(pair_n: int, sub_name: str):
+            def _cb(seg_idx: int, seg_total: int) -> None:
+                if not _tty:
+                    return
+                if _ema_pair_time is not None:
+                    pct = int(100 * _done / n_total)
+                    eta = _fmt_eta(int(_ema_pair_time * (n_total - _done)))
+                    header = f"[{pair_n}/{n_total}  {pct}%  {eta}]"
+                else:
+                    header = f"[{pair_n}/{n_total}]"
+                print(f"{header} {sub_name}... {seg_idx}/{seg_total}", end="\r",
+                      file=sys.stderr, flush=True)
+            return _cb
+
         for i, (video, sub) in enumerate(pairs_to_run):
             if not args.json:
                 _print_progress(i + 1, sub.name)
             _pair_t0 = time.monotonic()
             _result_line: str | None = None
+            _on_seg = _make_on_seg(i + 1, sub.name)
             try:
                 cache = video_caches.get(video)
                 match_result, new_cache = _score_pair(video, sub, args, model,
                                                       show_progress=False,
-                                                      video_cache=cache)
+                                                      video_cache=cache,
+                                                      on_segment=_on_seg)
                 if match_result.state == output.MatchState.DRIFT and getattr(args, 'resync', False):
                     synced_path = match_result.sync.synced_srt_path
                     shutil.copy(synced_path, sub)
