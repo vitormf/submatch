@@ -1,15 +1,14 @@
-import shutil
-import urllib.request
+import os
+import subprocess
 from pathlib import Path
 import pytest
 
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
-_USER_AGENT = "submatch-integration-tests/1.0 (https://github.com/vitormf/submatch)"
 
 # ── Asset registry ────────────────────────────────────────────────────────────
 # Single source of truth for integration test fixtures.
-# Add an entry  → file is downloaded before tests run.
-# Remove an entry → cached file is deleted before tests run.
+# Add an entry  → prepare.py will download it before tests run.
+# Remove an entry → prepare.py will delete the stale cached file.
 #
 # Sources: WIKITONGUES project on Wikimedia Commons (CC BY-SA 4.0 / CC BY 3.0).
 ASSETS: dict[str, str] = {
@@ -182,58 +181,32 @@ ASSETS: dict[str, str] = {
     ),
 }
 
-# Populated during pytest_sessionstart; checked by fixtures to skip dependent tests.
-_DOWNLOAD_ERRORS: dict[str, str] = {}
+_WHISPER_CACHE = Path(os.path.expanduser("~")) / ".cache" / "whisper"
+_HF_HUB_CACHE = Path(os.path.expanduser("~")) / ".cache" / "huggingface" / "hub"
+_EMBED_MODEL_CACHE = _HF_HUB_CACHE / "models--sentence-transformers--paraphrase-multilingual-MiniLM-L12-v2"
 
 
-# ── Cache sync ────────────────────────────────────────────────────────────────
-
-def _download(dest: Path, url: str) -> None:
-    req = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
-    with urllib.request.urlopen(req) as resp, open(dest, "wb") as f:
-        shutil.copyfileobj(resp, f)
-
+# ── Session-start check ───────────────────────────────────────────────────────
 
 def pytest_sessionstart(session) -> None:
-    """Sync the fixtures cache before any test runs.
+    """Abort immediately if any fixture file is missing.
 
-    Downloads files that are in the registry but missing from the cache.
-    Deletes cached files that have been removed from the registry.
-    Prints a warning for each failed download; dependent tests will be skipped.
+    Run `python tests/integration/prepare.py` to download fixtures and models.
     """
-    FIXTURES_DIR.mkdir(parents=True, exist_ok=True)
-
-    for name, url in ASSETS.items():
-        dest = FIXTURES_DIR / name
-        if dest.exists():
-            continue
-        print(f"\n  [fixtures] Downloading {name} ...", flush=True)
-        try:
-            _download(dest, url)
-            print(f"  [fixtures] {name} ready ({dest.stat().st_size // 1024} KB)", flush=True)
-        except Exception as exc:
-            _DOWNLOAD_ERRORS[name] = str(exc)
-            if dest.exists():
-                dest.unlink()
-            print(
-                f"\n  ⚠  [fixtures] FAILED to download {name}: {exc}\n"
-                f"     Tests requiring this file will be skipped.",
-                flush=True,
-            )
-
-    stale = [f for f in FIXTURES_DIR.iterdir() if f.name not in ASSETS]
-    for path in stale:
-        print(f"  [fixtures] Removing stale: {path.name}", flush=True)
-        path.unlink()
+    missing = [name for name in ASSETS if not (FIXTURES_DIR / name).exists()]
+    if missing:
+        lines = [
+            "Integration test fixtures are missing. Run prepare.py first:",
+            "  python tests/integration/prepare.py",
+            "",
+            "Missing files:",
+        ] + [f"  - {name}" for name in missing]
+        pytest.exit("\n".join(lines), returncode=1)
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
 def _fixture_path(name: str) -> Path:
-    if name in _DOWNLOAD_ERRORS:
-        pytest.skip(
-            f"Fixture '{name}' unavailable — download failed: {_DOWNLOAD_ERRORS[name]}"
-        )
     return FIXTURES_DIR / name
 
 
@@ -300,15 +273,21 @@ def guarani_de_srt() -> Path:
     return _fixture_path("wikitongues_guarani.de.srt")
 
 
-# Shared model fixtures
+# Whisper model fixtures
 @pytest.fixture(scope="session")
 def whisper_tiny():
+    if not (_WHISPER_CACHE / "tiny.pt").exists():
+        pytest.exit("Whisper 'tiny' model not cached. Run: python tests/integration/prepare.py",
+                    returncode=1)
     from submatch.transcribe import load_model
     return load_model("tiny")
 
 
 @pytest.fixture(scope="session")
 def whisper_base():
+    if not (_WHISPER_CACHE / "base.pt").exists():
+        pytest.exit("Whisper 'base' model not cached. Run: python tests/integration/prepare.py",
+                    returncode=1)
     from submatch.transcribe import load_model
     return load_model("base")
 
@@ -419,13 +398,47 @@ def guiyangese_en_srt() -> Path:
     return _fixture_path("wikitongues_guiyangese.en.srt")
 
 
-# Shared model fixtures
+# Multi-track video fixture (synthetic — no download required)
+@pytest.fixture(scope="session")
+def multi_track_video(german_video, tmp_path_factory) -> Path:
+    """Two-track MKV built from the German fixture.
+
+    Track 0: German speech audio, tagged language=deu.
+    Track 1: Silence, tagged language=eng.
+
+    Created by ffmpeg at test time — no network or additional download.
+    """
+    out = tmp_path_factory.mktemp("multi_track") / "multi_track.mkv"
+    subprocess.run(
+        [
+            "ffmpeg", "-y",
+            "-i", str(german_video),
+            "-f", "lavfi", "-i", "anullsrc=channel_layout=mono:sample_rate=16000",
+            "-map", "0:a:0",
+            "-map", "1:a:0",
+            "-metadata:s:a:0", "language=deu",
+            "-metadata:s:a:1", "language=eng",
+            "-c:a", "libopus",
+            "-shortest",
+            str(out),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    return out
+
+
+# Embedding model fixture
 @pytest.fixture(scope="session")
 def embed_model():
-    """Session-scoped multilingual sentence embedding model."""
     pytest.importorskip(
         "sentence_transformers",
         reason="sentence-transformers not installed — skipping cross-language integration tests",
     )
+    if not _EMBED_MODEL_CACHE.exists():
+        pytest.exit(
+            "Embedding model not cached. Run: python tests/integration/prepare.py",
+            returncode=1,
+        )
     from submatch.embeddings import load_embedding_model
     return load_embedding_model()

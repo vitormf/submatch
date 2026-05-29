@@ -534,3 +534,95 @@ def test_compact_output_multiple_pairs_shows_summary(
     assert "2" in result.stdout, (
         f"Expected summary mentioning 2 pairs in output:\n{result.stdout}"
     )
+
+
+# ── Audio track selection tests ───────────────────────────────────────────────
+# multi_track_video has two audio tracks: track 0 = German speech (tagged deu),
+# track 1 = silence (tagged eng). Created by the session fixture in conftest.py.
+
+def test_audio_track_index_1_reported_in_json(multi_track_video, german_de_srt):
+    """--audio-track 1 sets audio_track_index=1 and audio_track_lang='eng' in JSON output."""
+    result = _run_cli(
+        str(multi_track_video), str(german_de_srt),
+        "--audio-track", "1", "--no-sync", "--segments", "1", "--json",
+    )
+    assert result.returncode in (0, 1), f"Unexpected exit code: {result.stderr}"
+    data = json.loads(result.stdout)
+    assert data["audio_track_index"] == 1
+    assert data["audio_track_lang"] == "eng"
+
+
+def test_audio_track_language_eng_selects_second_track(multi_track_video, german_de_srt):
+    """--audio-track eng (ISO 639-2) resolves to the 'eng'-tagged track at index 1."""
+    result = _run_cli(
+        str(multi_track_video), str(german_de_srt),
+        "--audio-track", "eng", "--no-sync", "--segments", "1", "--json",
+    )
+    assert result.returncode in (0, 1), f"Unexpected exit code: {result.stderr}"
+    data = json.loads(result.stdout)
+    assert data["audio_track_index"] == 1
+    assert data["audio_track_lang"] == "eng"
+
+
+def test_audio_track_iso_639_1_en_matches_eng_tagged_track(multi_track_video, german_de_srt):
+    """--audio-track en (ISO 639-1) resolves to the 'eng'-tagged (ISO 639-2) track."""
+    result = _run_cli(
+        str(multi_track_video), str(german_de_srt),
+        "--audio-track", "en", "--no-sync", "--segments", "1", "--json",
+    )
+    assert result.returncode in (0, 1), f"Unexpected exit code: {result.stderr}"
+    data = json.loads(result.stdout)
+    assert data["audio_track_index"] == 1, (
+        f"Expected ISO 639-1 'en' to match 'eng'-tagged track (index 1), "
+        f"got index {data['audio_track_index']}"
+    )
+
+
+def test_audio_track_language_deu_selects_first_track(multi_track_video, german_de_srt):
+    """--audio-track deu resolves to the 'deu'-tagged track at index 0."""
+    result = _run_cli(
+        str(multi_track_video), str(german_de_srt),
+        "--audio-track", "deu", "--no-sync", "--segments", "1", "--json",
+    )
+    assert result.returncode in (0, 1), f"Unexpected exit code: {result.stderr}"
+    data = json.loads(result.stdout)
+    assert data["audio_track_index"] == 0
+    assert data["audio_track_lang"] == "deu"
+
+
+def test_audio_track_out_of_range_exits_2(multi_track_video, german_de_srt):
+    """--audio-track with an index beyond the track count exits with code 2."""
+    result = _run_cli(
+        str(multi_track_video), str(german_de_srt),
+        "--audio-track", "99", "--no-sync", "--segments", "1",
+    )
+    assert result.returncode == 2, (
+        f"Expected exit 2 for out-of-range track index, got {result.returncode}.\n"
+        f"stderr: {result.stderr}"
+    )
+
+
+def test_audio_track_silence_scores_lower_than_real_audio(
+    multi_track_video, german_de_srt,
+):
+    """Transcribing the silent track (1) against a German subtitle scores lower than the real audio (0).
+
+    This verifies --audio-track changes which audio is actually extracted and transcribed,
+    not just which index is recorded in the output.
+    """
+    result_track0 = _run_cli(
+        str(multi_track_video), str(german_de_srt),
+        "--audio-track", "0", "--no-sync", "--segments", "1", "--json",
+    )
+    result_track1 = _run_cli(
+        str(multi_track_video), str(german_de_srt),
+        "--audio-track", "1", "--no-sync", "--segments", "1", "--json",
+    )
+    assert result_track0.returncode in (0, 1), f"Track 0 unexpected exit: {result_track0.stderr}"
+    assert result_track1.returncode in (0, 1), f"Track 1 unexpected exit: {result_track1.stderr}"
+    score_track0 = json.loads(result_track0.stdout)["confidence"]
+    score_track1 = json.loads(result_track1.stdout)["confidence"]
+    assert score_track0 > score_track1, (
+        f"German audio (track 0: {score_track0:.2f}) should score higher than "
+        f"silence (track 1: {score_track1:.2f}) against a German subtitle"
+    )
