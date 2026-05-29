@@ -78,6 +78,7 @@ def write_html(results: list[BatchPairResult], path: str) -> None:
     rows_html: list[str] = []
     for p in results:
         if p.result is None:
+            state_counts["ERROR"] += 1
             row_class = "row-error"
             state_label = "ERROR"
             score_str = threshold_str = audio_lang = sub_lang = ""
@@ -109,7 +110,8 @@ def write_html(results: list[BatchPairResult], path: str) -> None:
         )
 
     badge_colors = {
-        "PASS": "#4caf50", "DRIFT": "#ff9800", "FAIL": "#f44336", "UNSURE": "#ff9800",
+        "PASS": "#4caf50", "DRIFT": "#ff9800", "FAIL": "#f44336",
+        "UNSURE": "#ff9800", "ERROR": "#e91e63",
     }
     badges_html = " ".join(
         f'<span style="background:{badge_colors.get(s,"#999")};color:white;'

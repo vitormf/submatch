@@ -180,6 +180,13 @@ def test_write_html_contains_summary_counts(tmp_path):
     assert "1 FAIL" in content
 
 
+def test_write_html_error_counted_in_summary(tmp_path):
+    out = str(tmp_path / "out.html")
+    report.write_html(_make_pairs(), out)
+    content = Path(out).read_text()
+    assert "1 ERROR" in content
+
+
 def test_write_html_one_row_per_pair(tmp_path):
     out = str(tmp_path / "out.html")
     report.write_html(_make_pairs(), out)
