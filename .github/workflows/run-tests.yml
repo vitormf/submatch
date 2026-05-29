@@ -6,7 +6,7 @@ on:
 jobs:
   unit:
     name: Unit tests
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -19,7 +19,7 @@ jobs:
 
   integration:
     name: Integration tests
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -27,45 +27,7 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -e ".[dev]"
-
-      - name: Restore fixtures cache
-        uses: actions/cache/restore@v4
-        with:
-          path: tests/fixtures
-          key: integration-fixtures-${{ hashFiles('tests/integration/conftest.py') }}
-
-      - name: Restore Whisper models cache
-        uses: actions/cache/restore@v4
-        with:
-          path: ~/.cache/whisper
-          key: whisper-models-tiny-base
-
-      - name: Restore embedding model cache
-        uses: actions/cache/restore@v4
-        with:
-          path: ~/.cache/huggingface/hub
-          key: hf-paraphrase-multilingual-MiniLM-L12-v2
-
       - name: Prepare fixtures and models
         run: python tests/integration/prepare.py
-
-      - name: Save fixtures cache
-        uses: actions/cache/save@v4
-        with:
-          path: tests/fixtures
-          key: integration-fixtures-${{ hashFiles('tests/integration/conftest.py') }}
-
-      - name: Save Whisper models cache
-        uses: actions/cache/save@v4
-        with:
-          path: ~/.cache/whisper
-          key: whisper-models-tiny-base
-
-      - name: Save embedding model cache
-        uses: actions/cache/save@v4
-        with:
-          path: ~/.cache/huggingface/hub
-          key: hf-paraphrase-multilingual-MiniLM-L12-v2
-
       - name: Run integration tests
         run: pytest tests/integration/ --tb=short -q -x --timeout=120 --no-cov
