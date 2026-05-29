@@ -53,6 +53,8 @@ class MatchResult:
     subtitle_language: str | None = None
     state: MatchState = MatchState.FAIL
     resynced: bool = False
+    audio_track_index: int = 0
+    audio_track_lang: str | None = None
 
 
 @dataclass
@@ -115,6 +117,10 @@ def print_human(
         print(f"sync  {sign}{result.sync.offset_seconds:.1f}s  {_YELLOW}⚠{_RESET}")
     else:
         print(f"sync  no drift  {_GREEN}✓{_RESET}")
+
+    if result.audio_track_index > 0 or result.audio_track_lang is not None:
+        lang_part = f" ({result.audio_track_lang})" if result.audio_track_lang else ""
+        print(f"track  a:{result.audio_track_index}{lang_part}")
 
     for seg in result.segments:
         ts = _ms_to_ts(seg.start_ms)

@@ -354,3 +354,60 @@ def test_fmt_progress_result_fail():
     line = fmt_progress_result(result, None, "movie.pt.srt", 30.0)
     assert "FAIL" in line
     assert "0.10" in line
+
+
+# ── audio_track fields ────────────────────────────────────────────────────────
+
+def test_match_result_default_audio_track_fields():
+    result = _make_result()
+    assert result.audio_track_index == 0
+    assert result.audio_track_lang is None
+
+
+def test_format_json_includes_audio_track_fields():
+    result = _make_result()
+    result.audio_track_index = 1
+    result.audio_track_lang = "jpn"
+    data = json.loads(format_json(result))
+    assert data["audio_track_index"] == 1
+    assert data["audio_track_lang"] == "jpn"
+
+
+def test_print_human_omits_track_line_when_default(capsys):
+    result = _make_result()
+    print_human(result)
+    out = capsys.readouterr().out
+    assert "track" not in out
+
+
+def test_print_human_shows_track_line_with_lang(capsys):
+    result = _make_result()
+    result.audio_track_index = 1
+    result.audio_track_lang = "jpn"
+    print_human(result)
+    out = capsys.readouterr().out
+    assert "track" in out
+    assert "a:1" in out
+    assert "jpn" in out
+
+
+def test_print_human_shows_track_line_no_lang(capsys):
+    result = _make_result()
+    result.audio_track_index = 2
+    result.audio_track_lang = None
+    print_human(result)
+    out = capsys.readouterr().out
+    assert "track" in out
+    assert "a:2" in out
+
+
+def test_print_human_shows_track_line_when_lang_known_but_index_zero(capsys):
+    """Show track line if lang is known even when index is 0."""
+    result = _make_result()
+    result.audio_track_index = 0
+    result.audio_track_lang = "eng"
+    print_human(result)
+    out = capsys.readouterr().out
+    assert "track" in out
+    assert "a:0" in out
+    assert "eng" in out
