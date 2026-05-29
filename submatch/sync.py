@@ -21,17 +21,18 @@ def sync_subtitle(
     subtitle_path: Path,
     output_path: Path | None = None,
     drift_threshold: float = DRIFT_THRESHOLD_SECONDS,
+    audio_track: int = 0,
 ) -> SyncResult:
     if output_path is None:
         tmp = tempfile.NamedTemporaryFile(suffix=".srt", delete=False)
         output_path = Path(tmp.name)
         tmp.close()
 
-    result = subprocess.run(
-        ["ffs", str(video_path), "-i", str(subtitle_path), "-o", str(output_path)],
-        capture_output=True,
-        text=True,
-    )
+    cmd = ["ffs", str(video_path), "-i", str(subtitle_path), "-o", str(output_path)]
+    if audio_track > 0:
+        cmd += ["--reference-stream", f"a:{audio_track}"]
+
+    result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         raise RuntimeError(f"ffsubsync failed: {result.stderr.strip()}")
 

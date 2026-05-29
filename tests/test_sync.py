@@ -126,3 +126,39 @@ def test_sync_subtitle_auto_output_path(tmp_path):
 
     assert result.synced_srt_path.exists()
     result.synced_srt_path.unlink(missing_ok=True)
+
+
+def test_sync_subtitle_default_track_no_reference_stream(tmp_path):
+    """audio_track=0 must NOT add --reference-stream to the ffs command."""
+    video = tmp_path / "video.mp4"
+    video.touch()
+    subtitle = tmp_path / "sub.srt"
+    subtitle.write_text(SAMPLE_SRT)
+    output_path = tmp_path / "synced.srt"
+    output_path.write_text(SAMPLE_SRT)
+
+    with patch("submatch.sync.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0, stderr="")
+        sync_subtitle(video, subtitle, output_path, audio_track=0)
+
+    called_cmd = mock_run.call_args[0][0]
+    assert "--reference-stream" not in called_cmd
+
+
+def test_sync_subtitle_nonzero_track_has_reference_stream(tmp_path):
+    """audio_track=1 must add '--reference-stream' 'a:1' to the ffs command."""
+    video = tmp_path / "video.mp4"
+    video.touch()
+    subtitle = tmp_path / "sub.srt"
+    subtitle.write_text(SAMPLE_SRT)
+    output_path = tmp_path / "synced.srt"
+    output_path.write_text(SAMPLE_SRT)
+
+    with patch("submatch.sync.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0, stderr="")
+        sync_subtitle(video, subtitle, output_path, audio_track=1)
+
+    called_cmd = mock_run.call_args[0][0]
+    assert "--reference-stream" in called_cmd
+    ref_idx = called_cmd.index("--reference-stream")
+    assert called_cmd[ref_idx + 1] == "a:1"
