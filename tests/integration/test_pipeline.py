@@ -18,6 +18,10 @@ Mismatch controls use subtitles from a different video in the same language:
   - Same language, wrong content → should score LOW (F1 failure)
   - Translated language, wrong content → should score LOW (embedding failure)
 """
+import json
+import shutil
+import subprocess
+import sys
 import pytest
 from pathlib import Path
 
@@ -444,3 +448,89 @@ def test_guiyangese_matching_subtitle_scores_higher_than_mismatch(
         f"Wrong-content EN subtitle ({wrong_content:.2f}) should score lower "
         f"than matching EN translation ({matching:.2f})"
     )
+
+
+# ── Output format tests ───────────────────────────────────────────────────────
+
+def _run_cli(*args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ['submatch', *args],
+        capture_output=True, text=True,
+    )
+
+
+def test_json_output_single_pair_is_valid_json(german_video, german_de_srt):
+    """--json produces valid, parseable JSON for a single video+subtitle pair."""
+    result = _run_cli(
+        str(german_video), str(german_de_srt),
+        '--json', '--no-sync', '--segments', '1',
+    )
+    assert result.returncode in (0, 1), f"Unexpected exit code: {result.stderr}"
+    data = json.loads(result.stdout)
+    assert isinstance(data, dict)
+
+
+def test_json_output_single_pair_has_required_keys(german_video, german_de_srt):
+    """--json output includes confidence, state, language, sync, and segments keys."""
+    result = _run_cli(
+        str(german_video), str(german_de_srt),
+        '--json', '--no-sync', '--segments', '1',
+    )
+    assert result.returncode in (0, 1)
+    data = json.loads(result.stdout)
+    for key in ('confidence', 'state', 'language', 'segments'):
+        assert key in data, f"Missing key '{key}' in JSON output"
+    assert isinstance(data['confidence'], float)
+    assert isinstance(data['segments'], list)
+    assert len(data['segments']) == 1
+
+
+def test_json_output_batch_is_array(german_video, german_de_srt, tmp_path):
+    """--json in batch mode (one video vs subtitle directory) produces a JSON array."""
+    subs_dir = tmp_path / "subs"
+    subs_dir.mkdir()
+    shutil.copy(german_de_srt, subs_dir / german_de_srt.name)
+
+    result = _run_cli(
+        str(german_video), str(subs_dir),
+        '--json', '--no-sync', '--segments', '1',
+    )
+    assert result.returncode in (0, 1), f"Unexpected exit code: {result.stderr}"
+    data = json.loads(result.stdout)
+    assert isinstance(data, list), "Batch --json output should be a JSON array"
+    assert len(data) == 1
+    assert 'confidence' in data[0]
+    assert 'state' in data[0]
+
+
+def test_compact_output_one_line_per_pair(german_video, german_de_srt, tmp_path):
+    """--compact in batch mode produces exactly one output line per video-subtitle pair."""
+    subs_dir = tmp_path / "subs"
+    subs_dir.mkdir()
+    shutil.copy(german_de_srt, subs_dir / german_de_srt.name)
+
+    result = _run_cli(
+        str(german_video), str(subs_dir),
+        '--compact', '--no-sync', '--segments', '1',
+    )
+    assert result.returncode in (0, 1), f"Unexpected exit code: {result.stderr}"
+    lines = [l for l in result.stdout.strip().splitlines() if l.strip()]
+    assert len(lines) == 1, f"Expected 1 compact line, got {len(lines)}:\n{result.stdout}"
+
+
+def test_compact_output_multiple_pairs_one_line_each(
+    german_video, german_de_srt, german_en_srt, tmp_path,
+):
+    """--compact produces one line per pair when multiple subtitles are scored against one video."""
+    subs_dir = tmp_path / "subs"
+    subs_dir.mkdir()
+    shutil.copy(german_de_srt, subs_dir / german_de_srt.name)
+    shutil.copy(german_en_srt, subs_dir / german_en_srt.name)
+
+    result = _run_cli(
+        str(german_video), str(subs_dir),
+        '--compact', '--no-sync', '--segments', '1',
+    )
+    assert result.returncode in (0, 1), f"Unexpected exit code: {result.stderr}"
+    lines = [l for l in result.stdout.strip().splitlines() if l.strip()]
+    assert len(lines) == 2, f"Expected 2 compact lines, got {len(lines)}:\n{result.stdout}"
