@@ -1292,7 +1292,7 @@ def test_run_batch_accepts_prebuilt_pairs(tmp_path):
     with patch("submatch.cli.check_dependencies"), \
          patch("submatch.batch.resolve_pairs") as mock_resolve, \
          patch("submatch.cli._score_pair", side_effect=Exception("stop")):
-        result = cli._run_batch(args, [], [], pairs=[(video, sub)])
+        cli._run_batch(args, [], [], pairs=[(video, sub)])
 
     mock_resolve.assert_not_called()
 
@@ -2069,6 +2069,14 @@ def test_run_embedded_temp_files_cleaned_up_on_error(tmp_path):
             cli._run_embedded(args, [video])
 
     assert not captured_dirs[0].exists(), "temp dir was not cleaned up after error"
+
+
+def test_run_embedded_list_tracks_failure_skips_video(tmp_path, capsys):
+    args, video = _make_embedded_args(tmp_path)
+    with patch("submatch.embedded.list_subtitle_tracks", side_effect=Exception("ffprobe failed")):
+        result = cli._run_embedded(args, [video])
+    assert result == 2
+    assert "Warning" in capsys.readouterr().err
 
 
 def test_main_embedded_dispatches_to_run_embedded(tmp_path, capsys):
