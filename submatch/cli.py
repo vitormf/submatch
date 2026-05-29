@@ -82,6 +82,8 @@ def parse_args() -> argparse.Namespace:
         "--audio-track", default=None, dest="audio_track",
         help="audio track to use: integer index (0-based) or comma-separated language preference list (e.g. jp,en,pt)",
     )
+    parser.add_argument("--embedded", action="store_true",
+                        help="score embedded subtitle tracks in the video container")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
 
     from submatch import config as _config
@@ -463,15 +465,19 @@ def _run_batch(
     videos: list[Path],
     subtitles: list[Path],
     warn_missing: bool = True,
+    pairs: list[tuple[Path, Path]] | None = None,
 ) -> int:
-    from submatch import batch as _batch
+    if pairs is not None:
+        pairs_to_run = pairs
+    else:
+        from submatch import batch as _batch
 
-    pairs_to_run = _batch.resolve_pairs(videos, subtitles, warn_missing=warn_missing)
-    pairs_to_run = _batch.filter_pairs(
-        pairs_to_run,
-        sub_langs=args.sub_lang,
-        glob_pattern=args.filter,
-    )
+        pairs_to_run = _batch.resolve_pairs(videos, subtitles, warn_missing=warn_missing)
+        pairs_to_run = _batch.filter_pairs(
+            pairs_to_run,
+            sub_langs=args.sub_lang,
+            glob_pattern=args.filter,
+        )
 
     if not pairs_to_run:
         print("No video/subtitle pairs found.", file=sys.stderr)
@@ -661,6 +667,60 @@ def _run_batch(
     return 0
 
 
+def _run_embedded(
+    args: argparse.Namespace,
+    videos: list[Path],
+) -> int:
+    from submatch import embedded as _embedded
+    from submatch.audio import _lang_match
+
+    tmp_dir = Path(tempfile.mkdtemp(prefix="submatch_embedded_"))
+    pairs: list[tuple[Path, Path]] = []
+
+    try:
+        for video in videos:
+            try:
+                tracks = _embedded.list_subtitle_tracks(video)
+            except Exception as exc:
+                print(
+                    f"Warning: could not list subtitle tracks for {video.name}: {exc}",
+                    file=sys.stderr,
+                )
+                continue
+
+            if args.sub_lang:
+                tracks = [
+                    t for t in tracks
+                    if t["lang"] is None
+                    or any(_lang_match(c, t["lang"]) for c in args.sub_lang)
+                ]
+
+            vid_dir = tmp_dir / video.stem
+            vid_dir.mkdir(exist_ok=True)
+
+            for track in tracks:
+                lang_tag = track["lang"] or "unk"
+                dest = vid_dir / f"embedded_s{track['index']}_{lang_tag}.srt"
+                try:
+                    _embedded.extract_subtitle_track(video, track["index"], dest)
+                    pairs.append((video, dest))
+                except Exception as exc:
+                    print(
+                        f"Warning: could not extract track {track['index']} "
+                        f"from {video.name}: {exc}",
+                        file=sys.stderr,
+                    )
+
+        if not pairs:
+            print("No embedded subtitle tracks found.", file=sys.stderr)
+            return 2
+
+        return _run_batch(args, [], [], pairs=pairs)
+
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
 def main() -> None:
     _ensure_utf8_stdout()
 
@@ -669,6 +729,13 @@ def main() -> None:
         static_ffmpeg.add_paths()
 
     args = parse_args()
+
+    if args.embedded and (args.resync or args.keep_synced):
+        print(
+            "Error: --embedded is incompatible with --resync and --keep-synced",
+            file=sys.stderr,
+        )
+        sys.exit(2)
 
     missing = [p for p in args.inputs if not p.exists()]
     if missing:
@@ -679,6 +746,10 @@ def main() -> None:
     from submatch import batch as _batch
     had_dirs = any(p.is_dir() for p in args.inputs)
     videos, subtitles = _batch.classify_inputs(args.inputs, recursive=not args.no_recursive)
+
+    if args.embedded:
+        check_dependencies(skip_sync=args.no_sync)
+        sys.exit(_run_embedded(args, videos))
 
     if not had_dirs and len(videos) == 1 and len(subtitles) == 1:
         args.video = videos[0]
