@@ -83,7 +83,18 @@ def parse_args() -> argparse.Namespace:
         help="audio track to use: integer index (0-based) or comma-separated language preference list (e.g. jp,en,pt)",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
-    return parser.parse_args()
+
+    from submatch import config as _config
+    _cfg = _config.load_config()
+    _sub_lang_default = _cfg.pop("sub_lang", None)
+    parser.set_defaults(**_cfg)
+
+    args = parser.parse_args()
+
+    if args.sub_lang is None and _sub_lang_default is not None:
+        args.sub_lang = list(_sub_lang_default)
+
+    return args
 
 
 def check_dependencies(skip_sync: bool = False) -> None:

@@ -16,7 +16,8 @@ from tests.conftest import SAMPLE_SRT
 
 def test_parse_args_defaults(tmp_path):
     v, s = tmp_path / "v.mp4", tmp_path / "s.srt"
-    with patch("sys.argv", ["submatch", str(v), str(s)]):
+    with patch("sys.argv", ["submatch", str(v), str(s)]), \
+         patch("submatch.config.load_config", return_value={}):
         args = cli.parse_args()
     assert args.inputs == [v, s]
     assert args.model == "base"
@@ -52,7 +53,7 @@ def test_parse_args_all_flags(tmp_path):
         "--resync", "--pass-unsure",
         "--drift-threshold", "5.0",
         "--audio-track", "jp,en",
-    ]):
+    ]), patch("submatch.config.load_config", return_value={}):
         args = cli.parse_args()
     assert args.inputs == [v, s]
     assert args.model == "small"
@@ -74,6 +75,39 @@ def test_parse_args_all_flags(tmp_path):
     assert args.pass_unsure is True
     assert args.drift_threshold == pytest.approx(5.0)
     assert args.audio_track == "jp,en"
+
+
+def test_parse_args_uses_config_value(tmp_path):
+    v, s = tmp_path / "v.mp4", tmp_path / "s.srt"
+    with patch("sys.argv", ["submatch", str(v), str(s)]), \
+         patch("submatch.config.load_config", return_value={"model": "small", "threshold": 0.5}):
+        args = cli.parse_args()
+    assert args.model == "small"
+    assert args.threshold == pytest.approx(0.5)
+
+
+def test_parse_args_cli_overrides_config(tmp_path):
+    v, s = tmp_path / "v.mp4", tmp_path / "s.srt"
+    with patch("sys.argv", ["submatch", str(v), str(s), "--model", "large"]), \
+         patch("submatch.config.load_config", return_value={"model": "small"}):
+        args = cli.parse_args()
+    assert args.model == "large"
+
+
+def test_parse_args_sub_lang_from_config(tmp_path):
+    v, s = tmp_path / "v.mp4", tmp_path / "s.srt"
+    with patch("sys.argv", ["submatch", str(v), str(s)]), \
+         patch("submatch.config.load_config", return_value={"sub_lang": ["pt", "en"]}):
+        args = cli.parse_args()
+    assert args.sub_lang == ["pt", "en"]
+
+
+def test_parse_args_sub_lang_cli_replaces_config(tmp_path):
+    v, s = tmp_path / "v.mp4", tmp_path / "s.srt"
+    with patch("sys.argv", ["submatch", str(v), str(s), "--sub-lang", "fr"]), \
+         patch("submatch.config.load_config", return_value={"sub_lang": ["pt", "en"]}):
+        args = cli.parse_args()
+    assert args.sub_lang == ["fr"]
 
 
 def test_parse_args_audio_track_integer(tmp_path):
