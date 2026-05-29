@@ -1330,6 +1330,24 @@ def test_batch_single_video_non_dir_subtitle_exits_2(tmp_path):
     assert result == 2
 
 
+def test_run_batch_accepts_prebuilt_pairs(tmp_path):
+    """When pairs= is provided, resolve_pairs is not called."""
+    video = tmp_path / "movie.mp4"
+    sub = tmp_path / "movie.srt"
+    video.touch()
+    sub.touch()
+
+    with patch("sys.argv", ["submatch", str(video), str(sub), "--no-sync"]):
+        args = cli.parse_args()
+
+    with patch("submatch.cli.check_dependencies"), \
+         patch("submatch.batch.resolve_pairs") as mock_resolve, \
+         patch("submatch.cli._score_pair", side_effect=Exception("stop")):
+        cli._run_batch(args, [], [], pairs=[(video, sub)])
+
+    mock_resolve.assert_not_called()
+
+
 def test_batch_delete_failures(tmp_path):
     """--delete-failures in batch mode removes subtitle files that fail."""
     ctx = _make_batch_patches(tmp_path, ["--threshold", "2.0", "--delete-failures"])
@@ -1962,3 +1980,167 @@ def test_score_pair_passes_audio_track_to_extract_segment(tmp_path):
     assert mock_extract.call_count >= 1
     for call in mock_extract.call_args_list:
         assert call.kwargs.get("audio_track") == 1 or (len(call.args) > 3 and call.args[3] == 1)
+
+
+def test_parse_args_embedded_default_false(tmp_path):
+    v = tmp_path / "v.mkv"
+    v.touch()
+    with patch("sys.argv", ["submatch", str(v)]):
+        args = cli.parse_args()
+    assert args.embedded is False
+
+
+def test_parse_args_embedded_true(tmp_path):
+    v = tmp_path / "v.mkv"
+    v.touch()
+    with patch("sys.argv", ["submatch", str(v), "--embedded"]):
+        args = cli.parse_args()
+    assert args.embedded is True
+
+
+def test_embedded_with_resync_exits_2(tmp_path, capsys):
+    v = tmp_path / "v.mkv"
+    v.touch()
+    with patch("sys.argv", ["submatch", str(v), "--embedded", "--resync"]):
+        with pytest.raises(SystemExit) as exc:
+            cli.main()
+    assert exc.value.code == 2
+    assert "incompatible" in capsys.readouterr().err.lower()
+
+
+def test_embedded_with_keep_synced_exits_2(tmp_path, capsys):
+    v = tmp_path / "v.mkv"
+    v.touch()
+    with patch("sys.argv", ["submatch", str(v), "--embedded", "--keep-synced"]):
+        with pytest.raises(SystemExit) as exc:
+            cli.main()
+    assert exc.value.code == 2
+
+
+# ── _run_embedded ──────────────────────────────────────────────────────────────
+
+def _make_embedded_args(tmp_path, extra_flags=None):
+    v = tmp_path / "movie.mkv"
+    v.touch()
+    argv = ["submatch", str(v), "--embedded", "--no-sync"]
+    if extra_flags:
+        argv += extra_flags
+    with patch("sys.argv", argv):
+        args = cli.parse_args()
+    return args, v
+
+
+def test_run_embedded_no_tracks_returns_2(tmp_path):
+    args, video = _make_embedded_args(tmp_path)
+    with patch("submatch.embedded.list_subtitle_tracks", return_value=[]):
+        result = cli._run_embedded(args, [video])
+    assert result == 2
+
+
+def test_run_embedded_extraction_failure_skips_track(tmp_path, capsys):
+    args, video = _make_embedded_args(tmp_path)
+    tracks = [{"index": 0, "lang": "eng", "title": None}]
+    with patch("submatch.embedded.list_subtitle_tracks", return_value=tracks), \
+         patch("submatch.embedded.extract_subtitle_track",
+               side_effect=Exception("codec error")):
+        result = cli._run_embedded(args, [video])
+    assert result == 2
+    assert "Warning" in capsys.readouterr().err
+
+
+def test_run_embedded_sub_lang_filters_tracks(tmp_path):
+    args, video = _make_embedded_args(tmp_path, ["--sub-lang", "en"])
+    tracks = [
+        {"index": 0, "lang": "eng", "title": None},
+        {"index": 1, "lang": "jpn", "title": None},
+    ]
+    extracted = []
+
+    def fake_extract(v, idx, dest):
+        extracted.append(idx)
+        dest.touch()
+
+    with patch("submatch.embedded.list_subtitle_tracks", return_value=tracks), \
+         patch("submatch.embedded.extract_subtitle_track", side_effect=fake_extract), \
+         patch("submatch.cli._run_batch", return_value=0):
+        cli._run_embedded(args, [video])
+
+    assert extracted == [0]  # only English track extracted
+
+
+def test_run_embedded_sub_lang_includes_untagged_tracks(tmp_path):
+    args, video = _make_embedded_args(tmp_path, ["--sub-lang", "en"])
+    tracks = [
+        {"index": 0, "lang": None, "title": None},   # unknown lang → included
+        {"index": 1, "lang": "jpn", "title": None},  # Japanese → excluded
+    ]
+    extracted = []
+
+    def fake_extract(v, idx, dest):
+        extracted.append(idx)
+        dest.touch()
+
+    with patch("submatch.embedded.list_subtitle_tracks", return_value=tracks), \
+         patch("submatch.embedded.extract_subtitle_track", side_effect=fake_extract), \
+         patch("submatch.cli._run_batch", return_value=0):
+        cli._run_embedded(args, [video])
+
+    assert extracted == [0]
+
+
+def test_run_embedded_temp_files_cleaned_up_on_success(tmp_path):
+    args, video = _make_embedded_args(tmp_path)
+    tracks = [{"index": 0, "lang": "eng", "title": None}]
+    captured_dirs = []
+
+    def fake_extract(v, idx, dest):
+        captured_dirs.append(dest.parent.parent)  # the root tmp dir
+        dest.touch()
+
+    with patch("submatch.embedded.list_subtitle_tracks", return_value=tracks), \
+         patch("submatch.embedded.extract_subtitle_track", side_effect=fake_extract), \
+         patch("submatch.cli._run_batch", return_value=0):
+        cli._run_embedded(args, [video])
+
+    assert captured_dirs, "extract was never called"
+    assert not captured_dirs[0].exists(), "temp dir was not cleaned up"
+
+
+def test_run_embedded_temp_files_cleaned_up_on_error(tmp_path):
+    args, video = _make_embedded_args(tmp_path)
+    tracks = [{"index": 0, "lang": "eng", "title": None}]
+    captured_dirs = []
+
+    def fake_extract(v, idx, dest):
+        captured_dirs.append(dest.parent.parent)
+        dest.touch()
+
+    with patch("submatch.embedded.list_subtitle_tracks", return_value=tracks), \
+         patch("submatch.embedded.extract_subtitle_track", side_effect=fake_extract), \
+         patch("submatch.cli._run_batch", side_effect=RuntimeError("boom")):
+        with pytest.raises(RuntimeError):
+            cli._run_embedded(args, [video])
+
+    assert not captured_dirs[0].exists(), "temp dir was not cleaned up after error"
+
+
+def test_run_embedded_list_tracks_failure_skips_video(tmp_path, capsys):
+    args, video = _make_embedded_args(tmp_path)
+    with patch("submatch.embedded.list_subtitle_tracks", side_effect=Exception("ffprobe failed")):
+        result = cli._run_embedded(args, [video])
+    assert result == 2
+    assert "Warning" in capsys.readouterr().err
+
+
+def test_main_embedded_dispatches_to_run_embedded(tmp_path, capsys):
+    v = tmp_path / "movie.mkv"
+    v.touch()
+    with patch("sys.argv", ["submatch", str(v), "--embedded", "--no-sync"]), \
+         patch("submatch.cli.check_dependencies"), \
+         patch("submatch.cli._run_embedded", return_value=0) as mock_embedded:
+        with pytest.raises(SystemExit) as exc:
+            cli.main()
+    assert exc.value.code == 0
+    mock_embedded.assert_called_once()
+    call_videos = mock_embedded.call_args[0][1]
+    assert v in call_videos
