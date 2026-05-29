@@ -60,7 +60,7 @@ def parse_args() -> argparse.Namespace:
                         help="only process subtitle files matching this glob pattern (e.g. '*.en.*')")
     parser.add_argument(
         "--device", choices=["cpu", "mps", "cuda", "auto"], default="auto",
-        help="Whisper inference device (default: auto — CUDA > MPS > CPU)",
+        help="Whisper inference device (default: auto — CUDA > CPU)",
     )
     parser.add_argument("--workers", type=int, default=None,
                         help="parallel pairs in batch mode (default: auto — up to 4)")
