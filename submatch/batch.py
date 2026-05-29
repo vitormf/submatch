@@ -63,13 +63,20 @@ def classify_inputs(
                 files = sorted(f for f in path.rglob("*") if f.is_file())
             else:
                 files = sorted(f for f in path.iterdir() if f.is_file())
+            for f in files:
+                ext = f.suffix.lower()
+                if ext in SUBTITLE_EXTENSIONS:
+                    subtitles.append(f)
+                elif ext in VIDEO_EXTENSIONS:
+                    videos.append(f)
+                # else: skip unknown extensions (.DS_Store, .nfo, images, etc.)
         else:
-            files = [path]
-        for f in files:
-            if f.suffix.lower() in SUBTITLE_EXTENSIONS:
-                subtitles.append(f)
+            # Explicitly specified file — classify by extension, treat everything
+            # non-subtitle as video (trust the user)
+            if path.suffix.lower() in SUBTITLE_EXTENSIONS:
+                subtitles.append(path)
             else:
-                videos.append(f)
+                videos.append(path)
     return videos, subtitles
 
 
@@ -117,6 +124,7 @@ def filter_pairs(
 def resolve_pairs(
     videos: list[Path],
     subtitles: list[Path],
+    warn_missing: bool = True,
 ) -> list[tuple[Path, Path]]:
     import sys
     pairs: list[tuple[Path, Path]] = []
@@ -141,7 +149,8 @@ def resolve_pairs(
             else:
                 discovered = [s for v, s in find_pairs(video.parent) if v == video]
                 if not discovered:
-                    print(f"Warning: no subtitles found for video: {video.name}", file=sys.stderr)
+                    if warn_missing:
+                        print(f"Warning: no subtitles found for video: {video.name}", file=sys.stderr)
                 else:
                     pairs.extend((video, s) for s in discovered)
     else:

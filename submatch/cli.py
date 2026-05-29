@@ -389,10 +389,15 @@ def _score_pair(
         raise
 
 
-def _run_batch(args: argparse.Namespace, videos: list[Path], subtitles: list[Path]) -> int:
+def _run_batch(
+    args: argparse.Namespace,
+    videos: list[Path],
+    subtitles: list[Path],
+    warn_missing: bool = True,
+) -> int:
     from submatch import batch as _batch
 
-    pairs_to_run = _batch.resolve_pairs(videos, subtitles)
+    pairs_to_run = _batch.resolve_pairs(videos, subtitles, warn_missing=warn_missing)
     pairs_to_run = _batch.filter_pairs(
         pairs_to_run,
         sub_langs=args.sub_lang,
@@ -579,7 +584,7 @@ def main() -> None:
         args.video = videos[0]
         args.subtitle = subtitles[0]
     else:
-        sys.exit(_run_batch(args, videos, subtitles))
+        sys.exit(_run_batch(args, videos, subtitles, warn_missing=not had_dirs))
 
     check_dependencies(skip_sync=args.no_sync)
 

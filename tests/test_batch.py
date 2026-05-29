@@ -484,3 +484,32 @@ def test_resolve_pairs_video_auto_discovers_multiple_subs(tmp_path):
     s_pt.touch()
     pairs = batch.resolve_pairs([v], [])
     assert set(pairs) == {(v, s_en), (v, s_pt)}
+
+
+def test_resolve_pairs_warn_missing_false_suppresses_warning(tmp_path, capsys):
+    v = tmp_path / "movie.mkv"
+    v.touch()
+    pairs = batch.resolve_pairs([v], [], warn_missing=False)
+    assert pairs == []
+    assert capsys.readouterr().err == ""
+
+
+def test_classify_inputs_directory_skips_unknown_extensions(tmp_path):
+    v = tmp_path / "movie.mkv"
+    v.touch()
+    s = tmp_path / "movie.en.srt"
+    s.touch()
+    (tmp_path / ".DS_Store").touch()
+    (tmp_path / "movie.nfo").touch()
+    videos, subs = classify_inputs([tmp_path], recursive=False)
+    assert videos == [v]
+    assert subs == [s]
+
+
+def test_classify_inputs_explicit_file_trusts_user(tmp_path):
+    """Explicitly passed non-subtitle file is treated as video regardless of extension."""
+    f = tmp_path / "movie.nfo"
+    f.touch()
+    videos, subs = classify_inputs([f])
+    assert videos == [f]
+    assert subs == []
