@@ -104,7 +104,9 @@ SRT, WebVTT, ASS/SSA (and any other format supported by [pysubs2](https://github
 | `--no-recursive` | off | Do not recurse into subdirectories when expanding directories (default: recursive) |
 | `--sub-lang CODE` | off | Keep only subtitles whose filename language code starts with CODE (repeatable; infers from text for untagged external files; always includes untagged embedded tracks) |
 | `--filter GLOB` | off | Keep only subtitles whose filename matches the glob (e.g. `*.en.*`) |
-| `--json` | off | Machine-readable JSON output |
+| `--json FILE` | off | Write JSON report to FILE |
+| `--csv FILE` | off | Write CSV report to FILE |
+| `--html FILE` | off | Write self-contained HTML report to FILE |
 | `--compact` | off | One-line-per-pair summary in batch mode |
 | `--verbose` | off | Show subtitle and transcription text per segment |
 | `--device` | `auto` | Whisper inference device: `cpu`, `mps` (Apple Silicon), `cuda` (NVIDIA), `auto` (CUDA > MPS > CPU) |
@@ -114,6 +116,8 @@ SRT, WebVTT, ASS/SSA (and any other format supported by [pysubs2](https://github
 | `--pass-unsure` | off | Exit 0 for UNSURE results (not enough transcription data) |
 
 Segment count auto-selection: `< 30 min` → 5, `30–90 min` → 8, `> 90 min` → 12.
+
+**Breaking change:** `--json` now requires a filename. Bare `--json` is a parse error. Update scripts from `--json` to `--json output.json`. The same applies to `--csv` and `--html`.
 
 ## Configuration
 
