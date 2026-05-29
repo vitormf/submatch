@@ -1,0 +1,53 @@
+name: Run tests
+
+on:
+  workflow_call:
+
+jobs:
+  unit:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - run: ruff check
+      - run: pytest --tb=short -q
+
+  integration:
+    name: Integration tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e ".[dev]"
+
+      - name: Cache fixtures
+        uses: actions/cache@v4
+        with:
+          path: tests/fixtures
+          key: integration-fixtures-${{ hashFiles('tests/integration/conftest.py') }}
+
+      - name: Cache Whisper models
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/whisper
+          key: whisper-models-tiny-base
+
+      - name: Cache embedding model
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface/hub
+          key: hf-paraphrase-multilingual-MiniLM-L12-v2
+
+      - name: Prepare fixtures and models
+        run: python tests/integration/prepare.py
+
+      - name: Run integration tests
+        run: pytest tests/integration/ --tb=short -q -x --timeout=120 --no-cov
