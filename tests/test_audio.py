@@ -215,17 +215,12 @@ def test_extract_segment_default_track_no_map_flag(tmp_path):
         return MagicMock(returncode=0)
 
     with patch("submatch.audio.subprocess.run", side_effect=fake_run):
-        import submatch.audio as _audio
-        import tempfile as _tf
-        with patch.object(_tf, "NamedTemporaryFile") as mock_ntf:
-            mock_ntf.return_value.name = str(tmp_path / "out.wav")
-            mock_ntf.return_value.close = lambda: None
-            (tmp_path / "out.wav").write_bytes(b"")
-            _audio.extract_segment(video, 0, 3_000, audio_track=0)
+        from submatch.audio import extract_segment
+        wav = extract_segment(video, 0, 3_000, audio_track=0)
+        wav.unlink(missing_ok=True)
 
     assert captured_cmds
-    cmd = captured_cmds[0]
-    assert "-map" not in cmd
+    assert "-map" not in captured_cmds[0]
 
 
 def test_extract_segment_nonzero_track_has_map_flag(tmp_path):
@@ -239,13 +234,9 @@ def test_extract_segment_nonzero_track_has_map_flag(tmp_path):
         return MagicMock(returncode=0)
 
     with patch("submatch.audio.subprocess.run", side_effect=fake_run):
-        import submatch.audio as _audio
-        import tempfile as _tf
-        with patch.object(_tf, "NamedTemporaryFile") as mock_ntf:
-            mock_ntf.return_value.name = str(tmp_path / "out.wav")
-            mock_ntf.return_value.close = lambda: None
-            (tmp_path / "out.wav").write_bytes(b"")
-            _audio.extract_segment(video, 0, 3_000, audio_track=2)
+        from submatch.audio import extract_segment
+        wav = extract_segment(video, 0, 3_000, audio_track=2)
+        wav.unlink(missing_ok=True)
 
     assert captured_cmds
     cmd = captured_cmds[0]
