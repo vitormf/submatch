@@ -127,3 +127,31 @@ def _native_watch(
     finally:
         observer.stop()
         observer.join()
+
+
+def run_watch(args: argparse.Namespace, directory: Path) -> int:
+    from submatch import cli, transcribe
+
+    print(f"Watching {directory} — press Ctrl+C to stop", file=sys.stderr)
+    device = cli._resolve_device(args.device)
+    print(f"Loading model ({args.model})...", file=sys.stderr, flush=True)
+    model = transcribe.load_model(args.model, device)
+
+    known_pairs = _score_existing(args, directory, model)
+
+    try:
+        if getattr(args, "poll", False):
+            _poll_loop(args, directory, known_pairs, model, args.interval)
+        else:
+            try:
+                _native_watch(args, directory, known_pairs, model)
+            except OSError as exc:
+                print(
+                    f"Error: filesystem does not support native events ({exc}). Use --poll.",
+                    file=sys.stderr,
+                )
+                return 2
+    except KeyboardInterrupt:
+        print("\nStopped.", file=sys.stderr)
+
+    return 0

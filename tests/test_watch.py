@@ -281,3 +281,82 @@ def test_native_watch_stops_observer_on_keyboard_interrupt(tmp_path):
 
     mock_observer.stop.assert_called_once()
     mock_observer.join.assert_called()
+
+
+# ── run_watch ──────────────────────────────────────────────────────────────────
+
+def _watch_args(poll: bool = False, interval: int = 10):
+    args = MagicMock()
+    args.poll = poll
+    args.interval = interval
+    args.model = "base"
+    args.device = "auto"
+    args.no_recursive = False
+    args.sub_lang = None
+    args.filter = None
+    args.verbose = False
+    return args
+
+
+def test_run_watch_prints_startup_message(tmp_path, capsys):
+    args = _watch_args(poll=True)
+
+    with patch("submatch.cli._resolve_device", return_value="cpu"), \
+         patch("submatch.transcribe.load_model", return_value=MagicMock()), \
+         patch("submatch.watch._score_existing", return_value=set()), \
+         patch("submatch.watch._poll_loop", side_effect=KeyboardInterrupt):
+        watch.run_watch(args, tmp_path)
+
+    err = capsys.readouterr().err
+    assert "Watching" in err
+    assert str(tmp_path) in err
+
+
+def test_run_watch_poll_calls_poll_loop(tmp_path):
+    args = _watch_args(poll=True)
+
+    with patch("submatch.cli._resolve_device", return_value="cpu"), \
+         patch("submatch.transcribe.load_model", return_value=MagicMock()), \
+         patch("submatch.watch._score_existing", return_value=set()), \
+         patch("submatch.watch._poll_loop", side_effect=KeyboardInterrupt) as mock_poll:
+        watch.run_watch(args, tmp_path)
+
+    mock_poll.assert_called_once()
+
+
+def test_run_watch_default_calls_native_watch(tmp_path):
+    args = _watch_args(poll=False)
+
+    with patch("submatch.cli._resolve_device", return_value="cpu"), \
+         patch("submatch.transcribe.load_model", return_value=MagicMock()), \
+         patch("submatch.watch._score_existing", return_value=set()), \
+         patch("submatch.watch._native_watch", side_effect=KeyboardInterrupt) as mock_native:
+        watch.run_watch(args, tmp_path)
+
+    mock_native.assert_called_once()
+
+
+def test_run_watch_keyboard_interrupt_returns_0(tmp_path, capsys):
+    args = _watch_args(poll=True)
+
+    with patch("submatch.cli._resolve_device", return_value="cpu"), \
+         patch("submatch.transcribe.load_model", return_value=MagicMock()), \
+         patch("submatch.watch._score_existing", return_value=set()), \
+         patch("submatch.watch._poll_loop", side_effect=KeyboardInterrupt):
+        result = watch.run_watch(args, tmp_path)
+
+    assert result == 0
+    assert "Stopped" in capsys.readouterr().err
+
+
+def test_run_watch_watchdog_oserror_returns_2(tmp_path, capsys):
+    args = _watch_args(poll=False)
+
+    with patch("submatch.cli._resolve_device", return_value="cpu"), \
+         patch("submatch.transcribe.load_model", return_value=MagicMock()), \
+         patch("submatch.watch._score_existing", return_value=set()), \
+         patch("submatch.watch._native_watch", side_effect=OSError("not supported")):
+        result = watch.run_watch(args, tmp_path)
+
+    assert result == 2
+    assert "--poll" in capsys.readouterr().err
