@@ -1,7 +1,7 @@
 from __future__ import annotations
 import threading
 from pathlib import Path
-from unittest.mock import patch, MagicMock, call
+from unittest.mock import patch, MagicMock
 
 import pytest
 
@@ -90,7 +90,7 @@ def test_score_existing_applies_filter(tmp_path):
 
     from submatch import batch
     with patch("submatch.watch._find_pairs", return_value=[(video, sub_en), (video, sub_pt)]), \
-         patch.object(batch, "filter_pairs", return_value=[(video, sub_en)]) as mock_filter, \
+         patch.object(batch, "filter_pairs", return_value=[(video, sub_en)]), \
          patch("submatch.watch._score_and_print") as mock_score:
         result = watch._score_existing(args, tmp_path, model)
 
