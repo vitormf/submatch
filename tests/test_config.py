@@ -81,3 +81,23 @@ def test_load_config_boolean_flags(tmp_path):
         result = config.load_config()
     assert result["no_sync"] is True
     assert result["pass_unsure"] is False
+
+
+def test_load_config_invalid_model_exits(tmp_path):
+    cfg = tmp_path / "config.toml"
+    cfg.write_text('model = "gigantic"\n')
+    with patch.object(config, "_USER_CONFIG", cfg), \
+         patch.object(config, "_PROJECT_CONFIG", tmp_path / "no.toml"), \
+         pytest.raises(SystemExit) as exc:
+        config.load_config()
+    assert exc.value.code == 2
+
+
+def test_load_config_invalid_device_exits(tmp_path):
+    cfg = tmp_path / "config.toml"
+    cfg.write_text('device = "tpu"\n')
+    with patch.object(config, "_USER_CONFIG", cfg), \
+         patch.object(config, "_PROJECT_CONFIG", tmp_path / "no.toml"), \
+         pytest.raises(SystemExit) as exc:
+        config.load_config()
+    assert exc.value.code == 2

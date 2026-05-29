@@ -85,14 +85,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
 
     from submatch import config as _config
-    _cfg = _config.load_config()
+    _cfg: dict = {}
+    if not any(a in sys.argv for a in ("--help", "-h", "--version")):
+        _cfg = _config.load_config()
     _sub_lang_default = _cfg.pop("sub_lang", None)
     parser.set_defaults(**_cfg)
 
     args = parser.parse_args()
 
     if args.sub_lang is None and _sub_lang_default is not None:
-        args.sub_lang = list(_sub_lang_default)
+        if isinstance(_sub_lang_default, str):
+            args.sub_lang = [_sub_lang_default]
+        else:
+            args.sub_lang = list(_sub_lang_default)
 
     return args
 
