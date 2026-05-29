@@ -453,19 +453,22 @@ def _run_batch(
         _EMA_ALPHA = 0.3
         _tty = not args.json and sys.stderr.isatty()
 
-        def _print_progress(n: int) -> None:
+        def _print_progress(n: int, sub_name: str) -> None:
             if _ema_pair_time is not None:
                 eta = _fmt_eta(int(_ema_pair_time * (n_total - _done)))
                 pct = int(100 * _done / n_total)
-                line = f"[{n}/{n_total}  {pct}%  {eta}]"
+                header = f"[{n}/{n_total}  {pct}%  {eta}]"
             else:
-                line = f"[{n}/{n_total}]"
+                header = f"[{n}/{n_total}]"
+            line = f"{header} {sub_name}..."
             if _tty:
                 print(line, end="\r", file=sys.stderr, flush=True)
+            else:
+                print(line, file=sys.stderr, flush=True)
 
         for i, (video, sub) in enumerate(pairs_to_run):
-            if _tty:
-                _print_progress(i + 1)
+            if not args.json:
+                _print_progress(i + 1, sub.name)
             _pair_t0 = time.monotonic()
             _result_line: str | None = None
             try:
