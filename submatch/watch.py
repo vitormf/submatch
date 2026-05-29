@@ -65,3 +65,65 @@ def _poll_loop(
             if (video, sub) not in known_pairs:
                 _score_and_print(video, sub, args, model)
                 known_pairs.add((video, sub))
+
+
+class _SubtitleEventHandler(FileSystemEventHandler):
+    def __init__(
+        self,
+        args: argparse.Namespace,
+        model,
+        known_pairs: set[tuple[Path, Path]],
+        lock: threading.Lock,
+    ) -> None:
+        super().__init__()
+        self.args = args
+        self.model = model
+        self.known_pairs = known_pairs
+        self.lock = lock
+
+    def on_created(self, event) -> None:
+        if event.is_directory:
+            return
+        src = Path(event.src_path)
+        ext = src.suffix.lower()
+        if ext in SUBTITLE_EXTENSIONS:
+            all_pairs = batch.find_pairs(src.parent)
+            candidates = [(v, s) for v, s in all_pairs if s == src]
+        elif ext in VIDEO_EXTENSIONS:
+            all_pairs = batch.find_pairs(src.parent)
+            candidates = [(v, s) for v, s in all_pairs if v == src]
+        else:
+            return
+        candidates = batch.filter_pairs(
+            candidates,
+            sub_langs=getattr(self.args, "sub_lang", None),
+            glob_pattern=getattr(self.args, "filter", None),
+        )
+        for video, sub in candidates:
+            with self.lock:
+                if (video, sub) in self.known_pairs:
+                    continue
+                self.known_pairs.add((video, sub))
+            _score_and_print(video, sub, self.args, self.model)
+
+
+def _native_watch(
+    args: argparse.Namespace,
+    directory: Path,
+    known_pairs: set[tuple[Path, Path]],
+    model,
+) -> None:
+    from watchdog.observers import Observer
+
+    recursive = not getattr(args, "no_recursive", False)
+    lock = threading.Lock()
+    handler = _SubtitleEventHandler(args, model, known_pairs, lock)
+    observer = Observer()
+    observer.schedule(handler, str(directory), recursive=recursive)
+    observer.start()  # raises OSError on unsupported filesystem
+    try:
+        while observer.is_alive():
+            observer.join(timeout=1)
+    finally:
+        observer.stop()
+        observer.join()
