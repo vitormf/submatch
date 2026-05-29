@@ -1,7 +1,6 @@
 import concurrent.futures
 import sys
 import json
-import threading
 import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock

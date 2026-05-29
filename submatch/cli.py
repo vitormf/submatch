@@ -590,7 +590,7 @@ def _run_batch(
                 future_to_video[future] = video
             for future in concurrent.futures.as_completed(future_to_video):
                 video = future_to_video[future]
-                took = time.monotonic() - _submit_times[video]
+                _ = time.monotonic() - _submit_times[video]
                 try:
                     group = future.result()
                     results_by_video[video] = group
