@@ -160,3 +160,58 @@ def test_write_csv_result_none_no_error(tmp_path):
     rows = list(csv.reader(io.StringIO(Path(out).read_text())))
     assert len(rows) == 2
     assert rows[1][2] == "ERROR"
+
+
+# ── write_html ────────────────────────────────────────────────────────────────
+
+def test_write_html_creates_valid_html(tmp_path):
+    out = str(tmp_path / "out.html")
+    report.write_html(_make_pairs(), out)
+    content = Path(out).read_text()
+    assert content.startswith("<!DOCTYPE html>")
+    assert "</html>" in content
+
+
+def test_write_html_contains_summary_counts(tmp_path):
+    out = str(tmp_path / "out.html")
+    report.write_html(_make_pairs(), out)
+    content = Path(out).read_text()
+    assert "1 PASS" in content
+    assert "1 FAIL" in content
+
+
+def test_write_html_one_row_per_pair(tmp_path):
+    out = str(tmp_path / "out.html")
+    report.write_html(_make_pairs(), out)
+    content = Path(out).read_text()
+    assert content.count('<tr class=') == 3  # 3 data rows (header row has no class)
+
+
+def test_write_html_filter_input(tmp_path):
+    out = str(tmp_path / "out.html")
+    report.write_html([], out)
+    content = Path(out).read_text()
+    assert 'id="filter"' in content
+
+
+def test_write_html_sort_script(tmp_path):
+    out = str(tmp_path / "out.html")
+    report.write_html([], out)
+    content = Path(out).read_text()
+    assert "sortTable" in content
+    assert "filterTable" in content
+
+
+def test_write_html_no_external_dependencies(tmp_path):
+    out = str(tmp_path / "out.html")
+    report.write_html(_make_pairs(), out)
+    content = Path(out).read_text()
+    assert "cdn" not in content.lower()
+    assert "http://" not in content
+    assert "https://" not in content
+
+
+def test_write_html_bad_path_exits_2():
+    with pytest.raises(SystemExit) as exc:
+        report.write_html([], "/nonexistent/dir/out.html")
+    assert exc.value.code == 2
