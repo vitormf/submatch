@@ -21,6 +21,7 @@ Mismatch controls use subtitles from a different video in the same language:
 import json
 import shutil
 import subprocess
+import sys
 import pytest
 from pathlib import Path
 
@@ -453,7 +454,7 @@ def test_guiyangese_matching_subtitle_scores_higher_than_mismatch(
 
 def _run_cli(*args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ['submatch', *args],
+        [sys.executable, '-m', 'submatch.cli', *args],
         capture_output=True, text=True,
     )
 
