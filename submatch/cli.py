@@ -447,15 +447,19 @@ def _run_batch(
     videos: list[Path],
     subtitles: list[Path],
     warn_missing: bool = True,
+    pairs: list[tuple[Path, Path]] | None = None,
 ) -> int:
-    from submatch import batch as _batch
+    if pairs is not None:
+        pairs_to_run = pairs
+    else:
+        from submatch import batch as _batch
 
-    pairs_to_run = _batch.resolve_pairs(videos, subtitles, warn_missing=warn_missing)
-    pairs_to_run = _batch.filter_pairs(
-        pairs_to_run,
-        sub_langs=args.sub_lang,
-        glob_pattern=args.filter,
-    )
+        pairs_to_run = _batch.resolve_pairs(videos, subtitles, warn_missing=warn_missing)
+        pairs_to_run = _batch.filter_pairs(
+            pairs_to_run,
+            sub_langs=args.sub_lang,
+            glob_pattern=args.filter,
+        )
 
     if not pairs_to_run:
         print("No video/subtitle pairs found.", file=sys.stderr)

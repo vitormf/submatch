@@ -1279,6 +1279,24 @@ def test_batch_single_video_non_dir_subtitle_exits_2(tmp_path):
     assert result == 2
 
 
+def test_run_batch_accepts_prebuilt_pairs(tmp_path):
+    """When pairs= is provided, resolve_pairs is not called."""
+    video = tmp_path / "movie.mp4"
+    sub = tmp_path / "movie.srt"
+    video.touch()
+    sub.touch()
+
+    with patch("sys.argv", ["submatch", str(video), str(sub), "--no-sync"]):
+        args = cli.parse_args()
+
+    with patch("submatch.cli.check_dependencies"), \
+         patch("submatch.batch.resolve_pairs") as mock_resolve, \
+         patch("submatch.cli._score_pair", side_effect=Exception("stop")):
+        result = cli._run_batch(args, [], [], pairs=[(video, sub)])
+
+    mock_resolve.assert_not_called()
+
+
 def test_batch_delete_failures(tmp_path):
     """--delete-failures in batch mode removes subtitle files that fail."""
     ctx = _make_batch_patches(tmp_path, ["--threshold", "2.0", "--delete-failures"])
