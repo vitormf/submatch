@@ -2210,7 +2210,8 @@ def test_main_watch_non_directory_exits_2(tmp_path, capsys):
 def test_main_watch_multiple_inputs_exits_2(tmp_path, capsys):
     d1 = tmp_path / "a"
     d2 = tmp_path / "b"
-    d1.mkdir(); d2.mkdir()
+    d1.mkdir()
+    d2.mkdir()
     with patch("sys.argv", ["submatch", str(d1), str(d2), "--watch"]), \
          patch("submatch.config.load_config", return_value={}), \
          patch("submatch.cli.check_dependencies"):
@@ -2235,7 +2236,8 @@ def test_main_watch_dispatches_to_run_watch(tmp_path):
 def test_poll_without_watch_warns(tmp_path, capsys):
     v = tmp_path / "movie.mkv"
     s = tmp_path / "movie.en.srt"
-    v.touch(); s.touch()
+    v.touch()
+    s.touch()
     with patch("sys.argv", ["submatch", str(v), str(s), "--poll", "--no-sync"]), \
          patch("submatch.config.load_config", return_value={}), \
          patch("submatch.cli.check_dependencies"), \
