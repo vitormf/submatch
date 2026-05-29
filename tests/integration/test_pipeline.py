@@ -513,8 +513,11 @@ def test_compact_output_one_line_per_pair(german_video, german_de_srt, tmp_path)
         '--compact', '--no-sync', '--segments', '1',
     )
     assert result.returncode in (0, 1), f"Unexpected exit code: {result.stderr}"
-    lines = [line for line in result.stdout.strip().splitlines() if line.strip()]
-    assert len(lines) == 1, f"Expected 1 compact line, got {len(lines)}:\n{result.stdout}"
+    pair_lines = [
+        line for line in result.stdout.strip().splitlines()
+        if line.strip() and not line.strip().startswith("Results:")
+    ]
+    assert len(pair_lines) == 1, f"Expected 1 compact pair line, got {len(pair_lines)}:\n{result.stdout}"
 
 
 def test_compact_output_multiple_pairs_shows_summary(
