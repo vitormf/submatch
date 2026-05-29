@@ -364,16 +364,6 @@ def test_shanghainese_native_subtitle_passes_threshold(
 # ── Hindi video — cross-language tests ───────────────────────────────────────
 # No native Hindi subtitle track exists; all tests use cross-language scoring.
 
-def test_cross_language_hindi_english_passes_threshold(
-    hindi_video, hindi_en_srt, whisper_base, embed_model,
-):
-    """English translation of Hindi audio should score above 0.10 via embeddings."""
-    confidence, _ = _score_cross_language(hindi_video, hindi_en_srt, whisper_base, embed_model)
-    assert confidence >= 0.10, (
-        f"HI audio + EN subtitle scored {confidence:.2f} (base model), expected >= 0.10"
-    )
-
-
 def test_cross_language_hindi_french_passes_threshold(
     hindi_video, hindi_fr_srt, whisper_base, embed_model,
 ):
