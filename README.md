@@ -63,6 +63,14 @@ submatch --embedded movie.mkv
 submatch --embedded /path/to/library/
 ```
 
+**Watch mode — monitor a directory for new pairs:**
+```bash
+submatch --watch /media/movies/
+submatch --watch /media/movies/ --sub-lang en --delete-failures
+submatch --watch /media/movies/ --poll             # for network mounts (NFS, SMB)
+submatch --watch /media/movies/ --poll --interval 30
+```
+
 **Filtering — process only specific subtitles:**
 ```bash
 submatch /media/shows/ --sub-lang pt          # matches pt.srt, pt-BR.srt, pt-PT.srt
@@ -114,6 +122,9 @@ SRT, WebVTT, ASS/SSA (and any other format supported by [pysubs2](https://github
 | `--delete-failures` | off | Delete subtitle files that fail the match check |
 | `--resync` | off | On DRIFT (drift detected), copy synced subtitle over original and re-score |
 | `--pass-unsure` | off | Exit 0 for UNSURE results (not enough transcription data) |
+| `--watch` | off | Monitor a directory for new video/subtitle pairs and score them as they appear |
+| `--poll` | off | Use polling instead of native filesystem events (required for network mounts) |
+| `--interval N` | `10` | Seconds between directory scans in `--poll` mode |
 
 Segment count auto-selection: `< 30 min` → 5, `30–90 min` → 8, `> 90 min` → 12.
 
