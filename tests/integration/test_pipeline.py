@@ -459,25 +459,29 @@ def _run_cli(*args: str) -> subprocess.CompletedProcess:
     )
 
 
-def test_json_output_single_pair_is_valid_json(german_video, german_de_srt):
-    """--json produces valid, parseable JSON for a single video+subtitle pair."""
+def test_json_output_single_pair_is_valid_json(german_video, german_de_srt, tmp_path):
+    """--json FILE produces valid, parseable JSON for a single video+subtitle pair."""
+    out = tmp_path / "out.json"
     result = _run_cli(
         str(german_video), str(german_de_srt),
-        '--json', '--no-sync', '--segments', '1',
+        '--json', str(out), '--no-sync', '--segments', '1',
     )
     assert result.returncode in (0, 1), f"Unexpected exit code: {result.stderr}"
-    data = json.loads(result.stdout)
-    assert isinstance(data, dict)
+    data = json.loads(out.read_text())
+    assert isinstance(data, list)
+    assert len(data) == 1
+    assert isinstance(data[0], dict)
 
 
-def test_json_output_single_pair_has_required_keys(german_video, german_de_srt):
-    """--json output includes confidence, state, language, sync, and segments keys."""
+def test_json_output_single_pair_has_required_keys(german_video, german_de_srt, tmp_path):
+    """--json FILE output includes confidence, state, language, sync, and segments keys."""
+    out = tmp_path / "out.json"
     result = _run_cli(
         str(german_video), str(german_de_srt),
-        '--json', '--no-sync', '--segments', '1',
+        '--json', str(out), '--no-sync', '--segments', '1',
     )
     assert result.returncode in (0, 1)
-    data = json.loads(result.stdout)
+    data = json.loads(out.read_text())[0]
     for key in ('confidence', 'state', 'language', 'segments'):
         assert key in data, f"Missing key '{key}' in JSON output"
     assert isinstance(data['confidence'], float)
@@ -486,17 +490,18 @@ def test_json_output_single_pair_has_required_keys(german_video, german_de_srt):
 
 
 def test_json_output_batch_is_array(german_video, german_de_srt, tmp_path):
-    """--json in batch mode (one video vs subtitle directory) produces a JSON array."""
+    """--json FILE in batch mode (one video vs subtitle directory) produces a JSON array."""
     subs_dir = tmp_path / "subs"
     subs_dir.mkdir()
     shutil.copy(german_de_srt, subs_dir / german_de_srt.name)
+    out = tmp_path / "out.json"
 
     result = _run_cli(
         str(german_video), str(subs_dir),
-        '--json', '--no-sync', '--segments', '1',
+        '--json', str(out), '--no-sync', '--segments', '1',
     )
     assert result.returncode in (0, 1), f"Unexpected exit code: {result.stderr}"
-    data = json.loads(result.stdout)
+    data = json.loads(out.read_text())
     assert isinstance(data, list), "Batch --json output should be a JSON array"
     assert len(data) == 1
     assert 'confidence' in data[0]
@@ -544,52 +549,56 @@ def test_compact_output_multiple_pairs_shows_summary(
 # multi_track_video has two audio tracks: track 0 = German speech (tagged deu),
 # track 1 = silence (tagged eng). Created by the session fixture in conftest.py.
 
-def test_audio_track_index_1_reported_in_json(multi_track_video, german_de_srt):
+def test_audio_track_index_1_reported_in_json(multi_track_video, german_de_srt, tmp_path):
     """--audio-track 1 sets audio_track_index=1 and audio_track_lang='eng' in JSON output."""
+    out = tmp_path / "out.json"
     result = _run_cli(
         str(multi_track_video), str(german_de_srt),
-        "--audio-track", "1", "--no-sync", "--segments", "1", "--json",
+        "--audio-track", "1", "--no-sync", "--segments", "1", "--json", str(out),
     )
     assert result.returncode in (0, 1), f"Unexpected exit code: {result.stderr}"
-    data = json.loads(result.stdout)
+    data = json.loads(out.read_text())[0]
     assert data["audio_track_index"] == 1
     assert data["audio_track_lang"] == "eng"
 
 
-def test_audio_track_language_eng_selects_second_track(multi_track_video, german_de_srt):
+def test_audio_track_language_eng_selects_second_track(multi_track_video, german_de_srt, tmp_path):
     """--audio-track eng (ISO 639-2) resolves to the 'eng'-tagged track at index 1."""
+    out = tmp_path / "out.json"
     result = _run_cli(
         str(multi_track_video), str(german_de_srt),
-        "--audio-track", "eng", "--no-sync", "--segments", "1", "--json",
+        "--audio-track", "eng", "--no-sync", "--segments", "1", "--json", str(out),
     )
     assert result.returncode in (0, 1), f"Unexpected exit code: {result.stderr}"
-    data = json.loads(result.stdout)
+    data = json.loads(out.read_text())[0]
     assert data["audio_track_index"] == 1
     assert data["audio_track_lang"] == "eng"
 
 
-def test_audio_track_iso_639_1_en_matches_eng_tagged_track(multi_track_video, german_de_srt):
+def test_audio_track_iso_639_1_en_matches_eng_tagged_track(multi_track_video, german_de_srt, tmp_path):
     """--audio-track en (ISO 639-1) resolves to the 'eng'-tagged (ISO 639-2) track."""
+    out = tmp_path / "out.json"
     result = _run_cli(
         str(multi_track_video), str(german_de_srt),
-        "--audio-track", "en", "--no-sync", "--segments", "1", "--json",
+        "--audio-track", "en", "--no-sync", "--segments", "1", "--json", str(out),
     )
     assert result.returncode in (0, 1), f"Unexpected exit code: {result.stderr}"
-    data = json.loads(result.stdout)
+    data = json.loads(out.read_text())[0]
     assert data["audio_track_index"] == 1, (
         f"Expected ISO 639-1 'en' to match 'eng'-tagged track (index 1), "
         f"got index {data['audio_track_index']}"
     )
 
 
-def test_audio_track_language_deu_selects_first_track(multi_track_video, german_de_srt):
+def test_audio_track_language_deu_selects_first_track(multi_track_video, german_de_srt, tmp_path):
     """--audio-track deu resolves to the 'deu'-tagged track at index 0."""
+    out = tmp_path / "out.json"
     result = _run_cli(
         str(multi_track_video), str(german_de_srt),
-        "--audio-track", "deu", "--no-sync", "--segments", "1", "--json",
+        "--audio-track", "deu", "--no-sync", "--segments", "1", "--json", str(out),
     )
     assert result.returncode in (0, 1), f"Unexpected exit code: {result.stderr}"
-    data = json.loads(result.stdout)
+    data = json.loads(out.read_text())[0]
     assert data["audio_track_index"] == 0
     assert data["audio_track_lang"] == "deu"
 
@@ -607,25 +616,27 @@ def test_audio_track_out_of_range_exits_2(multi_track_video, german_de_srt):
 
 
 def test_audio_track_silence_scores_lower_than_real_audio(
-    multi_track_video, german_de_srt,
+    multi_track_video, german_de_srt, tmp_path,
 ):
     """Transcribing the silent track (1) against a German subtitle scores lower than the real audio (0).
 
     This verifies --audio-track changes which audio is actually extracted and transcribed,
     not just which index is recorded in the output.
     """
+    out0 = tmp_path / "track0.json"
+    out1 = tmp_path / "track1.json"
     result_track0 = _run_cli(
         str(multi_track_video), str(german_de_srt),
-        "--audio-track", "0", "--no-sync", "--segments", "1", "--json",
+        "--audio-track", "0", "--no-sync", "--segments", "1", "--json", str(out0),
     )
     result_track1 = _run_cli(
         str(multi_track_video), str(german_de_srt),
-        "--audio-track", "1", "--no-sync", "--segments", "1", "--json",
+        "--audio-track", "1", "--no-sync", "--segments", "1", "--json", str(out1),
     )
     assert result_track0.returncode in (0, 1), f"Track 0 unexpected exit: {result_track0.stderr}"
     assert result_track1.returncode in (0, 1), f"Track 1 unexpected exit: {result_track1.stderr}"
-    score_track0 = json.loads(result_track0.stdout)["confidence"]
-    score_track1 = json.loads(result_track1.stdout)["confidence"]
+    score_track0 = json.loads(out0.read_text())[0]["confidence"]
+    score_track1 = json.loads(out1.read_text())[0]["confidence"]
     assert score_track0 > score_track1, (
         f"German audio (track 0: {score_track0:.2f}) should score higher than "
         f"silence (track 1: {score_track1:.2f}) against a German subtitle"
