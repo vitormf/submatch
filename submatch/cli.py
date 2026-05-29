@@ -732,3 +732,7 @@ def main() -> None:
             print(f"Deleted: {args.subtitle}")
 
     sys.exit(0 if not _should_fail(result, args.pass_unsure) else 1)
+
+
+if __name__ == "__main__":
+    main()
