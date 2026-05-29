@@ -110,6 +110,15 @@ def test_parse_args_sub_lang_cli_replaces_config(tmp_path):
     assert args.sub_lang == ["fr"]
 
 
+def test_parse_args_sub_lang_string_from_config(tmp_path):
+    """sub_lang as bare string in config is wrapped in a list, not split into chars."""
+    v, s = tmp_path / "v.mp4", tmp_path / "s.srt"
+    with patch("sys.argv", ["submatch", str(v), str(s)]), \
+         patch("submatch.config.load_config", return_value={"sub_lang": "pt"}):
+        args = cli.parse_args()
+    assert args.sub_lang == ["pt"]
+
+
 def test_parse_args_audio_track_integer(tmp_path):
     v, s = tmp_path / "v.mp4", tmp_path / "s.srt"
     with patch("sys.argv", ["submatch", str(v), str(s), "--audio-track", "2"]), \

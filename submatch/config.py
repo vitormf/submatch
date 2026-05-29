@@ -19,6 +19,11 @@ _CONFIGURABLE_KEYS = frozenset({
     "drift_threshold", "audio_track",
 })
 
+_CHOICES: dict[str, frozenset[str]] = {
+    "model": frozenset({"tiny", "base", "small", "medium", "large"}),
+    "device": frozenset({"cpu", "mps", "cuda", "auto"}),
+}
+
 
 def load_config() -> dict[str, Any]:
     merged: dict[str, Any] = {}
@@ -38,4 +43,13 @@ def load_config() -> dict[str, Any]:
             if key not in _CONFIGURABLE_KEYS:
                 print(f"Warning: unknown config key '{key}' in {path}", file=sys.stderr)
         merged.update({k: v for k, v in data.items() if k in _CONFIGURABLE_KEYS})
+
+    for key, valid in _CHOICES.items():
+        if key in merged and merged[key] not in valid:
+            print(
+                f"Error: invalid config value {merged[key]!r} for '{key}' "
+                f"(valid: {', '.join(sorted(valid))})",
+                file=sys.stderr,
+            )
+            sys.exit(2)
     return merged
