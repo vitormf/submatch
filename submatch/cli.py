@@ -82,6 +82,12 @@ def parse_args() -> argparse.Namespace:
         "--audio-track", default=None, dest="audio_track",
         help="audio track to use: integer index (0-based) or comma-separated language preference list (e.g. jp,en,pt)",
     )
+    parser.add_argument("--watch", action="store_true",
+                        help="monitor a directory for new video/subtitle pairs and score them as they appear")
+    parser.add_argument("--poll", action="store_true",
+                        help="use polling instead of native filesystem events (for network mounts)")
+    parser.add_argument("--interval", type=int, default=10, metavar="N",
+                        help="seconds between polls in --poll mode (default: 10)")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
 
     from submatch import config as _config
@@ -679,6 +685,17 @@ def main() -> None:
     from submatch import batch as _batch
     had_dirs = any(p.is_dir() for p in args.inputs)
     videos, subtitles = _batch.classify_inputs(args.inputs, recursive=not args.no_recursive)
+
+    if args.poll and not args.watch:
+        print("Warning: --poll and --interval have no effect without --watch", file=sys.stderr)
+
+    if args.watch:
+        if len(args.inputs) != 1 or not args.inputs[0].is_dir():
+            print("Error: --watch requires exactly one directory argument", file=sys.stderr)
+            sys.exit(2)
+        check_dependencies(skip_sync=args.no_sync)
+        from submatch import watch as _watch
+        sys.exit(_watch.run_watch(args, args.inputs[0]))
 
     if not had_dirs and len(videos) == 1 and len(subtitles) == 1:
         args.video = videos[0]
