@@ -53,7 +53,7 @@ def test_load_config_unknown_key_warns_and_excludes(tmp_path, capsys):
     assert "unknown config key 'unknown_flag'" in capsys.readouterr().err
 
 
-def test_load_config_invalid_toml_exits(tmp_path):
+def test_load_config_invalid_toml_exits(tmp_path, capsys):
     cfg = tmp_path / "config.toml"
     cfg.write_text("not valid toml ][[\n")
     with patch.object(config, "_USER_CONFIG", cfg), \
@@ -61,6 +61,7 @@ def test_load_config_invalid_toml_exits(tmp_path):
          pytest.raises(SystemExit) as exc:
         config.load_config()
     assert exc.value.code == 2
+    assert "invalid TOML" in capsys.readouterr().err
 
 
 def test_load_config_sub_lang_list(tmp_path):
