@@ -148,3 +148,136 @@ def test_poll_loop_skips_known_pairs(tmp_path):
             watch._poll_loop(args, tmp_path, known, model, 10)
 
     mock_score.assert_not_called()
+
+
+# ── _SubtitleEventHandler ──────────────────────────────────────────────────────
+
+def _make_handler(args=None, known=None):
+    if args is None:
+        args = MagicMock()
+        args.sub_lang = None
+        args.filter = None
+        args.verbose = False
+    if known is None:
+        known = set()
+    return watch._SubtitleEventHandler(args, MagicMock(), known, threading.Lock())
+
+
+def _event(src_path: Path, is_directory: bool = False):
+    e = MagicMock()
+    e.src_path = str(src_path)
+    e.is_directory = is_directory
+    return e
+
+
+def test_event_handler_subtitle_scores_pair(tmp_path):
+    video = tmp_path / "movie.mkv"
+    sub = tmp_path / "movie.en.srt"
+    known: set = set()
+    handler = _make_handler(known=known)
+
+    with patch("submatch.batch.find_pairs", return_value=[(video, sub)]), \
+         patch("submatch.watch._score_and_print") as mock_score:
+        handler.on_created(_event(sub))
+
+    assert (video, sub) in known
+    mock_score.assert_called_once()
+
+
+def test_event_handler_video_scores_pair(tmp_path):
+    video = tmp_path / "movie.mkv"
+    sub = tmp_path / "movie.en.srt"
+    known: set = set()
+    handler = _make_handler(known=known)
+
+    with patch("submatch.batch.find_pairs", return_value=[(video, sub)]), \
+         patch("submatch.watch._score_and_print") as mock_score:
+        handler.on_created(_event(video))
+
+    assert (video, sub) in known
+    mock_score.assert_called_once()
+
+
+def test_event_handler_unknown_extension_skips(tmp_path):
+    txt = tmp_path / "readme.txt"
+    handler = _make_handler()
+
+    with patch("submatch.watch._score_and_print") as mock_score:
+        handler.on_created(_event(txt))
+
+    mock_score.assert_not_called()
+
+
+def test_event_handler_directory_event_skips(tmp_path):
+    handler = _make_handler()
+
+    with patch("submatch.watch._score_and_print") as mock_score:
+        handler.on_created(_event(tmp_path, is_directory=True))
+
+    mock_score.assert_not_called()
+
+
+def test_event_handler_skips_known_pair(tmp_path):
+    video = tmp_path / "movie.mkv"
+    sub = tmp_path / "movie.en.srt"
+    known = {(video, sub)}
+    handler = _make_handler(known=known)
+
+    with patch("submatch.batch.find_pairs", return_value=[(video, sub)]), \
+         patch("submatch.watch._score_and_print") as mock_score:
+        handler.on_created(_event(sub))
+
+    mock_score.assert_not_called()
+
+
+def test_event_handler_applies_sub_lang_filter(tmp_path):
+    video = tmp_path / "movie.mkv"
+    sub_en = tmp_path / "movie.en.srt"
+    sub_pt = tmp_path / "movie.pt.srt"
+    known: set = set()
+
+    args = MagicMock()
+    args.sub_lang = ["en"]
+    args.filter = None
+    args.verbose = False
+    handler = watch._SubtitleEventHandler(args, MagicMock(), known, threading.Lock())
+
+    with patch("submatch.batch.find_pairs", return_value=[(video, sub_en), (video, sub_pt)]), \
+         patch("submatch.batch.filter_pairs", return_value=[(video, sub_en)]), \
+         patch("submatch.watch._score_and_print") as mock_score:
+        handler.on_created(_event(sub_en))
+
+    mock_score.assert_called_once()
+    assert (video, sub_en) in known
+    assert (video, sub_pt) not in known
+
+
+# ── _native_watch ──────────────────────────────────────────────────────────────
+
+def test_native_watch_oserror_propagates(tmp_path):
+    args = MagicMock()
+    args.no_recursive = False
+    known: set = set()
+
+    mock_observer = MagicMock()
+    mock_observer.start.side_effect = OSError("inotify not supported")
+
+    with patch("watchdog.observers.Observer", return_value=mock_observer):
+        with pytest.raises(OSError):
+            watch._native_watch(args, tmp_path, known, MagicMock())
+
+
+def test_native_watch_stops_observer_on_keyboard_interrupt(tmp_path):
+    args = MagicMock()
+    args.no_recursive = False
+    known: set = set()
+
+    mock_observer = MagicMock()
+    mock_observer.is_alive.side_effect = [True, KeyboardInterrupt]
+
+    with patch("watchdog.observers.Observer", return_value=mock_observer):
+        with pytest.raises(KeyboardInterrupt):
+            watch._native_watch(args, tmp_path, known, MagicMock())
+
+    mock_observer.stop.assert_called_once()
+    mock_observer.join.assert_called()
