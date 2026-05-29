@@ -2144,3 +2144,77 @@ def test_main_embedded_dispatches_to_run_embedded(tmp_path, capsys):
     mock_embedded.assert_called_once()
     call_videos = mock_embedded.call_args[0][1]
     assert v in call_videos
+
+
+# ── watch mode ─────────────────────────────────────────────────────────────────
+
+def test_parse_args_watch_defaults(tmp_path):
+    v = tmp_path / "v.mkv"
+    v.touch()
+    with patch("sys.argv", ["submatch", str(v)]), \
+         patch("submatch.config.load_config", return_value={}):
+        args = cli.parse_args()
+    assert args.watch is False
+    assert args.poll is False
+    assert args.interval == 10
+
+
+def test_parse_args_watch_flags(tmp_path):
+    d = tmp_path
+    with patch("sys.argv", ["submatch", str(d), "--watch", "--poll", "--interval", "30"]), \
+         patch("submatch.config.load_config", return_value={}):
+        args = cli.parse_args()
+    assert args.watch is True
+    assert args.poll is True
+    assert args.interval == 30
+
+
+def test_main_watch_non_directory_exits_2(tmp_path, capsys):
+    v = tmp_path / "movie.mkv"
+    v.touch()
+    with patch("sys.argv", ["submatch", str(v), "--watch"]), \
+         patch("submatch.config.load_config", return_value={}), \
+         patch("submatch.cli.check_dependencies"):
+        with pytest.raises(SystemExit) as exc:
+            cli.main()
+    assert exc.value.code == 2
+    assert "directory" in capsys.readouterr().err.lower()
+
+
+def test_main_watch_multiple_inputs_exits_2(tmp_path, capsys):
+    d1 = tmp_path / "a"
+    d2 = tmp_path / "b"
+    d1.mkdir(); d2.mkdir()
+    with patch("sys.argv", ["submatch", str(d1), str(d2), "--watch"]), \
+         patch("submatch.config.load_config", return_value={}), \
+         patch("submatch.cli.check_dependencies"):
+        with pytest.raises(SystemExit) as exc:
+            cli.main()
+    assert exc.value.code == 2
+    assert "directory" in capsys.readouterr().err.lower()
+
+
+def test_main_watch_dispatches_to_run_watch(tmp_path):
+    with patch("sys.argv", ["submatch", str(tmp_path), "--watch", "--no-sync"]), \
+         patch("submatch.config.load_config", return_value={}), \
+         patch("submatch.cli.check_dependencies"), \
+         patch("submatch.watch.run_watch", return_value=0) as mock_watch:
+        with pytest.raises(SystemExit) as exc:
+            cli.main()
+    assert exc.value.code == 0
+    mock_watch.assert_called_once()
+    assert mock_watch.call_args[0][1] == tmp_path
+
+
+def test_poll_without_watch_warns(tmp_path, capsys):
+    v = tmp_path / "movie.mkv"
+    s = tmp_path / "movie.en.srt"
+    v.touch(); s.touch()
+    with patch("sys.argv", ["submatch", str(v), str(s), "--poll", "--no-sync"]), \
+         patch("submatch.config.load_config", return_value={}), \
+         patch("submatch.cli.check_dependencies"), \
+         patch("submatch.cli.audio.has_audio_track", return_value=True), \
+         patch("submatch.cli._score_pair", side_effect=SystemExit(0)):
+        with pytest.raises(SystemExit):
+            cli.main()
+    assert "warning" in capsys.readouterr().err.lower()

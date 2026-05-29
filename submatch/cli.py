@@ -84,6 +84,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--embedded", action="store_true",
                         help="score embedded subtitle tracks in the video container")
+    parser.add_argument("--watch", action="store_true",
+                        help="monitor a directory for new video/subtitle pairs and score them as they appear")
+    parser.add_argument("--poll", action="store_true",
+                        help="use polling instead of native filesystem events (for network mounts)")
+    parser.add_argument("--interval", type=int, default=10, metavar="N",
+                        help="seconds between polls in --poll mode (default: 10)")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
 
     from submatch import config as _config
@@ -750,6 +756,17 @@ def main() -> None:
     if args.embedded:
         check_dependencies(skip_sync=args.no_sync)
         sys.exit(_run_embedded(args, videos))
+
+    if args.poll and not args.watch:
+        print("Warning: --poll and --interval have no effect without --watch", file=sys.stderr)
+
+    if args.watch:
+        if len(args.inputs) != 1 or not args.inputs[0].is_dir():
+            print("Error: --watch requires exactly one directory argument", file=sys.stderr)
+            sys.exit(2)
+        check_dependencies(skip_sync=args.no_sync)
+        from submatch import watch as _watch
+        sys.exit(_watch.run_watch(args, args.inputs[0]))
 
     if not had_dirs and len(videos) == 1 and len(subtitles) == 1:
         args.video = videos[0]
