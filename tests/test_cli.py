@@ -1,5 +1,7 @@
+import concurrent.futures
 import sys
 import json
+import threading
 import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -36,6 +38,7 @@ def test_parse_args_defaults(tmp_path):
     assert args.resync is False
     assert args.pass_unsure is False
     assert args.drift_threshold == pytest.approx(2.0)
+    assert args.audio_track is None
 
 
 def test_parse_args_all_flags(tmp_path):
@@ -49,6 +52,7 @@ def test_parse_args_all_flags(tmp_path):
         "--cross-threshold", "0.5",
         "--resync", "--pass-unsure",
         "--drift-threshold", "5.0",
+        "--audio-track", "jp,en",
     ]):
         args = cli.parse_args()
     assert args.inputs == [v, s]
@@ -70,6 +74,21 @@ def test_parse_args_all_flags(tmp_path):
     assert args.resync is True
     assert args.pass_unsure is True
     assert args.drift_threshold == pytest.approx(5.0)
+    assert args.audio_track == "jp,en"
+
+
+def test_parse_args_audio_track_integer(tmp_path):
+    v, s = tmp_path / "v.mp4", tmp_path / "s.srt"
+    with patch("sys.argv", ["submatch", str(v), str(s), "--audio-track", "2"]):
+        args = cli.parse_args()
+    assert args.audio_track == "2"
+
+
+def test_parse_args_audio_track_language_preference(tmp_path):
+    v, s = tmp_path / "v.mp4", tmp_path / "s.srt"
+    with patch("sys.argv", ["submatch", str(v), str(s), "--audio-track", "jp,en,pt"]):
+        args = cli.parse_args()
+    assert args.audio_track == "jp,en,pt"
 
 
 # ── check_dependencies ────────────────────────────────────────────────────────
@@ -502,6 +521,205 @@ def test_batch_compact_output(tmp_path, capsys):
     assert "1 PASS" in out
 
 
+def _make_two_pair_patches(tmp_path, extra_argv=()):
+    """Two videos, one subtitle each — produces two pairs for inline-output tests."""
+    for name in ("alpha.mp4", "beta.mp4"):
+        (tmp_path / name).touch()
+    (tmp_path / "alpha.srt").write_text(SAMPLE_SRT)
+    (tmp_path / "beta.srt").write_text(SAMPLE_SRT)
+
+    subs = [Subtitle(1, 1_000, 3_500, "Hello world")]
+    segs = [Segment(60_000, 90_000, "Hello world", 2)]
+    mock_trans = MagicMock(text="hello world", language="en")
+    lang = LanguageResult(
+        audio="en", subtitle_detected="en", subtitle_filename="en",
+        video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
+    )
+
+    argv = ["submatch", str(tmp_path), "--no-sync"] + list(extra_argv)
+
+    return [
+        patch("sys.argv", argv),
+        patch("submatch.cli.check_dependencies"),
+        patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000),
+        patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"),
+        patch("submatch.cli.subtitle.parse", return_value=subs),
+        patch("submatch.cli.sampler.select_segments", return_value=segs),
+        patch("submatch.cli.transcribe.load_model", return_value=MagicMock()),
+        patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans),
+        patch("submatch.cli.language.detect_from_text", return_value="en"),
+        patch("submatch.cli.language.detect_from_filename", return_value="en"),
+        patch("submatch.cli.language.detect_from_video", return_value=None),
+        patch("submatch.cli.language.build_result", return_value=lang),
+    ]
+
+
+def _run_patches(ctx):
+    [c.__enter__() for c in ctx]
+    try:
+        with pytest.raises(SystemExit):
+            cli.main()
+    finally:
+        for c in reversed(ctx):
+            c.__exit__(None, None, None)
+
+
+def test_batch_verbose_inline_sequential(tmp_path, capsys):
+    """Standard mode, workers=1: both subtitles appear in stdout before the summary."""
+    _run_patches(_make_two_pair_patches(tmp_path, ["--threshold", "0.01", "--workers", "1"]))
+    out = capsys.readouterr().out
+    assert "alpha.srt" in out
+    assert "beta.srt" in out
+    summary_pos = out.find("Results:")
+    assert out.find("alpha.srt") < summary_pos
+    assert out.find("beta.srt") < summary_pos
+
+
+def test_batch_compact_inline_sequential(tmp_path, capsys):
+    """Compact mode, workers=1: both subtitles appear in stdout before the summary."""
+    _run_patches(_make_two_pair_patches(tmp_path, ["--compact", "--threshold", "0.01", "--workers", "1"]))
+    out = capsys.readouterr().out
+    assert "alpha.srt" in out
+    assert "beta.srt" in out
+    summary_pos = out.find("Results:")
+    assert out.find("alpha.srt") < summary_pos
+    assert out.find("beta.srt") < summary_pos
+
+
+def test_batch_verbose_inline_parallel(tmp_path, capsys):
+    """Standard mode, workers=2: both subtitles appear in stdout before the summary."""
+    _run_patches(_make_two_pair_patches(tmp_path, ["--threshold", "0.01", "--workers", "2", "--device", "cpu"]))
+    out = capsys.readouterr().out
+    assert "alpha.srt" in out
+    assert "beta.srt" in out
+    summary_pos = out.find("Results:")
+    assert out.find("alpha.srt") < summary_pos
+    assert out.find("beta.srt") < summary_pos
+
+
+def test_batch_compact_inline_parallel(tmp_path, capsys):
+    """Compact mode, workers=2: both subtitles appear in stdout before the summary."""
+    _run_patches(_make_two_pair_patches(tmp_path, ["--compact", "--threshold", "0.01", "--workers", "2", "--device", "cpu"]))
+    out = capsys.readouterr().out
+    assert "alpha.srt" in out
+    assert "beta.srt" in out
+    summary_pos = out.find("Results:")
+    assert out.find("alpha.srt") < summary_pos
+    assert out.find("beta.srt") < summary_pos
+
+
+def test_batch_verbose_printed_after_each_score_sequential(tmp_path, capsys):
+    """Sequential: print_human is called right after each _score_pair, not deferred."""
+    events = []
+    original_score_pair = cli._score_pair
+
+    def tracked_score(video, sub, *args, **kwargs):
+        result = original_score_pair(video, sub, *args, **kwargs)
+        events.append("scored")
+        return result
+
+    from submatch import output as _output
+    original_print_human = _output.print_human
+
+    def tracked_print(*args, **kwargs):
+        events.append("printed")
+        return original_print_human(*args, **kwargs)
+
+    ctx = _make_two_pair_patches(tmp_path, ["--threshold", "0.01", "--workers", "1"])
+    ctx += [
+        patch("submatch.cli._score_pair", side_effect=tracked_score),
+        patch("submatch.output.print_human", side_effect=tracked_print),
+    ]
+    _run_patches(ctx)
+
+    assert events == ["scored", "printed", "scored", "printed"]
+
+
+def test_batch_compact_printed_after_each_score_sequential(tmp_path, capsys):
+    """Sequential compact: print_batch_compact is called right after each _score_pair."""
+    events = []
+    original_score_pair = cli._score_pair
+
+    def tracked_score(video, sub, *args, **kwargs):
+        result = original_score_pair(video, sub, *args, **kwargs)
+        events.append("scored")
+        return result
+
+    from submatch import output as _output
+    original_print_compact = _output.print_batch_compact
+
+    def tracked_print(*args, **kwargs):
+        events.append("printed")
+        return original_print_compact(*args, **kwargs)
+
+    ctx = _make_two_pair_patches(tmp_path, ["--compact", "--threshold", "0.01", "--workers", "1"])
+    ctx += [
+        patch("submatch.cli._score_pair", side_effect=tracked_score),
+        patch("submatch.output.print_batch_compact", side_effect=tracked_print),
+    ]
+    _run_patches(ctx)
+
+    assert events == ["scored", "printed", "scored", "printed"]
+
+
+def test_batch_verbose_printed_inside_as_completed_parallel(tmp_path, capsys):
+    """Parallel: print_human is called inside the as_completed loop, not after it."""
+    print_count = [0]
+    counts_at_loop_end = []
+
+    from submatch import output as _output
+    original_print_human = _output.print_human
+
+    def tracked_print(*args, **kwargs):
+        print_count[0] += 1
+        return original_print_human(*args, **kwargs)
+
+    original_as_completed = concurrent.futures.as_completed
+
+    def tracking_as_completed(fs, **kwargs):
+        yield from original_as_completed(fs, **kwargs)
+        counts_at_loop_end.append(print_count[0])
+
+    ctx = _make_two_pair_patches(tmp_path, ["--threshold", "0.01", "--workers", "2", "--device", "cpu"])
+    ctx += [
+        patch("submatch.output.print_human", side_effect=tracked_print),
+        patch("concurrent.futures.as_completed", side_effect=tracking_as_completed),
+    ]
+    _run_patches(ctx)
+
+    assert print_count[0] == 2                       # both pairs printed
+    assert counts_at_loop_end == [print_count[0]]    # all prints happened inside the loop
+
+
+def test_batch_compact_printed_inside_as_completed_parallel(tmp_path, capsys):
+    """Parallel compact: print_batch_compact is called inside the as_completed loop."""
+    print_count = [0]
+    counts_at_loop_end = []
+
+    from submatch import output as _output
+    original_print_compact = _output.print_batch_compact
+
+    def tracked_print(*args, **kwargs):
+        print_count[0] += 1
+        return original_print_compact(*args, **kwargs)
+
+    original_as_completed = concurrent.futures.as_completed
+
+    def tracking_as_completed(fs, **kwargs):
+        yield from original_as_completed(fs, **kwargs)
+        counts_at_loop_end.append(print_count[0])
+
+    ctx = _make_two_pair_patches(tmp_path, ["--compact", "--threshold", "0.01", "--workers", "2", "--device", "cpu"])
+    ctx += [
+        patch("submatch.output.print_batch_compact", side_effect=tracked_print),
+        patch("concurrent.futures.as_completed", side_effect=tracking_as_completed),
+    ]
+    _run_patches(ctx)
+
+    assert print_count[0] == 2
+    assert counts_at_loop_end == [print_count[0]]
+
+
 def test_batch_error_in_one_pair_exits_2(tmp_path):
     ctx = _make_batch_patches(tmp_path, ["--threshold", "0.01"])
     ctx.append(patch("submatch.cli.audio.get_duration_ms",
@@ -699,7 +917,7 @@ def test_batch_suppresses_transcription_progress(tmp_path, capsys):
 
 
 def test_batch_tty_progress_overwrites(tmp_path, capsys):
-    """In TTY mode, each pair emits a result line to stderr."""
+    """In TTY mode, each pair emits a result line (status visible in stdout via print_human)."""
     ctx = _make_batch_patches(tmp_path, ["--threshold", "0.01", "--workers", "1"])
     [c.__enter__() for c in ctx]
     try:
@@ -709,8 +927,9 @@ def test_batch_tty_progress_overwrites(tmp_path, capsys):
     finally:
         for c in reversed(ctx):
             c.__exit__(None, None, None)
-    err = capsys.readouterr().err
-    assert "PASS" in err or "FAIL" in err or "DRIFT" in err or "UNSURE" in err
+    captured = capsys.readouterr()
+    combined = captured.out + captured.err
+    assert "PASS" in combined or "FAIL" in combined or "DRIFT" in combined or "UNSURE" in combined
 
 
 def test_parse_args_sub_lang_single(tmp_path):
@@ -765,19 +984,21 @@ def test_resolve_device_auto_no_gpu():
         assert cli._resolve_device("auto") == "cpu"
 
 
-def test_resolve_device_auto_mps():
+def test_resolve_device_auto_mps_falls_back_to_cpu():
     mock_torch = MagicMock()
     mock_torch.cuda.is_available.return_value = False
     mock_torch.backends.mps.is_available.return_value = True
     with patch.dict(sys.modules, {"torch": mock_torch}):
-        assert cli._resolve_device("auto") == "mps"
+        assert cli._resolve_device("auto") == "cpu"
 
 
-def test_resolve_workers_auto_gpu():
+def test_resolve_workers_auto_cuda_is_single():
+    assert cli._resolve_workers(None, "cuda") == 1
+
+
+def test_resolve_workers_auto_mps_uses_multi():
     import os
-    expected = min(4, os.cpu_count() or 1)
-    for device in ("mps", "cuda"):
-        assert cli._resolve_workers(None, device) == expected
+    assert cli._resolve_workers(None, "mps") == min(4, os.cpu_count() or 1)
 
 
 def test_resolve_workers_auto_cpu():
@@ -1147,7 +1368,7 @@ def test_score_pair_exception_propagates_after_sync(tmp_path):
 
     created_tmp: list[Path] = []
 
-    def fake_sync(video, subtitle, out_path, drift_threshold=2.0):
+    def fake_sync(video, subtitle, out_path, drift_threshold=2.0, audio_track=0):
         created_tmp.append(out_path)
         out_path.write_text(SAMPLE_SRT)
         return SyncResult(synced_srt_path=out_path, offset_seconds=0.0, drift_detected=False)
@@ -1612,3 +1833,80 @@ def test_ensure_utf8_stdout_noop_on_non_windows():
         original = sys.stdout
         cli._ensure_utf8_stdout()
         assert sys.stdout is original
+
+
+# ── audio track threading ──────────────────────────────────────────────────────
+
+def test_score_pair_resolve_audio_track_called_once_per_video(tmp_path):
+    """resolve_audio_track is called exactly once even for two subtitles sharing a video."""
+    video = tmp_path / "show.mp4"
+    video.touch()
+    sub1 = tmp_path / "show.en.srt"
+    sub2 = tmp_path / "show.jp.srt"
+    sub1.write_text(SAMPLE_SRT)
+    sub2.write_text(SAMPLE_SRT)
+
+    subs = [Subtitle(1, 1_000, 3_500, "Hello world")]
+    segs = [Segment(60_000, 90_000, "Hello world", 2)]
+    mock_trans = MagicMock(text="hello world", language="en")
+    lang = LanguageResult(
+        audio="en", subtitle_detected="en", subtitle_filename="en",
+        video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
+    )
+
+    with patch("sys.argv", ["submatch", str(tmp_path),
+                             "--no-sync", "--compact", "--audio-track", "1"]), \
+         patch("submatch.cli.check_dependencies"), \
+         patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
+         patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
+         patch("submatch.cli.audio.resolve_audio_track", return_value=(1, "jpn")) as mock_resolve, \
+         patch("submatch.cli.subtitle.parse", return_value=subs), \
+         patch("submatch.cli.sampler.select_segments", return_value=segs), \
+         patch("submatch.cli.sampler.segments_from_starts", return_value=segs), \
+         patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
+         patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
+         patch("submatch.cli.language.detect_from_text", return_value="en"), \
+         patch("submatch.cli.language.detect_from_filename", return_value="en"), \
+         patch("submatch.cli.language.detect_from_video", return_value=None), \
+         patch("submatch.cli.language.build_result", return_value=lang):
+        with pytest.raises(SystemExit):
+            cli.main()
+
+    assert mock_resolve.call_count == 1
+
+
+def test_score_pair_passes_audio_track_to_extract_segment(tmp_path):
+    """extract_segment is called with audio_track=1 when --audio-track 1 is used."""
+    video = tmp_path / "video.mp4"
+    video.touch()
+    sub = tmp_path / "sub.srt"
+    sub.write_text(SAMPLE_SRT)
+
+    subs = [Subtitle(1, 1_000, 3_500, "Hello world")]
+    segs = [Segment(60_000, 90_000, "Hello world", 2)]
+    mock_trans = MagicMock(text="hello world", language="en")
+    lang = LanguageResult(
+        audio="en", subtitle_detected="en", subtitle_filename="en",
+        video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
+    )
+
+    with patch("sys.argv", ["submatch", str(video), str(sub), "--no-sync", "--audio-track", "1"]), \
+         patch("submatch.cli.check_dependencies"), \
+         patch("submatch.cli.audio.has_audio_track", return_value=True), \
+         patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
+         patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav") as mock_extract, \
+         patch("submatch.cli.audio.resolve_audio_track", return_value=(1, "jpn")), \
+         patch("submatch.cli.subtitle.parse", return_value=subs), \
+         patch("submatch.cli.sampler.select_segments", return_value=segs), \
+         patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
+         patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
+         patch("submatch.cli.language.detect_from_text", return_value="en"), \
+         patch("submatch.cli.language.detect_from_filename", return_value="en"), \
+         patch("submatch.cli.language.detect_from_video", return_value=None), \
+         patch("submatch.cli.language.build_result", return_value=lang):
+        with pytest.raises(SystemExit):
+            cli.main()
+
+    assert mock_extract.call_count >= 1
+    for call in mock_extract.call_args_list:
+        assert call.kwargs.get("audio_track") == 1 or (len(call.args) > 3 and call.args[3] == 1)

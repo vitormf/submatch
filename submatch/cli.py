@@ -78,6 +78,10 @@ def parse_args() -> argparse.Namespace:
                         help="seconds of timing offset before flagging as drift (default: 2.0)")
     parser.add_argument("--timing", action="store_true",
                         help="print per-phase timing breakdown (single-pair mode only)")
+    parser.add_argument(
+        "--audio-track", default=None, dest="audio_track",
+        help="audio track to use: integer index (0-based) or comma-separated language preference list (e.g. jp,en,pt)",
+    )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return parser.parse_args()
 
@@ -107,14 +111,14 @@ def _resolve_device(requested: str) -> str:
     import torch
     if torch.cuda.is_available():
         return "cuda"
-    if torch.backends.mps.is_available():
-        return "mps"
     return "cpu"
 
 
 def _resolve_workers(requested: int | None, device: str) -> int:
     if requested is not None:
         return requested
+    if device == "cuda":
+        return 1
     return min(4, os.cpu_count() or 1)
 
 
@@ -124,6 +128,8 @@ class _VideoCache:
     segment_starts: list[int]
     transcriptions: list[str]
     audio_lang: str | None
+    audio_track_index: int = 0
+    audio_track_lang: str | None = None
 
 
 _model_local = threading.local()
@@ -271,6 +277,17 @@ def _score_pair(
             print(f"  {label:<30} {t_now - t_prev:.2f}s", file=sys.stderr)
         return t_now
 
+    # Resolve audio track once per video; subsequent subtitles reuse from cache.
+    if video_cache is not None:
+        audio_track_index = video_cache.audio_track_index
+        audio_track_lang = video_cache.audio_track_lang
+    else:
+        audio_track_index = 0
+        audio_track_lang: str | None = None
+        _at_spec = getattr(args, 'audio_track', None)
+        if _at_spec:
+            audio_track_index, audio_track_lang = audio.resolve_audio_track(video, _at_spec)
+
     sync_result = None
     _sync_tmp: Path | None = None
     try:
@@ -280,7 +297,11 @@ def _score_pair(
                 tmp = tempfile.NamedTemporaryFile(suffix=".srt", delete=False)
                 _sync_tmp = Path(tmp.name)
                 tmp.close()
-                sync_result = sync.sync_subtitle(video, subtitle_path, _sync_tmp, drift_threshold=args.drift_threshold)
+                sync_result = sync.sync_subtitle(
+                    video, subtitle_path, _sync_tmp,
+                    drift_threshold=args.drift_threshold,
+                    audio_track=audio_track_index,
+                )
                 subtitles = subtitle.parse(sync_result.synced_srt_path)
             except RuntimeError as exc:
                 print(
@@ -307,7 +328,7 @@ def _score_pair(
                     print(f"  [{i + 1}/{n_seg}]", end="\r", file=sys.stderr)
                 _t_seg = time.monotonic()
                 try:
-                    wav_path = audio.extract_segment(video, seg.start_ms, 30_000)
+                    wav_path = audio.extract_segment(video, seg.start_ms, 30_000, audio_track=audio_track_index)
                     _t_extract = time.monotonic()
                     try:
                         trans = transcribe.transcribe_segment(model, wav_path)
@@ -334,6 +355,8 @@ def _score_pair(
                 segment_starts=[seg.start_ms for _, seg, _ in transcription_pairs],
                 transcriptions=[t for _, _, t in transcription_pairs],
                 audio_lang=audio_lang,
+                audio_track_index=audio_track_index,
+                audio_track_lang=audio_track_lang,
             )
         else:
             # Reuse transcriptions from the first subtitle for this video.
@@ -406,6 +429,8 @@ def _score_pair(
             model=args.model,
             cross_language=cross_lang,
             subtitle_language=subtitle_lang,
+            audio_track_index=audio_track_index,
+            audio_track_lang=audio_track_lang,
         )
         match_result.state = _determine_state(match_result)
         if _timing:
@@ -490,53 +515,54 @@ def _run_batch(
             if not args.json:
                 _print_progress(i + 1, sub.name)
             _pair_t0 = time.monotonic()
-            _result_line: str | None = None
             _on_seg = _make_on_seg(i + 1, sub.name)
+            _match_result: output.MatchResult | None = None
+            _error: str | None = None
             try:
                 cache = video_caches.get(video)
-                match_result, new_cache = _score_pair(video, sub, args, model,
-                                                      show_progress=False,
-                                                      video_cache=cache,
-                                                      on_segment=_on_seg)
-                if match_result.state == output.MatchState.DRIFT and getattr(args, 'resync', False):
-                    synced_path = match_result.sync.synced_srt_path
+                _match_result, new_cache = _score_pair(video, sub, args, model,
+                                                       show_progress=False,
+                                                       video_cache=cache,
+                                                       on_segment=_on_seg)
+                if _match_result.state == output.MatchState.DRIFT and getattr(args, 'resync', False):
+                    synced_path = _match_result.sync.synced_srt_path
                     shutil.copy(synced_path, sub)
                     synced_path.unlink(missing_ok=True)
                     _ra = copy.copy(args)
                     _ra.no_sync = True
-                    match_result, _ = _score_pair(video, sub, _ra, model,
-                                                  show_progress=False,
-                                                  video_cache=new_cache)
-                    match_result.state = _determine_state(match_result)
-                    match_result.resynced = True
+                    _match_result, _ = _score_pair(video, sub, _ra, model,
+                                                   show_progress=False,
+                                                   video_cache=new_cache)
+                    _match_result.state = _determine_state(_match_result)
+                    _match_result.resynced = True
                 else:
-                    if match_result.sync and match_result.sync.synced_srt_path:
-                        match_result.sync.synced_srt_path.unlink(missing_ok=True)
+                    if _match_result.sync and _match_result.sync.synced_srt_path:
+                        _match_result.sync.synced_srt_path.unlink(missing_ok=True)
                 if cache is None:
                     video_caches[video] = new_cache
                 results.append(output.BatchPairResult(
-                    video=video, subtitle=sub, result=match_result, error=None,
+                    video=video, subtitle=sub, result=_match_result, error=None,
                 ))
-                _result_line = output.fmt_progress_result(
-                    match_result, None, sub.name, time.monotonic() - _pair_t0,
-                )
             except Exception as exc:
+                _error = str(exc)
                 results.append(output.BatchPairResult(
-                    video=video, subtitle=sub, result=None, error=str(exc),
+                    video=video, subtitle=sub, result=None, error=_error,
                 ))
-                _result_line = output.fmt_progress_result(
-                    None, str(exc), sub.name, time.monotonic() - _pair_t0,
-                )
-            if not args.json and _result_line:
+            _took = time.monotonic() - _pair_t0
+            if not args.json:
                 if _tty:
-                    print(f"\r\033[K{_result_line}", file=sys.stderr)
+                    print("\r\033[K", end="", file=sys.stderr, flush=True)
+                if _error:
+                    print(f"\nError: {video.name} / {sub.name}: {_error}", file=sys.stderr)
+                elif args.compact:
+                    output.print_batch_compact([results[-1]])
                 else:
-                    print(_result_line, file=sys.stderr)
-            _pair_elapsed = time.monotonic() - _pair_t0
+                    output.print_human(_match_result, verbose=args.verbose,
+                                       video=video, subtitle=sub)
             if _ema_pair_time is None:
-                _ema_pair_time = _pair_elapsed
+                _ema_pair_time = _took
             else:
-                _ema_pair_time = _EMA_ALPHA * _pair_elapsed + (1 - _EMA_ALPHA) * _ema_pair_time
+                _ema_pair_time = _EMA_ALPHA * _took + (1 - _EMA_ALPHA) * _ema_pair_time
             _done += 1
     else:
         # Group pairs by video so each group shares one set of transcriptions.
@@ -551,16 +577,20 @@ def _run_batch(
         _t0 = time.monotonic()
         _done = 0
         _done_lock = threading.Lock()
+        _submit_times: dict[Path, float] = {}
         results_by_video: dict[Path, list[output.BatchPairResult]] = {}
+
         with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
             future_to_video: dict[concurrent.futures.Future, Path] = {}
             for video in video_order:
+                _submit_times[video] = time.monotonic()
                 future = executor.submit(
                     _score_group_parallel, video, video_groups[video], args, args.model, device,
                 )
                 future_to_video[future] = video
             for future in concurrent.futures.as_completed(future_to_video):
                 video = future_to_video[future]
+                took = time.monotonic() - _submit_times[video]
                 try:
                     group = future.result()
                     results_by_video[video] = group
@@ -574,6 +604,17 @@ def _run_batch(
                 if not args.json:
                     with _done_lock:
                         _done += len(group)
+                        for pair_result in group:
+                            if pair_result.error:
+                                print(f"\nError: {pair_result.video.name} / "
+                                      f"{pair_result.subtitle.name}: {pair_result.error}",
+                                      file=sys.stderr)
+                            elif args.compact:
+                                output.print_batch_compact([pair_result])
+                            else:
+                                output.print_human(pair_result.result, verbose=args.verbose,
+                                                   video=pair_result.video,
+                                                   subtitle=pair_result.subtitle)
                         elapsed = time.monotonic() - _t0
                         pct = int(100 * _done / n_total)
                         if _done < n_total:
@@ -594,16 +635,7 @@ def _run_batch(
 
     if args.json:
         print(output.format_batch_json(results))
-    elif args.compact:
-        output.print_batch_summary(results)
     else:
-        for p in results:
-            if p.error:
-                print(f"\nError: {p.video.name} / {p.subtitle.name}: {p.error}",
-                      file=sys.stderr)
-            else:
-                output.print_human(p.result, verbose=args.verbose,
-                                   video=p.video, subtitle=p.subtitle)
         output.print_batch_summary(results)
 
     if any(p.error for p in results):
