@@ -45,7 +45,7 @@ def write_csv(results: list[BatchPairResult], path: str) -> None:
         "audio_lang", "subtitle_lang", "drift_detected", "cross_language", "error",
     ])
     for p in results:
-        if p.error:
+        if p.result is None:
             writer.writerow([
                 str(p.video), str(p.subtitle), "ERROR", "", "", "", "", "", "", p.error,
             ])

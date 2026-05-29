@@ -90,6 +90,8 @@ def test_write_json_error_entry(tmp_path):
     data = json.loads(Path(out).read_text())
     assert data[2]["error"] == "no audio track"
     assert "confidence" not in data[2]
+    assert data[2]["video"] == "broken.mkv"
+    assert data[2]["subtitle"] == "broken.srt"
 
 
 def test_write_json_bad_path_exits_2():
@@ -147,3 +149,14 @@ def test_write_csv_bad_path_exits_2():
     with pytest.raises(SystemExit) as exc:
         report.write_csv([], "/nonexistent/dir/out.csv")
     assert exc.value.code == 2
+
+
+def test_write_csv_result_none_no_error(tmp_path):
+    pair = BatchPairResult(
+        video=Path("v.mkv"), subtitle=Path("s.srt"), result=None, error=None,
+    )
+    out = str(tmp_path / "out.csv")
+    report.write_csv([pair], out)
+    rows = list(csv.reader(io.StringIO(Path(out).read_text())))
+    assert len(rows) == 2
+    assert rows[1][2] == "ERROR"
