@@ -108,6 +108,30 @@ SRT, WebVTT, ASS/SSA (and any other format supported by [pysubs2](https://github
 
 Segment count auto-selection: `< 30 min` → 5, `30–90 min` → 8, `> 90 min` → 12.
 
+## Configuration
+
+`submatch` reads defaults from two TOML config files, merged in order:
+
+1. `~/.config/submatch/config.toml` — personal defaults applied everywhere
+2. `./submatch.toml` — directory-level defaults (overrides user config)
+
+CLI flags always override both.
+
+**Example `~/.config/submatch/config.toml`:**
+
+```toml
+model = "small"
+threshold = 0.40
+language = "en"
+workers = 2
+```
+
+**Configurable flags:** `model`, `threshold`, `segments`, `language`, `no_sync`, `keep_synced`, `no_recursive`, `sub_lang`, `filter`, `device`, `workers`, `delete_failures`, `cross_threshold`, `resync`, `pass_unsure`, `drift_threshold`, `audio_track`
+
+> **Note:** Boolean flags set to `true` in config (e.g. `no_sync = true`) cannot be overridden back to `false` via the CLI — remove the line from your config instead.
+>
+> **Warning:** `delete_failures = true` will silently delete subtitle files on every run. Use with care.
+
 ## How it works
 
 1. **Sync** — runs `ffs` (ffsubsync) to correct timing drift; flags offsets > 2 s
