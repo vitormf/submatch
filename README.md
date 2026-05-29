@@ -102,7 +102,7 @@ SRT, WebVTT, ASS/SSA (and any other format supported by [pysubs2](https://github
 | `--no-sync` | off | Skip ffsubsync timing drift check |
 | `--keep-synced` | off | Save timing-corrected subtitle to disk |
 | `--no-recursive` | off | Do not recurse into subdirectories when expanding directories (default: recursive) |
-| `--sub-lang CODE` | off | Keep only subtitles whose filename language code starts with CODE (repeatable; infers from text for untagged files) |
+| `--sub-lang CODE` | off | Keep only subtitles whose filename language code starts with CODE (repeatable; infers from text for untagged external files; always includes untagged embedded tracks) |
 | `--filter GLOB` | off | Keep only subtitles whose filename matches the glob (e.g. `*.en.*`) |
 | `--json` | off | Machine-readable JSON output |
 | `--compact` | off | One-line-per-pair summary in batch mode |
