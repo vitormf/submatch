@@ -112,14 +112,16 @@ def test_parse_args_sub_lang_cli_replaces_config(tmp_path):
 
 def test_parse_args_audio_track_integer(tmp_path):
     v, s = tmp_path / "v.mp4", tmp_path / "s.srt"
-    with patch("sys.argv", ["submatch", str(v), str(s), "--audio-track", "2"]):
+    with patch("sys.argv", ["submatch", str(v), str(s), "--audio-track", "2"]), \
+         patch("submatch.config.load_config", return_value={}):
         args = cli.parse_args()
     assert args.audio_track == "2"
 
 
 def test_parse_args_audio_track_language_preference(tmp_path):
     v, s = tmp_path / "v.mp4", tmp_path / "s.srt"
-    with patch("sys.argv", ["submatch", str(v), str(s), "--audio-track", "jp,en,pt"]):
+    with patch("sys.argv", ["submatch", str(v), str(s), "--audio-track", "jp,en,pt"]), \
+         patch("submatch.config.load_config", return_value={}):
         args = cli.parse_args()
     assert args.audio_track == "jp,en,pt"
 
@@ -968,7 +970,8 @@ def test_batch_tty_progress_overwrites(tmp_path, capsys):
 def test_parse_args_sub_lang_single(tmp_path):
     v = tmp_path / "v"
     v.mkdir()
-    with patch("sys.argv", ["submatch", str(v), "--sub-lang", "pt"]):
+    with patch("sys.argv", ["submatch", str(v), "--sub-lang", "pt"]), \
+         patch("submatch.config.load_config", return_value={}):
         args = cli.parse_args()
     assert args.sub_lang == ["pt"]
 
@@ -976,7 +979,8 @@ def test_parse_args_sub_lang_single(tmp_path):
 def test_parse_args_sub_lang_multiple(tmp_path):
     v = tmp_path / "v"
     v.mkdir()
-    with patch("sys.argv", ["submatch", str(v), "--sub-lang", "en", "--sub-lang", "pt"]):
+    with patch("sys.argv", ["submatch", str(v), "--sub-lang", "en", "--sub-lang", "pt"]), \
+         patch("submatch.config.load_config", return_value={}):
         args = cli.parse_args()
     assert args.sub_lang == ["en", "pt"]
 
@@ -984,7 +988,8 @@ def test_parse_args_sub_lang_multiple(tmp_path):
 def test_parse_args_filter(tmp_path):
     v = tmp_path / "v"
     v.mkdir()
-    with patch("sys.argv", ["submatch", str(v), "--filter", "*.en.*"]):
+    with patch("sys.argv", ["submatch", str(v), "--filter", "*.en.*"]), \
+         patch("submatch.config.load_config", return_value={}):
         args = cli.parse_args()
     assert args.filter == "*.en.*"
 
@@ -1118,14 +1123,16 @@ def test_is_cross_language_both_none():
 
 def test_parse_args_cross_threshold_default(tmp_path):
     v, s = tmp_path / "v.mp4", tmp_path / "s.srt"
-    with patch("sys.argv", ["submatch", str(v), str(s)]):
+    with patch("sys.argv", ["submatch", str(v), str(s)]), \
+         patch("submatch.config.load_config", return_value={}):
         args = cli.parse_args()
     assert args.cross_threshold is None
 
 
 def test_parse_args_cross_threshold_explicit(tmp_path):
     v, s = tmp_path / "v.mp4", tmp_path / "s.srt"
-    with patch("sys.argv", ["submatch", str(v), str(s), "--cross-threshold", "0.5"]):
+    with patch("sys.argv", ["submatch", str(v), str(s), "--cross-threshold", "0.5"]), \
+         patch("submatch.config.load_config", return_value={}):
         args = cli.parse_args()
     assert args.cross_threshold == pytest.approx(0.5)
 
@@ -1305,7 +1312,8 @@ def test_batch_single_video_non_dir_subtitle_exits_2(tmp_path):
     video = tmp_path / "movie.mp4"
     video.touch()
 
-    with patch("sys.argv", ["submatch", str(video), "--no-sync"]):
+    with patch("sys.argv", ["submatch", str(video), "--no-sync"]), \
+         patch("submatch.config.load_config", return_value={}):
         args = cli.parse_args()
 
     with patch("submatch.cli.check_dependencies"):
@@ -1518,14 +1526,16 @@ def test_determine_state_unsure():
 
 def test_parse_args_resync_flag(tmp_path):
     v, s = tmp_path / "v.mp4", tmp_path / "s.srt"
-    with patch("sys.argv", ["submatch", str(v), str(s), "--resync"]):
+    with patch("sys.argv", ["submatch", str(v), str(s), "--resync"]), \
+         patch("submatch.config.load_config", return_value={}):
         args = cli.parse_args()
     assert args.resync is True
 
 
 def test_parse_args_pass_unsure_flag(tmp_path):
     v, s = tmp_path / "v.mp4", tmp_path / "s.srt"
-    with patch("sys.argv", ["submatch", str(v), str(s), "--pass-unsure"]):
+    with patch("sys.argv", ["submatch", str(v), str(s), "--pass-unsure"]), \
+         patch("submatch.config.load_config", return_value={}):
         args = cli.parse_args()
     assert args.pass_unsure is True
 
