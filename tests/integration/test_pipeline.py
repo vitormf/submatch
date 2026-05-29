@@ -21,7 +21,6 @@ Mismatch controls use subtitles from a different video in the same language:
 import json
 import shutil
 import subprocess
-import sys
 import pytest
 from pathlib import Path
 
@@ -514,7 +513,7 @@ def test_compact_output_one_line_per_pair(german_video, german_de_srt, tmp_path)
         '--compact', '--no-sync', '--segments', '1',
     )
     assert result.returncode in (0, 1), f"Unexpected exit code: {result.stderr}"
-    lines = [l for l in result.stdout.strip().splitlines() if l.strip()]
+    lines = [line for line in result.stdout.strip().splitlines() if line.strip()]
     assert len(lines) == 1, f"Expected 1 compact line, got {len(lines)}:\n{result.stdout}"
 
 
@@ -532,5 +531,5 @@ def test_compact_output_multiple_pairs_one_line_each(
         '--compact', '--no-sync', '--segments', '1',
     )
     assert result.returncode in (0, 1), f"Unexpected exit code: {result.stderr}"
-    lines = [l for l in result.stdout.strip().splitlines() if l.strip()]
+    lines = [line for line in result.stdout.strip().splitlines() if line.strip()]
     assert len(lines) == 2, f"Expected 2 compact lines, got {len(lines)}:\n{result.stdout}"
