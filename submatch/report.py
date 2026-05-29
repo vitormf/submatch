@@ -81,7 +81,7 @@ def write_html(results: list[BatchPairResult], path: str) -> None:
             state_counts["ERROR"] += 1
             row_class = "row-error"
             state_label = "ERROR"
-            score_str = threshold_str = audio_lang = sub_lang = ""
+            score_str = audio_lang = sub_lang = ""
             error_str = _esc.escape(p.error or "")
         else:
             r = p.result
