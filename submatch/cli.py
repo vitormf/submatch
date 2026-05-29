@@ -444,6 +444,9 @@ def _run_batch(
 
     n_total = len(pairs_to_run)
 
+    if not args.json:
+        print(f"Loading model ({args.model})...", file=sys.stderr, flush=True)
+
     if workers == 1:
         model = transcribe.load_model(args.model, device=device)
         video_caches: dict[Path, _VideoCache] = {}
