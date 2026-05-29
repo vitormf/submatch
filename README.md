@@ -59,10 +59,10 @@ submatch movie.mkv subs/           # scores every subtitle in subs/ against movi
 
 **Filtering — process only specific subtitles:**
 ```bash
-submatch /media/natal/ --sub-lang pt          # matches pt.srt, pt-BR.srt, pt-PT.srt
-submatch /media/natal/ --sub-lang en --sub-lang pt-BR   # multiple codes
+submatch /media/shows/ --sub-lang pt          # matches pt.srt, pt-BR.srt, pt-PT.srt
+submatch /media/shows/ --sub-lang en --sub-lang pt-BR   # multiple codes
 submatch movie.mkv subs/ --filter "*.en.*"    # glob on subtitle filename
-submatch /media/natal/ --sub-lang pt --filter "*.srt"   # both must pass
+submatch /media/shows/ --sub-lang pt --filter "*.srt"   # both must pass
 ```
 
 ### Cross-language matching
@@ -142,5 +142,5 @@ Each pair is assigned one of four states:
 
 ## Limitations
 
-- Requires a local Whisper install (`pip install openai-whisper`). No API key needed.
+- Runs Whisper locally — no API key needed. Model weights download on first run.
 - Cross-language scoring uses multilingual sentence embeddings and is less precise than same-language token F1 — consider lowering `--cross-threshold` if you get too many false negatives.
