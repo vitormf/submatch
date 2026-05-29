@@ -92,7 +92,6 @@ def write_html(results: list[BatchPairResult], path: str) -> None:
             }.get(r.state.value, "")
             state_label = r.state.value
             score_str = f"{r.confidence:.2f}"
-            threshold_str = f"{r.threshold:.2f}"
             audio_lang = _esc.escape(r.language.audio or "")
             sub_lang = _esc.escape(r.subtitle_language or "")
             error_str = ""
