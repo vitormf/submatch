@@ -18,7 +18,7 @@ jobs:
 
   release:
     needs: run-tests
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     permissions:
       contents: write
 
@@ -36,7 +36,7 @@ jobs:
         run: pip install -e ".[dev]" build twine
 
       - name: Bump version
-        run: sed -i 's/^version = ".*"/version = "${{ inputs.version }}"/' pyproject.toml
+        run: sed -i '' 's/^version = ".*"/version = "${{ inputs.version }}"/' pyproject.toml
 
       - name: Build
         run: python -m build
