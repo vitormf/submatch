@@ -57,6 +57,12 @@ submatch /media/movies/ --no-recursive  # flat directory only
 submatch movie.mkv subs/           # scores every subtitle in subs/ against movie.mkv
 ```
 
+**Embedded subtitles — score subtitle tracks in the video container:**
+```bash
+submatch --embedded movie.mkv
+submatch --embedded /path/to/library/
+```
+
 **Filtering — process only specific subtitles:**
 ```bash
 submatch /media/natal/ --sub-lang pt          # matches pt.srt, pt-BR.srt, pt-PT.srt
@@ -90,6 +96,7 @@ SRT, WebVTT, ASS/SSA (and any other format supported by [pysubs2](https://github
 | `--cross-threshold` | same as `--threshold` | Pass/fail threshold for cross-language pairs |
 | `--segments` | auto | Number of audio segments to sample |
 | `--audio-track` | `0` | Audio track to use: integer index (0-based) or comma-separated language preference list (`jp,en,pt`). Default: track 0. |
+| `--embedded` | off | Score embedded subtitle tracks in the video container instead of external files |
 | `--language` | auto | Expected audio language (e.g. `en`, `pt`) |
 | `--drift-threshold` | `2.0` | Seconds of timing offset before flagging as drift |
 | `--no-sync` | off | Skip ffsubsync timing drift check |
