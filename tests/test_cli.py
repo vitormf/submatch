@@ -1494,6 +1494,97 @@ def test_batch_parallel_resync(tmp_path):
     assert exc.value.code == 0
 
 
+# ── _print_run_summary ────────────────────────────────────────────────────────
+
+def test_run_summary_single_pair(tmp_path, capsys):
+    v = tmp_path / "movie.mkv"
+    s = tmp_path / "movie.en.srt"
+    cli._print_run_summary([(v, s)], json_mode=False)
+    err = capsys.readouterr().err
+    assert "Checking:" in err
+    assert "movie.mkv" in err
+    assert "movie.en.srt" in err
+
+
+def test_run_summary_short_list(tmp_path, capsys):
+    pairs = [(tmp_path / f"v{i}.mkv", tmp_path / f"v{i}.srt") for i in range(3)]
+    cli._print_run_summary(pairs, json_mode=False)
+    err = capsys.readouterr().err
+    assert "Checking 3 pairs:" in err
+    assert "v0.mkv" in err
+    assert "v2.mkv" in err
+
+
+def test_run_summary_long_list(tmp_path, capsys):
+    pairs = [(tmp_path / f"v{i}.mkv", tmp_path / f"v{i}.srt") for i in range(10)]
+    cli._print_run_summary(pairs, json_mode=False)
+    err = capsys.readouterr().err
+    assert "Checking 10 pairs" in err
+    assert "10 videos" in err
+    assert "10 subtitles" in err
+
+
+def test_run_summary_long_list_counts_unique_videos(tmp_path, capsys):
+    v = tmp_path / "movie.mkv"
+    pairs = [(v, tmp_path / f"movie.{lang}.srt") for lang in ("en", "pt", "de",
+                                                                "fr", "es", "it",
+                                                                "ja", "zh", "ko")]
+    cli._print_run_summary(pairs, json_mode=False)
+    err = capsys.readouterr().err
+    assert "1 video," in err
+    assert "9 subtitles" in err
+
+
+def test_run_summary_suppressed_by_json(tmp_path, capsys):
+    v = tmp_path / "movie.mkv"
+    s = tmp_path / "movie.srt"
+    cli._print_run_summary([(v, s)], json_mode=True)
+    assert capsys.readouterr().err == ""
+
+
+def test_main_single_pair_prints_summary(tmp_path, capsys):
+    _, _, ctx = _make_pipeline_patches(tmp_path, ["--threshold", "0.01"])
+    [c.__enter__() for c in ctx]
+    try:
+        with pytest.raises(SystemExit):
+            cli.main()
+    finally:
+        for c in reversed(ctx):
+            c.__exit__(None, None, None)
+    err = capsys.readouterr().err
+    assert "Checking:" in err
+    assert "video.mp4" in err
+    assert "sub.srt" in err
+
+
+def test_main_single_pair_json_suppresses_summary(tmp_path, capsys):
+    _, _, ctx = _make_pipeline_patches(tmp_path, ["--json", "--threshold", "0.01"])
+    [c.__enter__() for c in ctx]
+    try:
+        with pytest.raises(SystemExit):
+            cli.main()
+    finally:
+        for c in reversed(ctx):
+            c.__exit__(None, None, None)
+    err = capsys.readouterr().err
+    assert "Checking:" not in err
+
+
+def test_batch_dir_mode_prints_summary(tmp_path, capsys):
+    ctx = _make_batch_patches(tmp_path, ["--threshold", "0.01"])
+    [c.__enter__() for c in ctx]
+    try:
+        with pytest.raises(SystemExit):
+            cli.main()
+    finally:
+        for c in reversed(ctx):
+            c.__exit__(None, None, None)
+    err = capsys.readouterr().err
+    assert "Checking" in err
+    assert "show.mp4" in err
+    assert "show.srt" in err
+
+
 # ── Windows UTF-8 stdout fix ──────────────────────────────────────────────────
 
 def test_ensure_utf8_stdout_rewraps_on_windows():

@@ -167,6 +167,31 @@ def _should_fail(result: output.MatchResult, pass_unsure: bool) -> bool:
     return True
 
 
+_SUMMARY_THRESHOLD = 8
+
+
+def _print_run_summary(pairs: list[tuple[Path, Path]], json_mode: bool) -> None:
+    if json_mode:
+        return
+    n = len(pairs)
+    if n == 0:
+        return
+    if n == 1:
+        video, sub = pairs[0]
+        print(f"Checking: {video.name} → {sub.name}", file=sys.stderr)
+    elif n <= _SUMMARY_THRESHOLD:
+        print(f"Checking {n} pairs:", file=sys.stderr)
+        for video, sub in pairs:
+            print(f"  {video.name} → {sub.name}", file=sys.stderr)
+    else:
+        n_videos = len({v for v, _ in pairs})
+        print(
+            f"Checking {n} pairs — {n_videos} video{'s' if n_videos != 1 else ''}, "
+            f"{n} subtitle{'s' if n != 1 else ''}.",
+            file=sys.stderr,
+        )
+
+
 _embed_local = threading.local()
 
 
@@ -408,6 +433,8 @@ def _run_batch(
         print("No video/subtitle pairs found.", file=sys.stderr)
         return 2
 
+    _print_run_summary(pairs_to_run, args.json)
+
     device = _resolve_device(args.device)
     workers = _resolve_workers(args.workers, device)
 
@@ -585,6 +612,9 @@ def main() -> None:
         args.subtitle = subtitles[0]
     else:
         sys.exit(_run_batch(args, videos, subtitles, warn_missing=not had_dirs))
+
+    if not args.json:
+        print(f"Checking: {args.video.name} → {args.subtitle.name}", file=sys.stderr)
 
     check_dependencies(skip_sync=args.no_sync)
 
