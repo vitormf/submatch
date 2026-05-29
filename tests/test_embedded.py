@@ -2,8 +2,6 @@ import json
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-import pytest
-
 from submatch.embedded import list_subtitle_tracks
 
 
