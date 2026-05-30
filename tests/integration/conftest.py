@@ -151,6 +151,96 @@ ASSETS: dict[str, str] = {
         "&title=File%3AWIKITONGUES-_Changjiu_and_Chaofen_speaking_Guiyangese.webm"
         "&lang=en&trackformat=srt&origin=*"
     ),
+    # WIKITONGUES — Sara speaking Portuguese (CC BY-SA 4.0)
+    # Speaker from Lisbon, ~85 seconds, 10.6 MB.
+    # Subtitles available in: pt (native), en.
+    "wikitongues_portuguese.webm": (
+        "https://upload.wikimedia.org/wikipedia/commons/7/75/"
+        "WIKITONGUES-_Sara_speaking_Portuguese.webm"
+    ),
+    "wikitongues_portuguese.pt.srt": (
+        "https://commons.wikimedia.org/w/api.php?action=timedtext"
+        "&title=File%3AWIKITONGUES-_Sara_speaking_Portuguese.webm"
+        "&lang=pt&trackformat=srt&origin=*"
+    ),
+    "wikitongues_portuguese.en.srt": (
+        "https://commons.wikimedia.org/w/api.php?action=timedtext"
+        "&title=File%3AWIKITONGUES-_Sara_speaking_Portuguese.webm"
+        "&lang=en&trackformat=srt&origin=*"
+    ),
+    # WIKITONGUES — Freddie speaking Portuguese (CC BY-SA 4.0)
+    # Brazilian Portuguese speaker from São Paulo, ~243 seconds, 29.6 MB.
+    # Subtitles available in: pt-br (native), en.
+    "wikitongues_portuguese_br.webm": (
+        "https://upload.wikimedia.org/wikipedia/commons/b/b2/"
+        "WIKITONGUES-_Freddie_speaking_Portuguese.webm"
+    ),
+    "wikitongues_portuguese_br.pt-br.srt": (
+        "https://commons.wikimedia.org/w/api.php?action=timedtext"
+        "&title=File%3AWIKITONGUES-_Freddie_speaking_Portuguese.webm"
+        "&lang=pt-br&trackformat=srt&origin=*"
+    ),
+    "wikitongues_portuguese_br.en.srt": (
+        "https://commons.wikimedia.org/w/api.php?action=timedtext"
+        "&title=File%3AWIKITONGUES-_Freddie_speaking_Portuguese.webm"
+        "&lang=en&trackformat=srt&origin=*"
+    ),
+    # WIKITONGUES — Ela speaking Turkish (CC BY-SA 4.0)
+    # Turkish journalist from Kosovo, ~79 seconds, 4.3 MB.
+    # Subtitles available in: tr (native), en.
+    "wikitongues_turkish.webm": (
+        "https://upload.wikimedia.org/wikipedia/commons/d/d9/"
+        "WIKITONGUES-_Ela_speaking_Turkish.webm"
+    ),
+    "wikitongues_turkish.tr.srt": (
+        "https://commons.wikimedia.org/w/api.php?action=timedtext"
+        "&title=File%3AWIKITONGUES-_Ela_speaking_Turkish.webm"
+        "&lang=tr&trackformat=srt&origin=*"
+    ),
+    "wikitongues_turkish.en.srt": (
+        "https://commons.wikimedia.org/w/api.php?action=timedtext"
+        "&title=File%3AWIKITONGUES-_Ela_speaking_Turkish.webm"
+        "&lang=en&trackformat=srt&origin=*"
+    ),
+    # WIKITONGUES — Foffo speaking Neapolitan (CC BY-SA 4.0)
+    # Neapolitan speaker from Naples, ~34 seconds, 8.4 MB.
+    # Subtitles available in: it (Italian), nap (Neapolitan), en.
+    "wikitongues_neapolitan.webm": (
+        "https://upload.wikimedia.org/wikipedia/commons/d/d8/"
+        "WIKITONGUES-_Foffo_speaking_Neapolitan.webm"
+    ),
+    "wikitongues_neapolitan.it.srt": (
+        "https://commons.wikimedia.org/w/api.php?action=timedtext"
+        "&title=File%3AWIKITONGUES-_Foffo_speaking_Neapolitan.webm"
+        "&lang=it&trackformat=srt&origin=*"
+    ),
+    "wikitongues_neapolitan.nap.srt": (
+        "https://commons.wikimedia.org/w/api.php?action=timedtext"
+        "&title=File%3AWIKITONGUES-_Foffo_speaking_Neapolitan.webm"
+        "&lang=nap&trackformat=srt&origin=*"
+    ),
+    "wikitongues_neapolitan.en.srt": (
+        "https://commons.wikimedia.org/w/api.php?action=timedtext"
+        "&title=File%3AWIKITONGUES-_Foffo_speaking_Neapolitan.webm"
+        "&lang=en&trackformat=srt&origin=*"
+    ),
+    # WIKITONGUES — Dang speaking Thai (CC BY-SA 4.0)
+    # Thai speaker from Bangkok, ~35.1 MB.
+    # Subtitles available in: th (native), en.
+    "wikitongues_thai.webm": (
+        "https://upload.wikimedia.org/wikipedia/commons/9/9c/"
+        "WIKITONGUES-_Dang_speaking_Thai.webm"
+    ),
+    "wikitongues_thai.th.srt": (
+        "https://commons.wikimedia.org/w/api.php?action=timedtext"
+        "&title=File%3AWIKITONGUES-_Dang_speaking_Thai.webm"
+        "&lang=th&trackformat=srt&origin=*"
+    ),
+    "wikitongues_thai.en.srt": (
+        "https://commons.wikimedia.org/w/api.php?action=timedtext"
+        "&title=File%3AWIKITONGUES-_Dang_speaking_Thai.webm"
+        "&lang=en&trackformat=srt&origin=*"
+    ),
     # Sintel (Blender Foundation, CC BY 3.0) — external SRT files used as
     # wrong-content mismatch controls (different film, same language).
     # Source: TimedText for File:Sintel movie 4K.webm on Wikimedia Commons.
@@ -353,6 +443,91 @@ def guiyangese_zh_hans_srt() -> Path:
 @pytest.fixture(scope="session")
 def guiyangese_en_srt() -> Path:
     return _fixture_path("wikitongues_guiyangese.en.srt")
+
+
+# Portuguese video (Sara, native Portuguese speaker from Lisbon)
+@pytest.fixture(scope="session")
+def portuguese_video() -> Path:
+    return _fixture_path("wikitongues_portuguese.webm")
+
+
+@pytest.fixture(scope="session")
+def portuguese_pt_srt() -> Path:
+    return _fixture_path("wikitongues_portuguese.pt.srt")
+
+
+@pytest.fixture(scope="session")
+def portuguese_en_srt() -> Path:
+    return _fixture_path("wikitongues_portuguese.en.srt")
+
+
+# Portuguese-BR video (Freddie, Brazilian Portuguese speaker from São Paulo)
+@pytest.fixture(scope="session")
+def portuguese_br_video() -> Path:
+    return _fixture_path("wikitongues_portuguese_br.webm")
+
+
+@pytest.fixture(scope="session")
+def portuguese_br_srt() -> Path:
+    return _fixture_path("wikitongues_portuguese_br.pt-br.srt")
+
+
+@pytest.fixture(scope="session")
+def portuguese_br_en_srt() -> Path:
+    return _fixture_path("wikitongues_portuguese_br.en.srt")
+
+
+# Turkish video (Ela, Turkish journalist from Kosovo)
+@pytest.fixture(scope="session")
+def turkish_video() -> Path:
+    return _fixture_path("wikitongues_turkish.webm")
+
+
+@pytest.fixture(scope="session")
+def turkish_tr_srt() -> Path:
+    return _fixture_path("wikitongues_turkish.tr.srt")
+
+
+@pytest.fixture(scope="session")
+def turkish_en_srt() -> Path:
+    return _fixture_path("wikitongues_turkish.en.srt")
+
+
+# Neapolitan video (Foffo, Neapolitan speaker from Naples)
+@pytest.fixture(scope="session")
+def neapolitan_video() -> Path:
+    return _fixture_path("wikitongues_neapolitan.webm")
+
+
+@pytest.fixture(scope="session")
+def neapolitan_it_srt() -> Path:
+    return _fixture_path("wikitongues_neapolitan.it.srt")
+
+
+@pytest.fixture(scope="session")
+def neapolitan_nap_srt() -> Path:
+    return _fixture_path("wikitongues_neapolitan.nap.srt")
+
+
+@pytest.fixture(scope="session")
+def neapolitan_en_srt() -> Path:
+    return _fixture_path("wikitongues_neapolitan.en.srt")
+
+
+# Thai video (Dang, Thai speaker from Bangkok)
+@pytest.fixture(scope="session")
+def thai_video() -> Path:
+    return _fixture_path("wikitongues_thai.webm")
+
+
+@pytest.fixture(scope="session")
+def thai_th_srt() -> Path:
+    return _fixture_path("wikitongues_thai.th.srt")
+
+
+@pytest.fixture(scope="session")
+def thai_en_srt() -> Path:
+    return _fixture_path("wikitongues_thai.en.srt")
 
 
 # Sintel (Blender Foundation, CC BY 3.0) — external SRTs used as wrong-content controls
