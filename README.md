@@ -95,6 +95,45 @@ The model is downloaded on first use (~90 MB) and cached by sentence-transformer
 
 SRT, WebVTT, ASS/SSA (and any other format supported by [pysubs2](https://github.com/tkarabela/pysubs2)).
 
+## Language support
+
+✓ = confirmed by integration tests · ~ = supported by underlying tools, not yet integration-tested
+
+| Language | Audio | Subtitle |
+|---|---|---|
+| Arabic | ~ | ✓ |
+| Chinese (Simplified) | ✓ | ✓ |
+| Czech | ~ | ✓ |
+| Danish | ~ | ✓ |
+| Dutch | ~ | ✓ |
+| English | ✓ | ✓ |
+| Finnish | ~ | ✓ |
+| French | ✓ | ✓ |
+| German | ✓ | ✓ |
+| Greek | ~ | ✓ |
+| Hebrew | ~ | ✓ |
+| Hindi | ✓ | ✓ |
+| Hungarian | ~ | ✓ |
+| Indonesian | ~ | ✓ |
+| Italian | ✓ | ✓ |
+| Japanese | ~ | ✓ |
+| Korean | ~ | ~ |
+| Malayalam | ~ | ✓ |
+| Neapolitan | ✓ | ✓ |
+| Polish | ~ | ✓ |
+| Portuguese | ✓ | ✓ |
+| Portuguese (Brazil) | ✓ | ✓ |
+| Romanian | ~ | ✓ |
+| Russian | ~ | ✓ |
+| Spanish | ✓ | ✓ |
+| Swedish | ~ | ✓ |
+| Thai | ~ | ✓ |
+| Turkish | ✓ | ✓ |
+| Ukrainian | ~ | ✓ |
+| Vietnamese | ~ | ✓ |
+
+**Audio** — Whisper can transcribe the spoken language. Chinese (Simplified) is tested via Shanghainese and Guiyangese speakers; standard Mandarin is expected to work. Thai audio is supported by Whisper but our integration tests use the tiny model which does not reliably transcribe Thai. **Subtitle** — submatch can score a subtitle in that language using token F1 (same-language) or multilingual sentence embeddings (cross-language, via [`paraphrase-multilingual-MiniLM-L12-v2`](https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2)). Korean subtitle scoring is supported but no test fixture is available.
+
 ## Options
 
 | Flag | Default | Description |

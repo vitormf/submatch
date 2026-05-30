@@ -39,34 +39,6 @@ ASSETS: dict[str, str] = {
         "&title=File%3AWIKITONGUES-_Gereon_speaking_German.webm"
         "&lang=de&trackformat=vtt&origin=*"
     ),
-    # WIKITONGUES — María speaking Guarani (CC BY 3.0)
-    # Speaker from Paraguay, ~5 min, 31.6 MB.
-    # Subtitles available in: gn (native), en, es, de, fr, fi, pt-br, uk.
-    "wikitongues_guarani.webm": (
-        "https://upload.wikimedia.org/wikipedia/commons/e/e1/"
-        "WIKITONGUES-_Mar%C3%ADa_speaking_Guarani.webm"
-    ),
-    "wikitongues_guarani.gn.srt": (
-        "https://commons.wikimedia.org/w/api.php?action=timedtext"
-        "&title=File%3AWIKITONGUES-_Mar%C3%ADa_speaking_Guarani.webm"
-        "&lang=gn&trackformat=srt&origin=*"
-    ),
-    "wikitongues_guarani.en.srt": (
-        "https://commons.wikimedia.org/w/api.php?action=timedtext"
-        "&title=File%3AWIKITONGUES-_Mar%C3%ADa_speaking_Guarani.webm"
-        "&lang=en&trackformat=srt&origin=*"
-    ),
-    "wikitongues_guarani.es.srt": (
-        "https://commons.wikimedia.org/w/api.php?action=timedtext"
-        "&title=File%3AWIKITONGUES-_Mar%C3%ADa_speaking_Guarani.webm"
-        "&lang=es&trackformat=srt&origin=*"
-    ),
-    # German subtitle of the Guarani video — used as cross-video mismatch control.
-    "wikitongues_guarani.de.srt": (
-        "https://commons.wikimedia.org/w/api.php?action=timedtext"
-        "&title=File%3AWIKITONGUES-_Mar%C3%ADa_speaking_Guarani.webm"
-        "&lang=de&trackformat=srt&origin=*"
-    ),
     # WIKITONGUES — Omar speaking English and Jamaican Patois (CC BY 3.0)
     # English speaker discussing Jamaican Patois as heritage language, ~4 min, 85.5 MB.
     # Subtitles available in: en (native), de, es, fr, pt, it, tr, eo, fy.
@@ -179,6 +151,161 @@ ASSETS: dict[str, str] = {
         "&title=File%3AWIKITONGUES-_Changjiu_and_Chaofen_speaking_Guiyangese.webm"
         "&lang=en&trackformat=srt&origin=*"
     ),
+    # WIKITONGUES — Sara speaking Portuguese (CC BY-SA 4.0)
+    # Speaker from Lisbon, ~85 seconds, 10.6 MB.
+    # Subtitles available in: pt (native), en.
+    "wikitongues_portuguese.webm": (
+        "https://upload.wikimedia.org/wikipedia/commons/7/75/"
+        "WIKITONGUES-_Sara_speaking_Portuguese.webm"
+    ),
+    "wikitongues_portuguese.pt.srt": (
+        "https://commons.wikimedia.org/w/api.php?action=timedtext"
+        "&title=File%3AWIKITONGUES-_Sara_speaking_Portuguese.webm"
+        "&lang=pt&trackformat=srt&origin=*"
+    ),
+    "wikitongues_portuguese.en.srt": (
+        "https://commons.wikimedia.org/w/api.php?action=timedtext"
+        "&title=File%3AWIKITONGUES-_Sara_speaking_Portuguese.webm"
+        "&lang=en&trackformat=srt&origin=*"
+    ),
+    # WIKITONGUES — Freddie speaking Portuguese (CC BY-SA 4.0)
+    # Brazilian Portuguese speaker from São Paulo, ~243 seconds, 29.6 MB.
+    # Subtitles available in: pt-br (native), en.
+    "wikitongues_portuguese_br.webm": (
+        "https://upload.wikimedia.org/wikipedia/commons/b/b2/"
+        "WIKITONGUES-_Freddie_speaking_Portuguese.webm"
+    ),
+    "wikitongues_portuguese_br.pt-br.srt": (
+        "https://commons.wikimedia.org/w/api.php?action=timedtext"
+        "&title=File%3AWIKITONGUES-_Freddie_speaking_Portuguese.webm"
+        "&lang=pt-br&trackformat=srt&origin=*"
+    ),
+    "wikitongues_portuguese_br.en.srt": (
+        "https://commons.wikimedia.org/w/api.php?action=timedtext"
+        "&title=File%3AWIKITONGUES-_Freddie_speaking_Portuguese.webm"
+        "&lang=en&trackformat=srt&origin=*"
+    ),
+    # WIKITONGUES — Ela speaking Turkish (CC BY-SA 4.0)
+    # Turkish journalist from Kosovo, ~79 seconds, 4.3 MB.
+    # Subtitles available in: tr (native), en.
+    "wikitongues_turkish.webm": (
+        "https://upload.wikimedia.org/wikipedia/commons/d/d9/"
+        "WIKITONGUES-_Ela_speaking_Turkish.webm"
+    ),
+    "wikitongues_turkish.tr.srt": (
+        "https://commons.wikimedia.org/w/api.php?action=timedtext"
+        "&title=File%3AWIKITONGUES-_Ela_speaking_Turkish.webm"
+        "&lang=tr&trackformat=srt&origin=*"
+    ),
+    "wikitongues_turkish.en.srt": (
+        "https://commons.wikimedia.org/w/api.php?action=timedtext"
+        "&title=File%3AWIKITONGUES-_Ela_speaking_Turkish.webm"
+        "&lang=en&trackformat=srt&origin=*"
+    ),
+    # WIKITONGUES — Foffo speaking Neapolitan (CC BY-SA 4.0)
+    # Neapolitan speaker from Naples, ~34 seconds, 8.4 MB.
+    # Subtitles available in: it (Italian), nap (Neapolitan), en.
+    "wikitongues_neapolitan.webm": (
+        "https://upload.wikimedia.org/wikipedia/commons/d/d8/"
+        "WIKITONGUES-_Foffo_speaking_Neapolitan.webm"
+    ),
+    "wikitongues_neapolitan.it.srt": (
+        "https://commons.wikimedia.org/w/api.php?action=timedtext"
+        "&title=File%3AWIKITONGUES-_Foffo_speaking_Neapolitan.webm"
+        "&lang=it&trackformat=srt&origin=*"
+    ),
+    "wikitongues_neapolitan.nap.srt": (
+        "https://commons.wikimedia.org/w/api.php?action=timedtext"
+        "&title=File%3AWIKITONGUES-_Foffo_speaking_Neapolitan.webm"
+        "&lang=nap&trackformat=srt&origin=*"
+    ),
+    "wikitongues_neapolitan.en.srt": (
+        "https://commons.wikimedia.org/w/api.php?action=timedtext"
+        "&title=File%3AWIKITONGUES-_Foffo_speaking_Neapolitan.webm"
+        "&lang=en&trackformat=srt&origin=*"
+    ),
+    # WIKITONGUES — Dang speaking Thai (CC BY-SA 4.0)
+    # Thai speaker from Bangkok, ~35.1 MB.
+    # Subtitles available in: th (native), en.
+    "wikitongues_thai.webm": (
+        "https://upload.wikimedia.org/wikipedia/commons/9/9c/"
+        "WIKITONGUES-_Dang_speaking_Thai.webm"
+    ),
+    "wikitongues_thai.th.srt": (
+        "https://commons.wikimedia.org/w/api.php?action=timedtext"
+        "&title=File%3AWIKITONGUES-_Dang_speaking_Thai.webm"
+        "&lang=th&trackformat=srt&origin=*"
+    ),
+    "wikitongues_thai.en.srt": (
+        "https://commons.wikimedia.org/w/api.php?action=timedtext"
+        "&title=File%3AWIKITONGUES-_Dang_speaking_Thai.webm"
+        "&lang=en&trackformat=srt&origin=*"
+    ),
+    # Sintel (Blender Foundation, CC BY 3.0) — external SRT files used as
+    # wrong-content mismatch controls (different film, same language).
+    # Source: TimedText for File:Sintel movie 4K.webm on Wikimedia Commons.
+    "sintel.en.srt": (
+        "https://commons.wikimedia.org/wiki/TimedText:Sintel_movie_4K.webm.en.srt?action=raw"
+    ),
+    "sintel.de.srt": (
+        "https://commons.wikimedia.org/wiki/TimedText:Sintel_movie_4K.webm.de.srt?action=raw"
+    ),
+    "sintel.es.srt": (
+        "https://commons.wikimedia.org/wiki/TimedText:Sintel_movie_4K.webm.es.srt?action=raw"
+    ),
+    # Sprite Fright (Blender Studio, CC BY 4.0) — MKV with 8 embedded subtitle tracks.
+    # Audio: English. Embedded tracks: eng, ger, hun, ita, por, rus, spa, mal.
+    # 159.5 MB. https://archive.org/details/sprite-fright-2021
+    "sprite_fright.mkv": (
+        "https://archive.org/download/sprite-fright-2021/Sprite%20Fright%20%282021%29.mkv"
+    ),
+    # Sintel 720p (Blender Foundation, CC BY 3.0) — MKV with 10 embedded subtitle tracks.
+    # Audio: English. Embedded tracks: eng, ger, spa, fre, ita, dut, pol, por, rus, vie.
+    # 649 MB. https://archive.org/details/SintelDCP_201512
+    "sintel_720p.mkv": (
+        "https://archive.org/download/SintelDCP_201512/Sintel.2010.720p.mkv"
+    ),
+    # Sintel external SRTs — additional language coverage (cross-language tests).
+    # Source: TimedText for File:Sintel movie 4K.webm on Wikimedia Commons.
+    "sintel.ja.srt": (
+        "https://commons.wikimedia.org/wiki/TimedText:Sintel_movie_4K.webm.ja.srt?action=raw"
+    ),
+    "sintel.hi.srt": (
+        "https://commons.wikimedia.org/wiki/TimedText:Sintel_movie_4K.webm.hi.srt?action=raw"
+    ),
+    "sintel.ar.srt": (
+        "https://commons.wikimedia.org/wiki/TimedText:Sintel_movie_4K.webm.ar.srt?action=raw"
+    ),
+    "sintel.zh-hans.srt": (
+        "https://commons.wikimedia.org/wiki/TimedText:Sintel_movie_4K.webm.zh-hans.srt?action=raw"
+    ),
+    "sintel.cs.srt": (
+        "https://commons.wikimedia.org/wiki/TimedText:Sintel_movie_4K.webm.cs.srt?action=raw"
+    ),
+    "sintel.sv.srt": (
+        "https://commons.wikimedia.org/wiki/TimedText:Sintel_movie_4K.webm.sv.srt?action=raw"
+    ),
+    "sintel.da.srt": (
+        "https://commons.wikimedia.org/wiki/TimedText:Sintel_movie_4K.webm.da.srt?action=raw"
+    ),
+    "sintel.el.srt": (
+        "https://commons.wikimedia.org/wiki/TimedText:Sintel_movie_4K.webm.el.srt?action=raw"
+    ),
+    "sintel.he.srt": (
+        "https://commons.wikimedia.org/wiki/TimedText:Sintel_movie_4K.webm.he.srt?action=raw"
+    ),
+    "sintel.id.srt": (
+        "https://commons.wikimedia.org/wiki/TimedText:Sintel_movie_4K.webm.id.srt?action=raw"
+    ),
+    "sintel.ro.srt": (
+        "https://commons.wikimedia.org/wiki/TimedText:Sintel_movie_4K.webm.ro.srt?action=raw"
+    ),
+    "sintel.uk.srt": (
+        "https://commons.wikimedia.org/wiki/TimedText:Sintel_movie_4K.webm.uk.srt?action=raw"
+    ),
+    "sintel.fi.srt": (
+        "https://commons.wikimedia.org/wiki/TimedText:Sintel_movie_4K.webm.fi.srt?action=raw"
+    ),
 }
 
 _WHISPER_CACHE = Path(os.path.expanduser("~")) / ".cache" / "whisper"
@@ -244,33 +371,6 @@ def german_de_ass(german_de_srt, tmp_path_factory) -> Path:
     out = tmp_path_factory.mktemp("ass") / "wikitongues_german.de.ass"
     subs.save(str(out))
     return out
-
-
-# Guarani video (María, Guarani speaker from Paraguay)
-@pytest.fixture(scope="session")
-def guarani_video() -> Path:
-    return _fixture_path("wikitongues_guarani.webm")
-
-
-@pytest.fixture(scope="session")
-def guarani_gn_srt() -> Path:
-    return _fixture_path("wikitongues_guarani.gn.srt")
-
-
-@pytest.fixture(scope="session")
-def guarani_en_srt() -> Path:
-    return _fixture_path("wikitongues_guarani.en.srt")
-
-
-@pytest.fixture(scope="session")
-def guarani_es_srt() -> Path:
-    return _fixture_path("wikitongues_guarani.es.srt")
-
-
-@pytest.fixture(scope="session")
-def guarani_de_srt() -> Path:
-    """German subtitle of the Guarani video — different content from the German video."""
-    return _fixture_path("wikitongues_guarani.de.srt")
 
 
 # Whisper model fixtures
@@ -396,6 +496,185 @@ def guiyangese_zh_hans_srt() -> Path:
 @pytest.fixture(scope="session")
 def guiyangese_en_srt() -> Path:
     return _fixture_path("wikitongues_guiyangese.en.srt")
+
+
+# Portuguese video (Sara, native Portuguese speaker from Lisbon)
+@pytest.fixture(scope="session")
+def portuguese_video() -> Path:
+    return _fixture_path("wikitongues_portuguese.webm")
+
+
+@pytest.fixture(scope="session")
+def portuguese_pt_srt() -> Path:
+    return _fixture_path("wikitongues_portuguese.pt.srt")
+
+
+@pytest.fixture(scope="session")
+def portuguese_en_srt() -> Path:
+    return _fixture_path("wikitongues_portuguese.en.srt")
+
+
+# Portuguese-BR video (Freddie, Brazilian Portuguese speaker from São Paulo)
+@pytest.fixture(scope="session")
+def portuguese_br_video() -> Path:
+    return _fixture_path("wikitongues_portuguese_br.webm")
+
+
+@pytest.fixture(scope="session")
+def portuguese_br_ptbr_srt() -> Path:
+    return _fixture_path("wikitongues_portuguese_br.pt-br.srt")
+
+
+@pytest.fixture(scope="session")
+def portuguese_br_en_srt() -> Path:
+    return _fixture_path("wikitongues_portuguese_br.en.srt")
+
+
+# Turkish video (Ela, Turkish journalist from Kosovo)
+@pytest.fixture(scope="session")
+def turkish_video() -> Path:
+    return _fixture_path("wikitongues_turkish.webm")
+
+
+@pytest.fixture(scope="session")
+def turkish_tr_srt() -> Path:
+    return _fixture_path("wikitongues_turkish.tr.srt")
+
+
+@pytest.fixture(scope="session")
+def turkish_en_srt() -> Path:
+    return _fixture_path("wikitongues_turkish.en.srt")
+
+
+# Neapolitan video (Foffo, Neapolitan speaker from Naples)
+@pytest.fixture(scope="session")
+def neapolitan_video() -> Path:
+    return _fixture_path("wikitongues_neapolitan.webm")
+
+
+@pytest.fixture(scope="session")
+def neapolitan_it_srt() -> Path:
+    return _fixture_path("wikitongues_neapolitan.it.srt")
+
+
+@pytest.fixture(scope="session")
+def neapolitan_nap_srt() -> Path:
+    return _fixture_path("wikitongues_neapolitan.nap.srt")
+
+
+@pytest.fixture(scope="session")
+def neapolitan_en_srt() -> Path:
+    return _fixture_path("wikitongues_neapolitan.en.srt")
+
+
+# Thai video (Dang, Thai speaker from Bangkok)
+@pytest.fixture(scope="session")
+def thai_video() -> Path:
+    return _fixture_path("wikitongues_thai.webm")
+
+
+@pytest.fixture(scope="session")
+def thai_th_srt() -> Path:
+    return _fixture_path("wikitongues_thai.th.srt")
+
+
+@pytest.fixture(scope="session")
+def thai_en_srt() -> Path:
+    return _fixture_path("wikitongues_thai.en.srt")
+
+
+# Sintel (Blender Foundation, CC BY 3.0) — external SRTs used as wrong-content controls
+@pytest.fixture(scope="session")
+def sintel_en_srt() -> Path:
+    return _fixture_path("sintel.en.srt")
+
+
+@pytest.fixture(scope="session")
+def sintel_de_srt() -> Path:
+    return _fixture_path("sintel.de.srt")
+
+
+@pytest.fixture(scope="session")
+def sintel_es_srt() -> Path:
+    return _fixture_path("sintel.es.srt")
+
+
+# Sprite Fright (Blender Studio, CC BY 4.0) — MKV with embedded subtitle tracks
+@pytest.fixture(scope="session")
+def sprite_fright_video() -> Path:
+    return _fixture_path("sprite_fright.mkv")
+
+
+# Sintel 720p (Blender Foundation, CC BY 3.0) — MKV with embedded subtitle tracks
+@pytest.fixture(scope="session")
+def sintel_720p_video() -> Path:
+    return _fixture_path("sintel_720p.mkv")
+
+
+# Sintel external SRTs — language coverage
+@pytest.fixture(scope="session")
+def sintel_ja_srt() -> Path:
+    return _fixture_path("sintel.ja.srt")
+
+
+@pytest.fixture(scope="session")
+def sintel_hi_srt() -> Path:
+    return _fixture_path("sintel.hi.srt")
+
+
+@pytest.fixture(scope="session")
+def sintel_ar_srt() -> Path:
+    return _fixture_path("sintel.ar.srt")
+
+
+@pytest.fixture(scope="session")
+def sintel_zh_hans_srt() -> Path:
+    return _fixture_path("sintel.zh-hans.srt")
+
+
+@pytest.fixture(scope="session")
+def sintel_cs_srt() -> Path:
+    return _fixture_path("sintel.cs.srt")
+
+
+@pytest.fixture(scope="session")
+def sintel_sv_srt() -> Path:
+    return _fixture_path("sintel.sv.srt")
+
+
+@pytest.fixture(scope="session")
+def sintel_da_srt() -> Path:
+    return _fixture_path("sintel.da.srt")
+
+
+@pytest.fixture(scope="session")
+def sintel_el_srt() -> Path:
+    return _fixture_path("sintel.el.srt")
+
+
+@pytest.fixture(scope="session")
+def sintel_he_srt() -> Path:
+    return _fixture_path("sintel.he.srt")
+
+
+@pytest.fixture(scope="session")
+def sintel_id_srt() -> Path:
+    return _fixture_path("sintel.id.srt")
+
+
+@pytest.fixture(scope="session")
+def sintel_ro_srt() -> Path:
+    return _fixture_path("sintel.ro.srt")
+
+
+@pytest.fixture(scope="session")
+def sintel_uk_srt() -> Path:
+    return _fixture_path("sintel.uk.srt")
+
+
+@pytest.fixture(scope="session")
+def sintel_fi_srt() -> Path:
+    return _fixture_path("sintel.fi.srt")
 
 
 # Multi-track video fixture (synthetic — no download required)
