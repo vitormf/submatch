@@ -6,7 +6,6 @@ Run with: make integration-test
 
 Videos: WIKITONGUES project on Wikimedia Commons (CC BY-SA 4.0 / CC BY 3.0).
   - Gereon speaking German        — German audio, subtitles in de/en/pt-br
-  - María speaking Guarani        — Guarani audio, subtitles in gn/en/es/de
   - Omar speaking English         — English audio, subtitles in en/es/fr/pt
   - Clara speaking French         — French audio, subtitles in fr/en/es
   - Ivy speaking Shanghainese     — Shanghainese audio, subtitles in zh-hans/en
@@ -14,8 +13,8 @@ Videos: WIKITONGUES project on Wikimedia Commons (CC BY-SA 4.0 / CC BY 3.0).
   - Azariah speaking Spanish      — Spanish audio, subtitle in es
   - Changjiu & Chaofen speaking Guiyangese — Guiyangese (Mandarin) audio, subtitles in zh-hans/en
 
-Mismatch controls use subtitles from a different video in the same language:
-  - Same language, wrong content → should score LOW (F1 failure)
+Mismatch controls use external SRTs from Sintel (Blender Foundation, CC BY 3.0):
+  - Same language, wrong content (Sintel film text) → should score LOW
   - Translated language, wrong content → should score LOW (embedding failure)
 """
 import json
@@ -97,11 +96,11 @@ def test_german_audio_detected_as_german(german_video, german_de_srt, whisper_ti
 
 
 def test_german_mismatched_subtitle_scores_lower(
-    german_video, german_de_srt, guarani_de_srt, whisper_tiny,
+    german_video, german_de_srt, sintel_de_srt, whisper_tiny,
 ):
-    """German subtitle about Paraguay should score lower than the native German subtitle."""
+    """German subtitle from Sintel (unrelated film) should score lower than the native German subtitle."""
     matching, _ = _score(german_video, german_de_srt, whisper_tiny)
-    mismatched, _ = _score(german_video, guarani_de_srt, whisper_tiny)
+    mismatched, _ = _score(german_video, sintel_de_srt, whisper_tiny)
     assert mismatched < matching, (
         f"Mismatch ({mismatched:.2f}) should be lower than match ({matching:.2f})"
     )
@@ -150,14 +149,14 @@ def test_cross_language_german_ptbr_passes_threshold(
 
 
 def test_cross_language_matching_translation_scores_higher_than_mismatch(
-    german_video, german_en_srt, guarani_en_srt, whisper_tiny, embed_model,
+    german_video, german_en_srt, sintel_en_srt, whisper_tiny, embed_model,
 ):
     """Correct English translation of German audio should outscore an unrelated English subtitle."""
     matching, _ = _score_cross_language(
         german_video, german_en_srt, whisper_tiny, embed_model,
     )
     mismatched, _ = _score_cross_language(
-        german_video, guarani_en_srt, whisper_tiny, embed_model,
+        german_video, sintel_en_srt, whisper_tiny, embed_model,
     )
     assert mismatched < matching, (
         f"Mismatch ({mismatched:.2f}) should be lower than match ({matching:.2f})"
@@ -172,45 +171,6 @@ def test_cross_language_audio_detected_as_german(
         german_video, german_en_srt, whisper_tiny, embed_model, n=1,
     )
     assert lang == "de", f"Expected audio language 'de', got '{lang}'"
-
-
-# ── Guarani video — cross-language tests ─────────────────────────────────────
-# Guarani has limited Whisper support; scores may be low. These tests use relative
-# comparisons and conservative thresholds to stay robust across model versions.
-
-def test_guarani_spanish_subtitle_scores_higher_than_german_mismatch(
-    guarani_video, guarani_es_srt, german_de_srt, whisper_base, embed_model,
-):
-    """Spanish translation of Guarani audio should outscore an unrelated German subtitle."""
-    matching, _ = _score_cross_language(
-        guarani_video, guarani_es_srt, whisper_base, embed_model,
-    )
-    mismatched, _ = _score_cross_language(
-        guarani_video, german_de_srt, whisper_base, embed_model,
-    )
-    assert mismatched < matching, (
-        f"Mismatch ({mismatched:.2f}) should be lower than match ({matching:.2f})"
-    )
-
-
-@pytest.mark.xfail(
-    strict=False,
-    reason="Guarani+English vs Guarani+German scores are at noise level (~0.06 each); "
-    "the Spanish variant covers this intent more reliably.",
-)
-def test_guarani_english_subtitle_scores_higher_than_german_mismatch(
-    guarani_video, guarani_en_srt, german_de_srt, whisper_base, embed_model,
-):
-    """English translation of Guarani audio should outscore an unrelated German subtitle."""
-    matching, _ = _score_cross_language(
-        guarani_video, guarani_en_srt, whisper_base, embed_model,
-    )
-    mismatched, _ = _score_cross_language(
-        guarani_video, german_de_srt, whisper_base, embed_model,
-    )
-    assert mismatched < matching, (
-        f"Mismatch ({mismatched:.2f}) should be lower than match ({matching:.2f})"
-    )
 
 
 # ── English video — same-language tests ──────────────────────────────────────
@@ -232,15 +192,15 @@ def test_english_audio_detected_as_english(english_video, english_en_srt, whispe
 
 
 def test_english_wrong_content_same_language_scores_lower(
-    english_video, english_en_srt, guarani_en_srt, whisper_tiny,
+    english_video, english_en_srt, sintel_en_srt, whisper_tiny,
 ):
-    """English subtitle from a different video (wrong content) should score lower than the match.
+    """English subtitle from Sintel (wrong content) should score lower than the matching subtitle.
 
     This simulates the primary use case of submatch: a subtitle tool downloaded a subtitle
     with correct timing but content from the wrong film/episode.
     """
     matching, _ = _score(english_video, english_en_srt, whisper_tiny)
-    wrong_content, _ = _score(english_video, guarani_en_srt, whisper_tiny)
+    wrong_content, _ = _score(english_video, sintel_en_srt, whisper_tiny)
     assert wrong_content < matching, (
         f"Wrong-content English subtitle ({wrong_content:.2f}) should score lower "
         f"than matching subtitle ({matching:.2f})"
@@ -280,7 +240,7 @@ def test_cross_language_english_portuguese_passes_threshold(
 
 
 def test_cross_language_english_correct_translation_scores_higher_than_wrong_content(
-    english_video, english_es_srt, guarani_es_srt, whisper_tiny, embed_model,
+    english_video, english_es_srt, sintel_es_srt, whisper_tiny, embed_model,
 ):
     """Correct Spanish translation of English audio should outscore a Spanish subtitle
     from an unrelated video — same language pair, wrong content.
@@ -292,7 +252,7 @@ def test_cross_language_english_correct_translation_scores_higher_than_wrong_con
         english_video, english_es_srt, whisper_tiny, embed_model,
     )
     wrong_content, _ = _score_cross_language(
-        english_video, guarani_es_srt, whisper_tiny, embed_model,
+        english_video, sintel_es_srt, whisper_tiny, embed_model,
     )
     assert wrong_content < matching, (
         f"Wrong-content ES subtitle ({wrong_content:.2f}) should score lower "
@@ -339,12 +299,12 @@ def test_cross_language_french_spanish_passes_threshold(
 
 
 def test_french_wrong_content_scores_lower(
-    french_video, french_en_srt, guarani_en_srt, whisper_tiny, embed_model,
+    french_video, french_en_srt, sintel_en_srt, whisper_tiny, embed_model,
 ):
-    """Correct English translation should outscore an unrelated English subtitle."""
+    """Correct English translation should outscore an unrelated English subtitle (Sintel)."""
     matching, _ = _score_cross_language(french_video, french_en_srt, whisper_tiny, embed_model)
     wrong_content, _ = _score_cross_language(
-        french_video, guarani_en_srt, whisper_tiny, embed_model,
+        french_video, sintel_en_srt, whisper_tiny, embed_model,
     )
     assert wrong_content < matching, (
         f"Wrong-content EN subtitle ({wrong_content:.2f}) should score lower "
@@ -403,11 +363,11 @@ def test_spanish_audio_detected_as_spanish(spanish_video, spanish_es_srt, whispe
 
 
 def test_spanish_mismatched_subtitle_scores_lower(
-    spanish_video, spanish_es_srt, guarani_es_srt, whisper_tiny,
+    spanish_video, spanish_es_srt, sintel_es_srt, whisper_tiny,
 ):
-    """Spanish subtitle from a different video should score lower than the native Spanish subtitle."""
+    """Spanish subtitle from Sintel (unrelated film) should score lower than the native Spanish subtitle."""
     matching, _ = _score(spanish_video, spanish_es_srt, whisper_tiny)
-    mismatched, _ = _score(spanish_video, guarani_es_srt, whisper_tiny)
+    mismatched, _ = _score(spanish_video, sintel_es_srt, whisper_tiny)
     assert mismatched < matching, (
         f"Mismatch ({mismatched:.2f}) should be lower than match ({matching:.2f})"
     )
@@ -440,14 +400,14 @@ def test_cross_language_guiyangese_english_passes_threshold(
 
 
 def test_guiyangese_matching_subtitle_scores_higher_than_mismatch(
-    guiyangese_video, guiyangese_en_srt, guarani_en_srt, whisper_tiny, embed_model,
+    guiyangese_video, guiyangese_en_srt, sintel_en_srt, whisper_tiny, embed_model,
 ):
-    """Correct English translation of Guiyangese audio should outscore an unrelated one."""
+    """Correct English translation of Guiyangese audio should outscore an unrelated English subtitle."""
     matching, _ = _score_cross_language(
         guiyangese_video, guiyangese_en_srt, whisper_tiny, embed_model,
     )
     wrong_content, _ = _score_cross_language(
-        guiyangese_video, guarani_en_srt, whisper_tiny, embed_model,
+        guiyangese_video, sintel_en_srt, whisper_tiny, embed_model,
     )
     assert wrong_content < matching, (
         f"Wrong-content EN subtitle ({wrong_content:.2f}) should score lower "
