@@ -39,34 +39,6 @@ ASSETS: dict[str, str] = {
         "&title=File%3AWIKITONGUES-_Gereon_speaking_German.webm"
         "&lang=de&trackformat=vtt&origin=*"
     ),
-    # WIKITONGUES — María speaking Guarani (CC BY 3.0)
-    # Speaker from Paraguay, ~5 min, 31.6 MB.
-    # Subtitles available in: gn (native), en, es, de, fr, fi, pt-br, uk.
-    "wikitongues_guarani.webm": (
-        "https://upload.wikimedia.org/wikipedia/commons/e/e1/"
-        "WIKITONGUES-_Mar%C3%ADa_speaking_Guarani.webm"
-    ),
-    "wikitongues_guarani.gn.srt": (
-        "https://commons.wikimedia.org/w/api.php?action=timedtext"
-        "&title=File%3AWIKITONGUES-_Mar%C3%ADa_speaking_Guarani.webm"
-        "&lang=gn&trackformat=srt&origin=*"
-    ),
-    "wikitongues_guarani.en.srt": (
-        "https://commons.wikimedia.org/w/api.php?action=timedtext"
-        "&title=File%3AWIKITONGUES-_Mar%C3%ADa_speaking_Guarani.webm"
-        "&lang=en&trackformat=srt&origin=*"
-    ),
-    "wikitongues_guarani.es.srt": (
-        "https://commons.wikimedia.org/w/api.php?action=timedtext"
-        "&title=File%3AWIKITONGUES-_Mar%C3%ADa_speaking_Guarani.webm"
-        "&lang=es&trackformat=srt&origin=*"
-    ),
-    # German subtitle of the Guarani video — used as cross-video mismatch control.
-    "wikitongues_guarani.de.srt": (
-        "https://commons.wikimedia.org/w/api.php?action=timedtext"
-        "&title=File%3AWIKITONGUES-_Mar%C3%ADa_speaking_Guarani.webm"
-        "&lang=de&trackformat=srt&origin=*"
-    ),
     # WIKITONGUES — Omar speaking English and Jamaican Patois (CC BY 3.0)
     # English speaker discussing Jamaican Patois as heritage language, ~4 min, 85.5 MB.
     # Subtitles available in: en (native), de, es, fr, pt, it, tr, eo, fy.
@@ -179,6 +151,18 @@ ASSETS: dict[str, str] = {
         "&title=File%3AWIKITONGUES-_Changjiu_and_Chaofen_speaking_Guiyangese.webm"
         "&lang=en&trackformat=srt&origin=*"
     ),
+    # Sintel (Blender Foundation, CC BY 3.0) — external SRT files used as
+    # wrong-content mismatch controls (different film, same language).
+    # Source: TimedText for File:Sintel movie 4K.webm on Wikimedia Commons.
+    "sintel.en.srt": (
+        "https://commons.wikimedia.org/wiki/TimedText:Sintel_movie_4K.webm.en.srt?action=raw"
+    ),
+    "sintel.de.srt": (
+        "https://commons.wikimedia.org/wiki/TimedText:Sintel_movie_4K.webm.de.srt?action=raw"
+    ),
+    "sintel.es.srt": (
+        "https://commons.wikimedia.org/wiki/TimedText:Sintel_movie_4K.webm.es.srt?action=raw"
+    ),
 }
 
 _WHISPER_CACHE = Path(os.path.expanduser("~")) / ".cache" / "whisper"
@@ -244,33 +228,6 @@ def german_de_ass(german_de_srt, tmp_path_factory) -> Path:
     out = tmp_path_factory.mktemp("ass") / "wikitongues_german.de.ass"
     subs.save(str(out))
     return out
-
-
-# Guarani video (María, Guarani speaker from Paraguay)
-@pytest.fixture(scope="session")
-def guarani_video() -> Path:
-    return _fixture_path("wikitongues_guarani.webm")
-
-
-@pytest.fixture(scope="session")
-def guarani_gn_srt() -> Path:
-    return _fixture_path("wikitongues_guarani.gn.srt")
-
-
-@pytest.fixture(scope="session")
-def guarani_en_srt() -> Path:
-    return _fixture_path("wikitongues_guarani.en.srt")
-
-
-@pytest.fixture(scope="session")
-def guarani_es_srt() -> Path:
-    return _fixture_path("wikitongues_guarani.es.srt")
-
-
-@pytest.fixture(scope="session")
-def guarani_de_srt() -> Path:
-    """German subtitle of the Guarani video — different content from the German video."""
-    return _fixture_path("wikitongues_guarani.de.srt")
 
 
 # Whisper model fixtures
@@ -396,6 +353,22 @@ def guiyangese_zh_hans_srt() -> Path:
 @pytest.fixture(scope="session")
 def guiyangese_en_srt() -> Path:
     return _fixture_path("wikitongues_guiyangese.en.srt")
+
+
+# Sintel (Blender Foundation, CC BY 3.0) — external SRTs used as wrong-content controls
+@pytest.fixture(scope="session")
+def sintel_en_srt() -> Path:
+    return _fixture_path("sintel.en.srt")
+
+
+@pytest.fixture(scope="session")
+def sintel_de_srt() -> Path:
+    return _fixture_path("sintel.de.srt")
+
+
+@pytest.fixture(scope="session")
+def sintel_es_srt() -> Path:
+    return _fixture_path("sintel.es.srt")
 
 
 # Multi-track video fixture (synthetic — no download required)
