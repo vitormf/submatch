@@ -13,7 +13,6 @@ import json
 import subprocess
 import sys
 import pytest
-from pathlib import Path
 
 pytestmark = pytest.mark.integration
 
