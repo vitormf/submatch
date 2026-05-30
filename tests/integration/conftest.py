@@ -253,6 +253,59 @@ ASSETS: dict[str, str] = {
     "sintel.es.srt": (
         "https://commons.wikimedia.org/wiki/TimedText:Sintel_movie_4K.webm.es.srt?action=raw"
     ),
+    # Sprite Fright (Blender Studio, CC BY 4.0) — MKV with 8 embedded subtitle tracks.
+    # Audio: English. Embedded tracks: eng, ger, hun, ita, por, rus, spa, mal.
+    # 159.5 MB. https://archive.org/details/sprite-fright-2021
+    "sprite_fright.mkv": (
+        "https://archive.org/download/sprite-fright-2021/Sprite%20Fright%20%282021%29.mkv"
+    ),
+    # Sintel 720p (Blender Foundation, CC BY 3.0) — MKV with 10 embedded subtitle tracks.
+    # Audio: English. Embedded tracks: eng, ger, spa, fre, ita, dut, pol, por, rus, vie.
+    # 649 MB. https://archive.org/details/SintelDCP_201512
+    "sintel_720p.mkv": (
+        "https://archive.org/download/SintelDCP_201512/Sintel.2010.720p.mkv"
+    ),
+    # Sintel external SRTs — additional language coverage (cross-language tests).
+    # Source: TimedText for File:Sintel movie 4K.webm on Wikimedia Commons.
+    "sintel.ja.srt": (
+        "https://commons.wikimedia.org/wiki/TimedText:Sintel_movie_4K.webm.ja.srt?action=raw"
+    ),
+    "sintel.hi.srt": (
+        "https://commons.wikimedia.org/wiki/TimedText:Sintel_movie_4K.webm.hi.srt?action=raw"
+    ),
+    "sintel.ar.srt": (
+        "https://commons.wikimedia.org/wiki/TimedText:Sintel_movie_4K.webm.ar.srt?action=raw"
+    ),
+    "sintel.zh-hans.srt": (
+        "https://commons.wikimedia.org/wiki/TimedText:Sintel_movie_4K.webm.zh-hans.srt?action=raw"
+    ),
+    "sintel.cs.srt": (
+        "https://commons.wikimedia.org/wiki/TimedText:Sintel_movie_4K.webm.cs.srt?action=raw"
+    ),
+    "sintel.sv.srt": (
+        "https://commons.wikimedia.org/wiki/TimedText:Sintel_movie_4K.webm.sv.srt?action=raw"
+    ),
+    "sintel.da.srt": (
+        "https://commons.wikimedia.org/wiki/TimedText:Sintel_movie_4K.webm.da.srt?action=raw"
+    ),
+    "sintel.el.srt": (
+        "https://commons.wikimedia.org/wiki/TimedText:Sintel_movie_4K.webm.el.srt?action=raw"
+    ),
+    "sintel.he.srt": (
+        "https://commons.wikimedia.org/wiki/TimedText:Sintel_movie_4K.webm.he.srt?action=raw"
+    ),
+    "sintel.id.srt": (
+        "https://commons.wikimedia.org/wiki/TimedText:Sintel_movie_4K.webm.id.srt?action=raw"
+    ),
+    "sintel.ro.srt": (
+        "https://commons.wikimedia.org/wiki/TimedText:Sintel_movie_4K.webm.ro.srt?action=raw"
+    ),
+    "sintel.uk.srt": (
+        "https://commons.wikimedia.org/wiki/TimedText:Sintel_movie_4K.webm.uk.srt?action=raw"
+    ),
+    "sintel.fi.srt": (
+        "https://commons.wikimedia.org/wiki/TimedText:Sintel_movie_4K.webm.fi.srt?action=raw"
+    ),
 }
 
 _WHISPER_CACHE = Path(os.path.expanduser("~")) / ".cache" / "whisper"
@@ -544,6 +597,84 @@ def sintel_de_srt() -> Path:
 @pytest.fixture(scope="session")
 def sintel_es_srt() -> Path:
     return _fixture_path("sintel.es.srt")
+
+
+# Sprite Fright (Blender Studio, CC BY 4.0) — MKV with embedded subtitle tracks
+@pytest.fixture(scope="session")
+def sprite_fright_video() -> Path:
+    return _fixture_path("sprite_fright.mkv")
+
+
+# Sintel 720p (Blender Foundation, CC BY 3.0) — MKV with embedded subtitle tracks
+@pytest.fixture(scope="session")
+def sintel_720p_video() -> Path:
+    return _fixture_path("sintel_720p.mkv")
+
+
+# Sintel external SRTs — language coverage
+@pytest.fixture(scope="session")
+def sintel_ja_srt() -> Path:
+    return _fixture_path("sintel.ja.srt")
+
+
+@pytest.fixture(scope="session")
+def sintel_hi_srt() -> Path:
+    return _fixture_path("sintel.hi.srt")
+
+
+@pytest.fixture(scope="session")
+def sintel_ar_srt() -> Path:
+    return _fixture_path("sintel.ar.srt")
+
+
+@pytest.fixture(scope="session")
+def sintel_zh_hans_srt() -> Path:
+    return _fixture_path("sintel.zh-hans.srt")
+
+
+@pytest.fixture(scope="session")
+def sintel_cs_srt() -> Path:
+    return _fixture_path("sintel.cs.srt")
+
+
+@pytest.fixture(scope="session")
+def sintel_sv_srt() -> Path:
+    return _fixture_path("sintel.sv.srt")
+
+
+@pytest.fixture(scope="session")
+def sintel_da_srt() -> Path:
+    return _fixture_path("sintel.da.srt")
+
+
+@pytest.fixture(scope="session")
+def sintel_el_srt() -> Path:
+    return _fixture_path("sintel.el.srt")
+
+
+@pytest.fixture(scope="session")
+def sintel_he_srt() -> Path:
+    return _fixture_path("sintel.he.srt")
+
+
+@pytest.fixture(scope="session")
+def sintel_id_srt() -> Path:
+    return _fixture_path("sintel.id.srt")
+
+
+@pytest.fixture(scope="session")
+def sintel_ro_srt() -> Path:
+    return _fixture_path("sintel.ro.srt")
+
+
+@pytest.fixture(scope="session")
+def sintel_uk_srt() -> Path:
+    return _fixture_path("sintel.uk.srt")
+
+
+@pytest.fixture(scope="session")
+def sintel_fi_srt() -> Path:
+    return _fixture_path("sintel.fi.srt")
 
 
 # Multi-track video fixture (synthetic — no download required)
