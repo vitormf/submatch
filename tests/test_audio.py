@@ -204,17 +204,25 @@ def test_resolve_audio_track_ffprobe_failure_falls_back(tmp_path, capsys):
     assert "Warning" in captured.err
 
 
+def _mock_proc(returncode=0):
+    proc = MagicMock()
+    proc.communicate.return_value = (b"", b"")
+    proc.returncode = returncode
+    proc.pid = 12345
+    return proc
+
+
 def test_extract_segment_default_track_no_map_flag(tmp_path):
     """audio_track=0 must NOT add a -map flag."""
     video = tmp_path / "v.mp4"
     video.touch()
     captured_cmds = []
 
-    def fake_run(cmd, **kwargs):
+    def make_proc(cmd, **kwargs):
         captured_cmds.append(list(cmd))
-        return MagicMock(returncode=0)
+        return _mock_proc()
 
-    with patch("submatch.audio.subprocess.run", side_effect=fake_run):
+    with patch("submatch.audio.subprocess.Popen", side_effect=make_proc):
         from submatch.audio import extract_segment
         wav = extract_segment(video, 0, 3_000, audio_track=0)
         wav.unlink(missing_ok=True)
@@ -229,11 +237,11 @@ def test_extract_segment_nonzero_track_has_map_flag(tmp_path):
     video.touch()
     captured_cmds = []
 
-    def fake_run(cmd, **kwargs):
+    def make_proc(cmd, **kwargs):
         captured_cmds.append(list(cmd))
-        return MagicMock(returncode=0)
+        return _mock_proc()
 
-    with patch("submatch.audio.subprocess.run", side_effect=fake_run):
+    with patch("submatch.audio.subprocess.Popen", side_effect=make_proc):
         from submatch.audio import extract_segment
         wav = extract_segment(video, 0, 3_000, audio_track=2)
         wav.unlink(missing_ok=True)
@@ -242,3 +250,39 @@ def test_extract_segment_nonzero_track_has_map_flag(tmp_path):
     cmd = captured_cmds[0]
     assert "-map" in cmd
     assert cmd[cmd.index("-map") + 1] == "0:a:2"
+
+
+def test_extract_segment_uses_process_group(tmp_path):
+    """ffmpeg must be launched in its own process group (preexec_fn=os.setsid)."""
+    import os
+    video = tmp_path / "v.mp4"
+    video.touch()
+
+    with patch("submatch.audio.subprocess.Popen", return_value=_mock_proc()) as mock_popen:
+        from submatch.audio import extract_segment
+        wav = extract_segment(video, 0, 3_000)
+        wav.unlink(missing_ok=True)
+
+    assert mock_popen.call_args.kwargs.get("preexec_fn") is os.setsid
+
+
+def test_extract_segment_keyboard_interrupt_kills_process_group(tmp_path):
+    """KeyboardInterrupt must kill the ffmpeg process group and re-raise."""
+    import signal
+    video = tmp_path / "v.mp4"
+    video.touch()
+
+    proc = MagicMock()
+    proc.communicate.side_effect = KeyboardInterrupt
+    proc.pid = 12345
+
+    with patch("submatch.audio.subprocess.Popen", return_value=proc), \
+         patch("submatch.audio.os.getpgid", return_value=12345) as mock_getpgid, \
+         patch("submatch.audio.os.killpg") as mock_killpg:
+        from submatch.audio import extract_segment
+        with pytest.raises(KeyboardInterrupt):
+            extract_segment(video, 0, 3_000)
+
+    mock_getpgid.assert_called_once_with(12345)
+    mock_killpg.assert_called_once_with(12345, signal.SIGTERM)
+    proc.wait.assert_called_once()
