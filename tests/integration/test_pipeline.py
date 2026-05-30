@@ -348,7 +348,6 @@ def test_cross_language_hindi_french_passes_threshold(
     )
 
 
-
 # ── Spanish video — same-language tests ──────────────────────────────────────
 
 def test_spanish_native_subtitle_passes_threshold(
@@ -444,9 +443,9 @@ def test_portuguese_en_cross_language(
 
 # ── Portuguese-BR video — same-language and cross-language tests ──────────────
 
-def test_portuguese_br_matches(portuguese_br_video, portuguese_br_srt, whisper_tiny):
+def test_portuguese_br_matches(portuguese_br_video, portuguese_br_ptbr_srt, whisper_tiny):
     """Brazilian Portuguese subtitle for Brazilian Portuguese audio should score above 0.25."""
-    confidence, _ = _score(portuguese_br_video, portuguese_br_srt, whisper_tiny)
+    confidence, _ = _score(portuguese_br_video, portuguese_br_ptbr_srt, whisper_tiny)
     assert confidence >= 0.25, (
         f"Native PT-BR subtitle scored {confidence:.2f} (tiny model), expected >= 0.25"
     )
