@@ -1,3 +1,4 @@
+import signal
 import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -19,6 +20,14 @@ With two lines.
 00:00:15,000 --> 00:00:17,000
 Goodbye.
 """
+
+
+def _mock_proc(returncode=0, stderr=""):
+    proc = MagicMock()
+    proc.communicate.return_value = ("", stderr)
+    proc.returncode = returncode
+    proc.pid = 12345
+    return proc
 
 
 # ── _compute_offset ──────────────────────────────────────────────────────────
@@ -53,8 +62,7 @@ def test_sync_subtitle_success(tmp_path):
     output = tmp_path / "synced.srt"
     output.write_text(SAMPLE_SRT)  # same content → offset=0, no drift
 
-    with patch("submatch.sync.subprocess.run") as mock_run:
-        mock_run.return_value = MagicMock(returncode=0, stderr="")
+    with patch("submatch.sync.subprocess.Popen", return_value=_mock_proc()):
         result = sync_subtitle(video, subtitle, output)
 
     assert isinstance(result, SyncResult)
@@ -70,8 +78,7 @@ def test_sync_subtitle_failure_raises(tmp_path):
     subtitle.write_text(SAMPLE_SRT)
     output = tmp_path / "synced.srt"
 
-    with patch("submatch.sync.subprocess.run") as mock_run:
-        mock_run.return_value = MagicMock(returncode=1, stderr="ffs error msg")
+    with patch("submatch.sync.subprocess.Popen", return_value=_mock_proc(returncode=1, stderr="ffs error msg")):
         with pytest.raises(RuntimeError, match="ffsubsync failed"):
             sync_subtitle(video, subtitle, output)
 
@@ -84,8 +91,7 @@ def test_sync_subtitle_drift_detected(tmp_path):
     output = tmp_path / "synced.srt"
     output.write_text(_SHIFTED_SRT)  # 5s offset exceeds 2s threshold
 
-    with patch("submatch.sync.subprocess.run") as mock_run:
-        mock_run.return_value = MagicMock(returncode=0, stderr="")
+    with patch("submatch.sync.subprocess.Popen", return_value=_mock_proc()):
         result = sync_subtitle(video, subtitle, output)
 
     assert result.drift_detected is True
@@ -101,8 +107,7 @@ def test_sync_subtitle_custom_threshold_suppresses_drift(tmp_path):
     output = tmp_path / "synced.srt"
     output.write_text(_SHIFTED_SRT)  # 5s offset — exceeds default 2s but not custom 10s
 
-    with patch("submatch.sync.subprocess.run") as mock_run:
-        mock_run.return_value = MagicMock(returncode=0, stderr="")
+    with patch("submatch.sync.subprocess.Popen", return_value=_mock_proc()):
         result = sync_subtitle(video, subtitle, output, drift_threshold=10.0)
 
     assert result.drift_detected is False
@@ -116,12 +121,12 @@ def test_sync_subtitle_auto_output_path(tmp_path):
     subtitle = tmp_path / "sub.srt"
     subtitle.write_text(SAMPLE_SRT)
 
-    with patch("submatch.sync.subprocess.run") as mock_run:
-        def write_and_return(cmd, **kwargs):
-            out_path = Path(cmd[cmd.index("-o") + 1])
-            out_path.write_text(SAMPLE_SRT)
-            return MagicMock(returncode=0, stderr="")
-        mock_run.side_effect = write_and_return
+    def make_proc(cmd, **kwargs):
+        out_path = Path(cmd[cmd.index("-o") + 1])
+        out_path.write_text(SAMPLE_SRT)
+        return _mock_proc()
+
+    with patch("submatch.sync.subprocess.Popen", side_effect=make_proc):
         result = sync_subtitle(video, subtitle)
 
     assert result.synced_srt_path.exists()
@@ -137,11 +142,10 @@ def test_sync_subtitle_default_track_no_reference_stream(tmp_path):
     output_path = tmp_path / "synced.srt"
     output_path.write_text(SAMPLE_SRT)
 
-    with patch("submatch.sync.subprocess.run") as mock_run:
-        mock_run.return_value = MagicMock(returncode=0, stderr="")
+    with patch("submatch.sync.subprocess.Popen", return_value=_mock_proc()) as mock_popen:
         sync_subtitle(video, subtitle, output_path, audio_track=0)
 
-    called_cmd = mock_run.call_args[0][0]
+    called_cmd = mock_popen.call_args[0][0]
     assert "--reference-stream" not in called_cmd
 
 
@@ -154,11 +158,49 @@ def test_sync_subtitle_nonzero_track_has_reference_stream(tmp_path):
     output_path = tmp_path / "synced.srt"
     output_path.write_text(SAMPLE_SRT)
 
-    with patch("submatch.sync.subprocess.run") as mock_run:
-        mock_run.return_value = MagicMock(returncode=0, stderr="")
+    with patch("submatch.sync.subprocess.Popen", return_value=_mock_proc()) as mock_popen:
         sync_subtitle(video, subtitle, output_path, audio_track=1)
 
-    called_cmd = mock_run.call_args[0][0]
+    called_cmd = mock_popen.call_args[0][0]
     assert "--reference-stream" in called_cmd
     ref_idx = called_cmd.index("--reference-stream")
     assert called_cmd[ref_idx + 1] == "a:1"
+
+
+def test_sync_subtitle_uses_process_group(tmp_path):
+    """ffs must be launched in its own process group (preexec_fn=os.setsid)."""
+    import os
+    video = tmp_path / "video.mp4"
+    video.touch()
+    subtitle = tmp_path / "sub.srt"
+    subtitle.write_text(SAMPLE_SRT)
+    output_path = tmp_path / "synced.srt"
+    output_path.write_text(SAMPLE_SRT)
+
+    with patch("submatch.sync.subprocess.Popen", return_value=_mock_proc()) as mock_popen:
+        sync_subtitle(video, subtitle, output_path)
+
+    assert mock_popen.call_args.kwargs.get("preexec_fn") is os.setsid
+
+
+def test_sync_subtitle_keyboard_interrupt_kills_process_group(tmp_path):
+    """KeyboardInterrupt must kill the ffs process group and re-raise."""
+    video = tmp_path / "video.mp4"
+    video.touch()
+    subtitle = tmp_path / "sub.srt"
+    subtitle.write_text(SAMPLE_SRT)
+    output = tmp_path / "synced.srt"
+
+    proc = MagicMock()
+    proc.communicate.side_effect = KeyboardInterrupt
+    proc.pid = 12345
+
+    with patch("submatch.sync.subprocess.Popen", return_value=proc), \
+         patch("submatch.sync.os.getpgid", return_value=12345) as mock_getpgid, \
+         patch("submatch.sync.os.killpg") as mock_killpg:
+        with pytest.raises(KeyboardInterrupt):
+            sync_subtitle(video, subtitle, output)
+
+    mock_getpgid.assert_called_once_with(12345)
+    mock_killpg.assert_called_once_with(12345, signal.SIGTERM)
+    proc.wait.assert_called_once()
