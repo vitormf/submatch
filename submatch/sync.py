@@ -1,4 +1,6 @@
 from __future__ import annotations
+import os
+import signal
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -32,9 +34,15 @@ def sync_subtitle(
     if audio_track > 0:
         cmd += ["--reference-stream", f"a:{audio_track}"]
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        raise RuntimeError(f"ffsubsync failed: {result.stderr.strip()}")
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, preexec_fn=os.setsid)
+    try:
+        _out, err = proc.communicate()
+    except KeyboardInterrupt:
+        os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+        proc.wait()
+        raise
+    if proc.returncode != 0:
+        raise RuntimeError(f"ffsubsync failed: {err.strip()}")
 
     offset = _compute_offset(subtitle_path, output_path)
     return SyncResult(

@@ -1,5 +1,7 @@
 from __future__ import annotations
 import json
+import os
+import signal
 import subprocess
 import sys
 import tempfile
@@ -127,5 +129,13 @@ def extract_segment(video_path: Path, start_ms: int, duration_ms: int, audio_tra
     if audio_track > 0:
         cmd += ["-map", f"0:a:{audio_track}"]
     cmd.append(str(out_path))
-    subprocess.run(cmd, capture_output=True, check=True)
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, preexec_fn=os.setsid)
+    try:
+        proc.communicate()
+    except KeyboardInterrupt:
+        os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+        proc.wait()
+        raise
+    if proc.returncode != 0:
+        raise subprocess.CalledProcessError(proc.returncode, cmd)
     return out_path
