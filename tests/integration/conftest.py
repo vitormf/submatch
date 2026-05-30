@@ -468,7 +468,7 @@ def portuguese_br_video() -> Path:
 
 
 @pytest.fixture(scope="session")
-def portuguese_br_srt() -> Path:
+def portuguese_br_ptbr_srt() -> Path:
     return _fixture_path("wikitongues_portuguese_br.pt-br.srt")
 
 
