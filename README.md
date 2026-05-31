@@ -32,7 +32,7 @@ ffmpeg is bundled automatically. Whisper model weights download on first run.
 ```bash
 submatch video.mkv subtitle.en.srt
 submatch video.mkv subtitle.pt.srt --model small --threshold 0.4 --verbose
-submatch video.mkv subtitle.en.srt --no-sync --json
+submatch video.mkv subtitle.en.srt --no-sync --json report.json
 ```
 
 **Auto-discover — pass what you have:**
@@ -48,7 +48,7 @@ submatch video.mkv s1.srt s2.srt  # explicit subtitles for one video
 ```bash
 submatch /media/movies/            # recursive by default; pairs each video with its subtitles
 submatch /media/movies/ --compact  # one line per pair
-submatch /media/movies/ --json     # machine-readable JSON array
+submatch /media/movies/ --json results.json  # machine-readable JSON array
 submatch /media/movies/ --no-recursive  # flat directory only
 ```
 
@@ -156,11 +156,12 @@ SRT, WebVTT, ASS/SSA (and any other format supported by [pysubs2](https://github
 | `--html FILE` | off | Write self-contained HTML report to FILE |
 | `--compact` | off | One-line-per-pair summary in batch mode |
 | `--verbose` | off | Show subtitle and transcription text per segment |
-| `--device` | `auto` | Whisper inference device: `cpu`, `mps` (Apple Silicon), `cuda` (NVIDIA), `auto` (CUDA > MPS > CPU) |
+| `--device` | `auto` | Whisper inference device: `cpu`, `mps` (Apple Silicon), `cuda` (NVIDIA), `auto` (CUDA > CPU; use `--device mps` explicitly on Apple Silicon) |
 | `--workers` | `auto` | Parallel pairs in batch mode; auto selects up to 4 |
 | `--delete-failures` | off | Delete subtitle files that fail the match check |
 | `--resync` | off | On DRIFT (drift detected), copy synced subtitle over original and re-score |
 | `--pass-unsure` | off | Exit 0 for UNSURE results (not enough transcription data) |
+| `--timing` | off | Print per-phase timing breakdown (single-pair mode only) |
 | `--watch` | off | Monitor a directory for new video/subtitle pairs and score them as they appear |
 | `--poll` | off | Use polling instead of native filesystem events (required for network mounts) |
 | `--interval N` | `10` | Seconds between directory scans in `--poll` mode |
