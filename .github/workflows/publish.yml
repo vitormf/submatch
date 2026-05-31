@@ -1,0 +1,32 @@
+name: Publish to PyPI
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g. 0.4.0)'
+        required: true
+        type: string
+
+jobs:
+  publish:
+    runs-on: self-hosted
+    steps:
+      - run: /opt/homebrew/bin/python3.12 -m venv .venv
+      - run: .venv/bin/pip install twine
+      - name: Download release assets
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          mkdir -p dist
+          gh release download v${{ inputs.version }} \
+            --repo vitormf/submatch \
+            --dir dist \
+            --pattern "*.whl" \
+            --pattern "*.tar.gz"
+          ls dist/
+      - name: Publish to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+        run: .venv/bin/twine upload dist/*
