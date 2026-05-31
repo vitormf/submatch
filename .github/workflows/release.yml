@@ -27,19 +27,16 @@ jobs:
         with:
           token: ${{ secrets.GH_PAT }}
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          cache: pip
+      - run: /opt/homebrew/bin/python3.12 -m venv .venv
 
       - name: Install dependencies
-        run: pip install -e ".[dev]" build twine
+        run: .venv/bin/pip install -e ".[dev]" build twine
 
       - name: Bump version
         run: sed -i '' 's/^version = ".*"/version = "${{ inputs.version }}"/' pyproject.toml
 
       - name: Build
-        run: python -m build
+        run: .venv/bin/python -m build
 
       - name: Commit and tag
         run: |
@@ -66,4 +63,4 @@ jobs:
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
-        run: twine upload dist/*
+        run: .venv/bin/twine upload dist/*
