@@ -1,4 +1,4 @@
-from submatch.sampler import auto_segment_count, select_segments, Segment
+from submatch.sampler import auto_segment_count, select_segments, Segment, audio_candidate_segments
 from submatch.subtitle import Subtitle
 
 
@@ -69,3 +69,47 @@ def test_select_segments_very_short_video_boundary_correction():
     subs = _make_subtitles(2, duration_ms)
     result = select_segments(subs, duration_ms, n=2)
     assert len(result) == 2
+
+
+def test_audio_candidate_segments_empty_regions_falls_back_to_even_spacing():
+    duration_ms = 600_000  # 10 minutes
+    candidates = audio_candidate_segments([], duration_ms, n_zones=3, candidates_per_zone=2)
+    assert len(candidates) == 3
+    for zone in candidates:
+        assert len(zone) >= 1
+        for start in zone:
+            assert 0 <= start
+            assert start + 30_000 <= duration_ms
+
+
+def test_audio_candidate_segments_picks_from_speech_regions():
+    duration_ms = 600_000
+    speech_regions = [(120_000, 480_000)]
+    candidates = audio_candidate_segments(speech_regions, duration_ms, n_zones=3, candidates_per_zone=2)
+    assert len(candidates) == 3
+    for zone in candidates:
+        assert len(zone) >= 1
+        for start in zone:
+            assert start + 30_000 <= duration_ms
+
+
+def test_audio_candidate_segments_returns_two_per_zone():
+    duration_ms = 3_600_000  # 60 minutes — wide enough for 2 non-overlapping windows per zone
+    speech_regions = [(0, 3_600_000)]
+    candidates = audio_candidate_segments(speech_regions, duration_ms, n_zones=3, candidates_per_zone=2)
+    assert len(candidates) == 3
+    for zone in candidates:
+        # Each zone should have 2 candidates that don't overlap
+        assert len(zone) == 2
+        starts = sorted(zone)
+        assert starts[1] - starts[0] >= 30_000
+
+
+def test_audio_candidate_segments_candidates_within_video_bounds():
+    duration_ms = 5_400_000  # 90 minutes
+    speech_regions = [(300_000, 5_100_000)]
+    candidates = audio_candidate_segments(speech_regions, duration_ms, n_zones=8, candidates_per_zone=2)
+    for zone in candidates:
+        for start in zone:
+            assert start >= 0
+            assert start + 30_000 <= duration_ms
