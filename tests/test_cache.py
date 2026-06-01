@@ -117,7 +117,6 @@ def test_evict_lru_when_over_max_size(tmp_path):
 
     store(v1, mtime=1.0, model="base", n_segments=2, audio_track_index=0,
           vc=vc, cache_dir=tmp_path, ttl_days=30, max_mb=200)
-    time.sleep(0.01)
     store(v2, mtime=2.0, model="base", n_segments=2, audio_track_index=0,
           vc=vc, cache_dir=tmp_path, ttl_days=30, max_mb=200)
 
@@ -133,3 +132,22 @@ def test_evict_lru_when_over_max_size(tmp_path):
     assert len(remaining) == 1
     data = json.loads(remaining[0].read_text())
     assert data["video_path"].endswith("b.mkv")
+
+
+def test_load_updates_last_used_on_disk(tmp_path):
+    video = Path("/fake/movie.mkv")
+    vc = _make_vc()
+    store(video, mtime=1000.0, model="base", n_segments=2, audio_track_index=0,
+          vc=vc, cache_dir=tmp_path, ttl_days=30, max_mb=200)
+
+    # Record original last_used
+    files = list(tmp_path.glob("*.json"))
+    original_last_used = json.loads(files[0].read_text())["last_used"]
+
+    time.sleep(0.01)
+    result = load(video, mtime=1000.0, model="base", n_segments=2,
+                  audio_track_index=0, cache_dir=tmp_path)
+
+    assert result is not None
+    updated_last_used = json.loads(files[0].read_text())["last_used"]
+    assert updated_last_used > original_last_used
