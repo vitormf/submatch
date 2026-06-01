@@ -2,7 +2,6 @@ from __future__ import annotations
 import argparse
 import concurrent.futures
 import copy
-import dataclasses
 import os
 import shutil
 import sys
@@ -13,6 +12,7 @@ from pathlib import Path
 
 from submatch import __version__
 from submatch import audio, compare, embeddings, language, output, sampler, subtitle, sync, transcribe
+from submatch import cache as _cache_module
 
 
 def _ensure_utf8_stdout() -> None:
@@ -29,7 +29,7 @@ def parse_args() -> argparse.Namespace:
         prog="submatch",
         description="Verify a subtitle file matches the audio content of a video.",
     )
-    parser.add_argument("inputs", type=Path, nargs="+",
+    parser.add_argument("inputs", type=Path, nargs="*",
                         help="video files, subtitle files, or directories to process")
     parser.add_argument(
         "--model", default="base",
@@ -95,6 +95,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--interval", type=int, default=10, metavar="N",
                         help="seconds between polls in --poll mode (default: 10)")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    parser.add_argument("--no-cache", action="store_true", dest="no_cache",
+                        help="disable transcription cache for this run")
+    parser.add_argument("--clear-cache", action="store_true", dest="clear_cache",
+                        help="delete all cached transcriptions and exit")
 
     from submatch import config as _config
     _cfg: dict = {}
@@ -148,16 +152,6 @@ def _resolve_workers(requested: int | None, device: str) -> int:
     if device == "cuda":
         return 1
     return min(4, os.cpu_count() or 1)
-
-
-@dataclasses.dataclass
-class _VideoCache:
-    """Transcriptions from a video's first subtitle pass, reused for subsequent subtitles."""
-    segment_starts: list[int]
-    transcriptions: list[str]
-    audio_lang: str | None
-    audio_track_index: int = 0
-    audio_track_lang: str | None = None
 
 
 _model_local = threading.local()
@@ -252,6 +246,16 @@ def _get_embed_model():
     return _embed_local.model
 
 
+def _cache_config(args: argparse.Namespace) -> dict:
+    import os
+    dir_str = getattr(args, 'cache_dir', None) or os.environ.get("SUBMATCH_CACHE_DIR")
+    return {
+        "dir": Path(dir_str).expanduser() if dir_str else _cache_module._DEFAULT_CACHE_DIR,
+        "ttl_days": getattr(args, 'cache_ttl_days', _cache_module._DEFAULT_TTL_DAYS) or _cache_module._DEFAULT_TTL_DAYS,
+        "max_mb": getattr(args, 'cache_max_mb', _cache_module._DEFAULT_MAX_MB) or _cache_module._DEFAULT_MAX_MB,
+    }
+
+
 def _audio_driven_transcribe(
     video: Path,
     audio_track_index: int,
@@ -328,7 +332,7 @@ def _score_group_parallel(
     """Process all subtitles for one video in a single thread, sharing transcriptions."""
     model = _get_model(model_name, device)
     results = []
-    cache: _VideoCache | None = None
+    cache: _cache_module.VideoCache | None = None
     for sub in subs:
         try:
             result, new_cache = _score_pair(video, sub, args, model, show_progress=False,
@@ -362,9 +366,9 @@ def _score_pair(
     args: argparse.Namespace,
     model,
     show_progress: bool = True,
-    video_cache: _VideoCache | None = None,
+    video_cache: _cache_module.VideoCache | None = None,
     on_segment=None,
-) -> tuple[output.MatchResult, _VideoCache]:
+) -> tuple[output.MatchResult, _cache_module.VideoCache]:
     subtitles = subtitle.parse(subtitle_path)
     subtitle_sample = " ".join(s.text for s in subtitles[:50])
     subtitle_lang = (language.detect_from_filename(subtitle_path) or
@@ -414,7 +418,7 @@ def _score_pair(
 
         # Phase 1: transcribe (first subtitle for this video) or reuse cache
         transcription_pairs: list[tuple[int, sampler.Segment, str]] = []
-        new_cache: _VideoCache
+        new_cache: _cache_module.VideoCache
 
         if video_cache is None:
             _no_cache = getattr(args, 'no_cache', False)
@@ -452,7 +456,7 @@ def _score_pair(
                     except Exception as exc:
                         print(f"Warning: segment {i + 1} failed: {exc}", file=sys.stderr)
                 _t = _phase("transcription total", _t)
-                new_cache = _VideoCache(
+                new_cache = _cache_module.VideoCache(
                     segment_starts=[seg.start_ms for _, seg, _ in transcription_pairs],
                     transcriptions=[t for _, _, t in transcription_pairs],
                     audio_lang=audio_lang,
@@ -460,25 +464,45 @@ def _score_pair(
                     audio_track_lang=audio_track_lang,
                 )
             else:
-                # Audio-driven path (default; cache lookup happens in Task 8)
-                starts, texts, audio_lang = _audio_driven_transcribe(
-                    video, audio_track_index, n_seg, model,
-                    duration_ms=duration_ms,
-                    show_progress=show_progress, on_segment=on_segment,
+                # Audio-driven path with disk cache
+                _cfg = _cache_config(args)
+                _mtime = video.stat().st_mtime
+                _disk_hit = _cache_module.load(
+                    video, _mtime, args.model, n_seg, audio_track_index, _cfg["dir"]
                 )
-                cached_segs = sampler.segments_from_starts(subtitles, starts)
-                transcription_pairs = [
-                    (i + 1, seg, txt)
-                    for i, (seg, txt) in enumerate(zip(cached_segs, texts))
-                ]
-                _t = _phase("audio-driven transcription", _t)
-                new_cache = _VideoCache(
-                    segment_starts=starts,
-                    transcriptions=texts,
-                    audio_lang=audio_lang,
-                    audio_track_index=audio_track_index,
-                    audio_track_lang=audio_track_lang,
-                )
+                if _disk_hit is not None:
+                    audio_lang = _disk_hit.audio_lang
+                    cached_segs = sampler.segments_from_starts(subtitles, _disk_hit.segment_starts)
+                    transcription_pairs = [
+                        (i + 1, seg, txt)
+                        for i, (seg, txt) in enumerate(zip(cached_segs, _disk_hit.transcriptions))
+                    ]
+                    new_cache = _disk_hit
+                    _t = _phase("cache hit", _t)
+                else:
+                    # Cache miss: audio-driven transcription
+                    starts, texts, audio_lang = _audio_driven_transcribe(
+                        video, audio_track_index, n_seg, model,
+                        duration_ms=duration_ms,
+                        show_progress=show_progress, on_segment=on_segment,
+                    )
+                    cached_segs = sampler.segments_from_starts(subtitles, starts)
+                    transcription_pairs = [
+                        (i + 1, seg, txt)
+                        for i, (seg, txt) in enumerate(zip(cached_segs, texts))
+                    ]
+                    new_cache = _cache_module.VideoCache(
+                        segment_starts=starts,
+                        transcriptions=texts,
+                        audio_lang=audio_lang,
+                        audio_track_index=audio_track_index,
+                        audio_track_lang=audio_track_lang,
+                    )
+                    _cache_module.store(
+                        video, _mtime, args.model, n_seg, audio_track_index,
+                        new_cache, _cfg["dir"], _cfg["ttl_days"], _cfg["max_mb"],
+                    )
+                    _t = _phase("audio-driven transcription + cache store", _t)
 
             if show_progress:
                 print()
@@ -604,7 +628,7 @@ def _run_batch(
 
     if workers == 1:
         model = transcribe.load_model(args.model, device=device)
-        video_caches: dict[Path, _VideoCache] = {}
+        video_caches: dict[Path, _cache_module.VideoCache] = {}
         _t0 = time.monotonic()
         _done = 0
         _ema_pair_time: float | None = None
@@ -828,6 +852,24 @@ def main() -> None:
         static_ffmpeg.add_paths()
 
     args = parse_args()
+
+    if getattr(args, 'clear_cache', False):
+        import os
+        cfg = {}
+        try:
+            from submatch import config as _config
+            cfg = _config.load_config()
+        except Exception:
+            pass
+        dir_str = cfg.get("cache_dir") or os.environ.get("SUBMATCH_CACHE_DIR")
+        cache_dir = Path(dir_str).expanduser() if dir_str else _cache_module._DEFAULT_CACHE_DIR
+        count = _cache_module.clear(cache_dir)
+        print(f"Cleared {count} cached transcription(s).")
+        sys.exit(0)
+
+    if not args.inputs:
+        print("Error: the following arguments are required: inputs", file=sys.stderr)
+        sys.exit(2)
 
     if args.embedded and (args.resync or args.keep_synced):
         print(
