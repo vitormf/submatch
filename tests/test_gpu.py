@@ -16,7 +16,7 @@ def _mock_torch(cuda_version=None, mps_available=False):
 def test_no_warning_when_cuda_pytorch_installed():
     mock_torch = _mock_torch(cuda_version="12.4")
     with patch.dict(sys.modules, {"torch": mock_torch}):
-        with patch("shutil.which", return_value="/usr/bin/nvidia-smi"):
+        with patch("submatch.gpu.shutil.which", return_value="/usr/bin/nvidia-smi"):
             assert check_gpu_mismatch() is None
 
 
@@ -40,6 +40,15 @@ def test_no_warning_when_cpu_pytorch_but_no_nvidia_smi():
 
 def test_no_warning_when_mps_available():
     mock_torch = _mock_torch(cuda_version=None, mps_available=True)
+    with patch.dict(sys.modules, {"torch": mock_torch}):
+        with patch("submatch.gpu.shutil.which", return_value="/usr/bin/nvidia-smi"):
+            assert check_gpu_mismatch() is None
+
+
+def test_no_warning_when_torch_attribute_raises():
+    mock_torch = MagicMock()
+    mock_torch.version.cuda = None
+    mock_torch.backends.mps.is_available.side_effect = RuntimeError("boom")
     with patch.dict(sys.modules, {"torch": mock_torch}):
         with patch("submatch.gpu.shutil.which", return_value="/usr/bin/nvidia-smi"):
             assert check_gpu_mismatch() is None
