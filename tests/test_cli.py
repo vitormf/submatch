@@ -2430,7 +2430,8 @@ def test_cache_hit_skips_transcription(tmp_path):
 
 def test_clear_cache_flag(tmp_path, capsys):
     """--clear-cache deletes cache entries and exits 0."""
-    import subprocess, sys as _sys
+    import subprocess
+    import sys as _sys
     cache_dir = tmp_path / "submatch"
     cache_dir.mkdir()
     (cache_dir / "abc123.json").write_text('{"test": 1}')
