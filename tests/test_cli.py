@@ -2480,20 +2480,16 @@ def test_clear_cache_flag(tmp_path, capsys):
 
 
 def test_check_dependencies_prints_gpu_warning(capsys):
-    with patch("submatch.cli.gpu.check_gpu_mismatch", return_value="Warning: NVIDIA GPU detected but PyTorch was installed without CUDA support.\nTo fix: pip install torch --index-url https://download.pytorch.org/whl/cu124"):
-        with patch("shutil.which", return_value="/usr/bin/ffmpeg"):
-            with patch.dict("sys.modules", {"whisper": MagicMock()}):
-                from submatch.cli import check_dependencies
-                check_dependencies(skip_sync=True)
-    captured = capsys.readouterr()
-    assert "NVIDIA GPU detected" in captured.err
+    with patch("submatch.cli.gpu.check_gpu_mismatch", return_value="Warning: NVIDIA GPU detected"), \
+         patch("submatch.cli.shutil.which", return_value="/usr/bin/ffmpeg"), \
+         patch.dict(sys.modules, {"whisper": MagicMock()}):
+        cli.check_dependencies(skip_sync=True)
+    assert "NVIDIA GPU detected" in capsys.readouterr().err
 
 
 def test_check_dependencies_no_output_when_no_gpu_warning(capsys):
-    with patch("submatch.cli.gpu.check_gpu_mismatch", return_value=None):
-        with patch("shutil.which", return_value="/usr/bin/ffmpeg"):
-            with patch.dict("sys.modules", {"whisper": MagicMock()}):
-                from submatch.cli import check_dependencies
-                check_dependencies(skip_sync=True)
-    captured = capsys.readouterr()
-    assert "NVIDIA" not in captured.err
+    with patch("submatch.cli.gpu.check_gpu_mismatch", return_value=None), \
+         patch("submatch.cli.shutil.which", return_value="/usr/bin/ffmpeg"), \
+         patch.dict(sys.modules, {"whisper": MagicMock()}):
+        cli.check_dependencies(skip_sync=True)
+    assert "NVIDIA" not in capsys.readouterr().err
