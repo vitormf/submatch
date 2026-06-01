@@ -190,7 +190,7 @@ language = "en"
 workers = 2
 ```
 
-**Configurable flags:** `model`, `threshold`, `segments`, `language`, `no_sync`, `keep_synced`, `no_recursive`, `sub_lang`, `filter`, `device`, `workers`, `delete_failures`, `cross_threshold`, `resync`, `pass_unsure`, `drift_threshold`, `audio_track`
+**Configurable flags:** `model`, `threshold`, `segments`, `language`, `no_sync`, `keep_synced`, `no_recursive`, `sub_lang`, `filter`, `device`, `workers`, `delete_failures`, `cross_threshold`, `resync`, `pass_unsure`, `drift_threshold`, `audio_track`, `cache_ttl_days`, `cache_max_mb`, `cache_dir`
 
 > **Note:** Boolean flags set to `true` in config (e.g. `no_sync = true`) cannot be overridden back to `false` via the CLI — remove the line from your config instead.
 >
