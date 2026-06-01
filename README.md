@@ -199,10 +199,11 @@ workers = 2
 ## How it works
 
 1. **Sync** — runs `ffs` (ffsubsync) to correct timing drift; flags offsets > 2 s
-2. **Sample** — divides the video into N zones (skipping first/last 5%), picks the 30-second window with the most subtitle words per zone
-3. **Transcribe** — extracts each window as a 16 kHz mono WAV and transcribes with Whisper
-4. **Score** — normalises both texts (lowercase, strip punctuation, remove fillers), computes token F1 per segment, returns a weighted average
-5. **Report** — prints confidence, language signals, and drift; exits 0/1/2
+2. **Sample** — divides the video into N zones (skipping first/last 5%). By default, uses ffmpeg `silencedetect` to find speech-rich windows (audio-driven mode); picks the best 30-second window per zone based on speech coverage, with a quality gate that retries if Whisper confidence is low. Use `--no-cache` for the original subtitle-driven path (highest word-count window per zone).
+3. **Cache** — validated transcriptions are stored in `~/.cache/submatch/` keyed by video path, mtime, model, and segment count. Subsequent runs on the same video skip audio extraction and transcription entirely. Cache is evicted after 30 days or when it exceeds 200 MB (LRU). Use `--no-cache` to bypass or `--clear-cache` to wipe.
+4. **Transcribe** — extracts each window as a 16 kHz mono WAV and transcribes with Whisper
+5. **Score** — normalises both texts (lowercase, strip punctuation, remove fillers), computes token F1 per segment, returns a weighted average
+6. **Report** — prints confidence, language signals, and drift; exits 0/1/2
 
 The default threshold of 0.35 is intentionally low — subtitle text often paraphrases rather than quoting verbatim.
 
