@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 
 from submatch import __version__
-from submatch import audio, compare, embeddings, language, output, sampler, subtitle, sync, transcribe
+from submatch import audio, compare, embeddings, gpu, language, output, sampler, subtitle, sync, transcribe
 from submatch import cache as _cache_module
 
 
@@ -135,6 +135,9 @@ def check_dependencies(skip_sync: bool = False) -> None:
         print("Error: openai-whisper not installed  →  pip install openai-whisper",
               file=sys.stderr)
         sys.exit(2)
+    warning = gpu.check_gpu_mismatch()
+    if warning:
+        print(warning, file=sys.stderr)
 
 
 def _resolve_device(requested: str) -> str:
