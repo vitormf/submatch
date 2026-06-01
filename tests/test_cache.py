@@ -2,6 +2,7 @@ from __future__ import annotations
 import json
 import time
 from pathlib import Path
+from unittest.mock import patch
 import pytest
 from submatch.cache import VideoCache, load, store, clear, _evict
 
@@ -140,14 +141,14 @@ def test_load_updates_last_used_on_disk(tmp_path):
     store(video, mtime=1000.0, model="base", n_segments=2, audio_track_index=0,
           vc=vc, cache_dir=tmp_path, ttl_days=30, max_mb=200)
 
-    # Record original last_used
     files = list(tmp_path.glob("*.json"))
     original_last_used = json.loads(files[0].read_text())["last_used"]
 
-    time.sleep(0.01)
-    result = load(video, mtime=1000.0, model="base", n_segments=2,
-                  audio_track_index=0, cache_dir=tmp_path)
+    future_time = original_last_used + 100.0
+    with patch("submatch.cache.time.time", return_value=future_time):
+        result = load(video, mtime=1000.0, model="base", n_segments=2,
+                      audio_track_index=0, cache_dir=tmp_path)
 
     assert result is not None
     updated_last_used = json.loads(files[0].read_text())["last_used"]
-    assert updated_last_used > original_last_used
+    assert updated_last_used == future_time
