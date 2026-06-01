@@ -40,6 +40,8 @@ def test_parse_args_defaults(tmp_path):
     assert args.pass_unsure is False
     assert args.drift_threshold == pytest.approx(2.0)
     assert args.audio_track is None
+    assert args.no_cache is False
+    assert args.clear_cache is False
 
 
 def test_parse_args_all_flags(tmp_path):
