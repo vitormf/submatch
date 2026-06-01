@@ -1,8 +1,9 @@
 import json
 import subprocess
 import pytest
+from pathlib import Path
 from unittest.mock import patch, MagicMock
-from submatch.audio import get_duration_ms, has_audio_track, extract_segment, list_audio_tracks, resolve_audio_track
+from submatch.audio import get_duration_ms, has_audio_track, extract_segment, list_audio_tracks, resolve_audio_track, detect_speech_regions
 
 
 @pytest.fixture(scope="module")
@@ -286,3 +287,51 @@ def test_extract_segment_keyboard_interrupt_kills_process_group(tmp_path):
     mock_getpgid.assert_called_once_with(12345)
     mock_killpg.assert_called_once_with(12345, signal.SIGTERM)
     proc.wait.assert_called_once()
+
+
+def test_detect_speech_regions_parses_silence_correctly():
+    stderr = (
+        "  Duration: 00:01:30.00, start: 0.000000, bitrate: 1000 kb/s\n"
+        "[silencedetect @ 0x...] silence_start: 5.0\n"
+        "[silencedetect @ 0x...] silence_end: 10.0 | silence_duration: 5.0\n"
+        "[silencedetect @ 0x...] silence_start: 60.0\n"
+        "[silencedetect @ 0x...] silence_end: 70.0 | silence_duration: 10.0\n"
+    )
+    mock_result = MagicMock()
+    mock_result.stderr = stderr
+
+    with patch("submatch.audio.subprocess.run", return_value=mock_result):
+        regions = detect_speech_regions(Path("video.mkv"), audio_track=0)
+
+    # Non-silent: [0,5s], [10s,60s], [70s,90s]
+    assert regions == [(0, 5000), (10000, 60000), (70000, 90000)]
+
+
+def test_detect_speech_regions_video_starts_with_silence():
+    stderr = (
+        "  Duration: 00:01:00.00, start: 0.000000, bitrate: 1000 kb/s\n"
+        "[silencedetect @ 0x...] silence_start: 0.0\n"
+        "[silencedetect @ 0x...] silence_end: 5.0 | silence_duration: 5.0\n"
+    )
+    mock_result = MagicMock()
+    mock_result.stderr = stderr
+
+    with patch("submatch.audio.subprocess.run", return_value=mock_result):
+        regions = detect_speech_regions(Path("video.mkv"), audio_track=0)
+
+    # Non-silent: [5s, 60s]
+    assert regions == [(5000, 60000)]
+
+
+def test_detect_speech_regions_returns_empty_on_failure():
+    with patch("submatch.audio.subprocess.run", side_effect=Exception("ffmpeg not found")):
+        regions = detect_speech_regions(Path("video.mkv"), audio_track=0)
+    assert regions == []
+
+
+def test_detect_speech_regions_returns_empty_when_no_duration():
+    mock_result = MagicMock()
+    mock_result.stderr = "some output without duration info"
+    with patch("submatch.audio.subprocess.run", return_value=mock_result):
+        regions = detect_speech_regions(Path("video.mkv"), audio_track=0)
+    assert regions == []

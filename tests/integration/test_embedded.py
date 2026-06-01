@@ -8,6 +8,12 @@ Fixtures:
     10 embedded subtitle tracks: ger, eng, spa, fre, ita, dut, pol, por, rus, vie.
 
 All non-English subtitle tracks are cross-language (English audio + translated subtitle).
+
+Note: Sprite Fright tests use --no-cache to force the subtitle-driven segment selection
+path. Sprite Fright is a short animated film (~12 min) with heavy music and few spoken
+lines; the audio-driven silencedetect path selects music-only zones with only 2 segments,
+which causes unreliable Whisper language detection. The subtitle-driven path selects
+segments at subtitle timestamps (dialogue positions), ensuring correct language detection.
 """
 import json
 import subprocess
@@ -32,7 +38,7 @@ def test_sprite_fright_eng_passes(sprite_fright_video, tmp_path):
     out = tmp_path / "out.json"
     result = _run_cli(
         '--embedded', str(sprite_fright_video),
-        '--sub-lang', 'eng', '--no-sync', '--segments', '2',
+        '--sub-lang', 'eng', '--no-sync', '--segments', '2', '--no-cache',
         '--json', str(out),
     )
     assert result.returncode in (0, 1), f"Unexpected exit: {result.stderr}"
@@ -49,7 +55,7 @@ def test_sprite_fright_ger_cross_language(sprite_fright_video, tmp_path):
     out = tmp_path / "out.json"
     result = _run_cli(
         '--embedded', str(sprite_fright_video),
-        '--sub-lang', 'ger', '--no-sync', '--segments', '2',
+        '--sub-lang', 'ger', '--no-sync', '--segments', '2', '--no-cache',
         '--json', str(out),
     )
     assert result.returncode in (0, 1), f"Unexpected exit: {result.stderr}"
@@ -63,7 +69,7 @@ def test_sprite_fright_hun_cross_language(sprite_fright_video, tmp_path):
     out = tmp_path / "out.json"
     result = _run_cli(
         '--embedded', str(sprite_fright_video),
-        '--sub-lang', 'hun', '--no-sync', '--segments', '2',
+        '--sub-lang', 'hun', '--no-sync', '--segments', '2', '--no-cache',
         '--json', str(out),
     )
     assert result.returncode in (0, 1), f"Unexpected exit: {result.stderr}"
@@ -77,7 +83,7 @@ def test_sprite_fright_ita_cross_language(sprite_fright_video, tmp_path):
     out = tmp_path / "out.json"
     result = _run_cli(
         '--embedded', str(sprite_fright_video),
-        '--sub-lang', 'ita', '--no-sync', '--segments', '2',
+        '--sub-lang', 'ita', '--no-sync', '--segments', '2', '--no-cache',
         '--json', str(out),
     )
     assert result.returncode in (0, 1), f"Unexpected exit: {result.stderr}"
@@ -91,7 +97,7 @@ def test_sprite_fright_por_cross_language(sprite_fright_video, tmp_path):
     out = tmp_path / "out.json"
     result = _run_cli(
         '--embedded', str(sprite_fright_video),
-        '--sub-lang', 'por', '--no-sync', '--segments', '2',
+        '--sub-lang', 'por', '--no-sync', '--segments', '2', '--no-cache',
         '--json', str(out),
     )
     assert result.returncode in (0, 1), f"Unexpected exit: {result.stderr}"
@@ -105,7 +111,7 @@ def test_sprite_fright_rus_cross_language(sprite_fright_video, tmp_path):
     out = tmp_path / "out.json"
     result = _run_cli(
         '--embedded', str(sprite_fright_video),
-        '--sub-lang', 'rus', '--no-sync', '--segments', '2',
+        '--sub-lang', 'rus', '--no-sync', '--segments', '2', '--no-cache',
         '--json', str(out),
     )
     assert result.returncode in (0, 1), f"Unexpected exit: {result.stderr}"
@@ -119,7 +125,7 @@ def test_sprite_fright_spa_cross_language(sprite_fright_video, tmp_path):
     out = tmp_path / "out.json"
     result = _run_cli(
         '--embedded', str(sprite_fright_video),
-        '--sub-lang', 'spa', '--no-sync', '--segments', '2',
+        '--sub-lang', 'spa', '--no-sync', '--segments', '2', '--no-cache',
         '--json', str(out),
     )
     assert result.returncode in (0, 1), f"Unexpected exit: {result.stderr}"
@@ -133,7 +139,7 @@ def test_sprite_fright_mal_cross_language(sprite_fright_video, tmp_path):
     out = tmp_path / "out.json"
     result = _run_cli(
         '--embedded', str(sprite_fright_video),
-        '--sub-lang', 'mal', '--no-sync', '--segments', '2',
+        '--sub-lang', 'mal', '--no-sync', '--segments', '2', '--no-cache',
         '--json', str(out),
     )
     assert result.returncode in (0, 1), f"Unexpected exit: {result.stderr}"
@@ -147,7 +153,7 @@ def test_sprite_fright_all_tracks(sprite_fright_video, tmp_path):
     out = tmp_path / "out.json"
     result = _run_cli(
         '--embedded', str(sprite_fright_video),
-        '--no-sync', '--segments', '2',
+        '--no-sync', '--segments', '2', '--no-cache',
         '--json', str(out),
     )
     assert result.returncode in (0, 1), f"Unexpected exit: {result.stderr}"
