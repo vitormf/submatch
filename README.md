@@ -161,6 +161,8 @@ SRT, WebVTT, ASS/SSA (and any other format supported by [pysubs2](https://github
 | `--delete-failures` | off | Delete subtitle files that fail the match check |
 | `--resync` | off | On DRIFT (drift detected), copy synced subtitle over original and re-score |
 | `--pass-unsure` | off | Exit 0 for UNSURE results (not enough transcription data) |
+| `--no-cache` | off | Disable transcription cache and use subtitle-driven segment selection |
+| `--clear-cache` | off | Delete all cached transcriptions and exit |
 | `--timing` | off | Print per-phase timing breakdown (single-pair mode only) |
 | `--watch` | off | Monitor a directory for new video/subtitle pairs and score them as they appear |
 | `--poll` | off | Use polling instead of native filesystem events (required for network mounts) |
