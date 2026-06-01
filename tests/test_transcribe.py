@@ -1,4 +1,5 @@
 import sys
+import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
@@ -85,3 +86,32 @@ def test_load_model_auto_selects_cuda_when_available():
         load_model("base")
 
     mock_whisper.load_model.assert_called_once_with("base", device="cuda")
+
+
+def test_transcribe_segment_captures_no_speech_prob(tmp_path):
+    mock_model = MagicMock()
+    mock_model.transcribe.return_value = {
+        "text": "  hello world  ",
+        "language": "en",
+        "segments": [
+            {"no_speech_prob": 0.1},
+            {"no_speech_prob": 0.3},
+        ],
+    }
+    wav = tmp_path / "seg.wav"
+    wav.touch()
+    result = transcribe_segment(mock_model, wav)
+    assert result.no_speech_prob == pytest.approx(0.2)
+
+
+def test_transcribe_segment_no_segments_gives_no_speech_prob_one(tmp_path):
+    mock_model = MagicMock()
+    mock_model.transcribe.return_value = {
+        "text": "",
+        "language": "en",
+        "segments": [],
+    }
+    wav = tmp_path / "seg.wav"
+    wav.touch()
+    result = transcribe_segment(mock_model, wav)
+    assert result.no_speech_prob == 1.0

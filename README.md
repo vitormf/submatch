@@ -161,6 +161,8 @@ SRT, WebVTT, ASS/SSA (and any other format supported by [pysubs2](https://github
 | `--delete-failures` | off | Delete subtitle files that fail the match check |
 | `--resync` | off | On DRIFT (drift detected), copy synced subtitle over original and re-score |
 | `--pass-unsure` | off | Exit 0 for UNSURE results (not enough transcription data) |
+| `--no-cache` | off | Disable transcription cache and use subtitle-driven segment selection |
+| `--clear-cache` | off | Delete all cached transcriptions and exit |
 | `--timing` | off | Print per-phase timing breakdown (single-pair mode only) |
 | `--watch` | off | Monitor a directory for new video/subtitle pairs and score them as they appear |
 | `--poll` | off | Use polling instead of native filesystem events (required for network mounts) |
@@ -188,7 +190,7 @@ language = "en"
 workers = 2
 ```
 
-**Configurable flags:** `model`, `threshold`, `segments`, `language`, `no_sync`, `keep_synced`, `no_recursive`, `sub_lang`, `filter`, `device`, `workers`, `delete_failures`, `cross_threshold`, `resync`, `pass_unsure`, `drift_threshold`, `audio_track`
+**Configurable flags:** `model`, `threshold`, `segments`, `language`, `no_sync`, `keep_synced`, `no_recursive`, `sub_lang`, `filter`, `device`, `workers`, `delete_failures`, `cross_threshold`, `resync`, `pass_unsure`, `drift_threshold`, `audio_track`, `cache_ttl_days`, `cache_max_mb`, `cache_dir`
 
 > **Note:** Boolean flags set to `true` in config (e.g. `no_sync = true`) cannot be overridden back to `false` via the CLI — remove the line from your config instead.
 >

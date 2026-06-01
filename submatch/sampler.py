@@ -109,3 +109,71 @@ def _best_window_in_range(
         subtitle_text=best_text,
         word_count=max(0, best_count),
     )
+
+
+def audio_candidate_segments(
+    speech_regions: list[tuple[int, int]],
+    duration_ms: int,
+    n_zones: int,
+    candidates_per_zone: int = 2,
+    window_ms: int = 30_000,
+    step_ms: int = 5_000,
+) -> list[list[int]]:
+    """Return up to candidates_per_zone candidate window start positions per zone.
+
+    Zones cover [5%, 95%] of the video. Within each zone, windows are scored by
+    overlap with speech_regions. Falls back to even spacing when speech_regions is empty.
+    Returns a list of n_zones lists; each inner list has 1..candidates_per_zone start_ms values.
+    """
+    margin_ms = int(duration_ms * 0.05)
+    usable_start = margin_ms
+    usable_end = duration_ms - margin_ms
+    usable = max(1, usable_end - usable_start)
+    zone_size = usable // n_zones
+
+    result: list[list[int]] = []
+
+    for zone_idx in range(n_zones):
+        zone_start = usable_start + zone_idx * zone_size
+        zone_end = usable_start + (zone_idx + 1) * zone_size
+
+        if not speech_regions:
+            step = max(step_ms, zone_size // (candidates_per_zone + 1))
+            fallback = []
+            for i in range(1, candidates_per_zone + 1):
+                start = zone_start + step * i
+                if start + window_ms <= duration_ms:
+                    fallback.append(start)
+            if not fallback and zone_start + window_ms <= duration_ms:
+                fallback = [zone_start]
+            result.append(fallback)
+            continue
+
+        # Score every step_ms window that starts within the zone
+        scored: list[tuple[int, int]] = []  # (overlap_ms, start_ms)
+        pos = zone_start
+        while pos <= zone_end and pos + window_ms <= duration_ms:
+            win_end = pos + window_ms
+            overlap = sum(
+                min(win_end, r_end) - max(pos, r_start)
+                for r_start, r_end in speech_regions
+                if r_end > pos and r_start < win_end
+            )
+            scored.append((overlap, pos))
+            pos += step_ms
+
+        if not scored and zone_start + window_ms <= duration_ms:
+            scored = [(0, zone_start)]
+
+        scored.sort(reverse=True)
+
+        candidates: list[int] = []
+        for _, start in scored:
+            if len(candidates) >= candidates_per_zone:
+                break
+            if not any(abs(start - c) < window_ms for c in candidates):
+                candidates.append(start)
+
+        result.append(candidates)
+
+    return result
