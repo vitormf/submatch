@@ -257,9 +257,9 @@ def _audio_driven_transcribe(
     audio_track_index: int,
     n_seg: int,
     model,
-    duration_ms: int = 0,
     show_progress: bool = False,
     on_segment=None,
+    duration_ms: int = 0,
 ) -> tuple[list[int], list[str], str | None]:
     """Select segments via audio VAD + quality gate. Returns (starts_ms, texts, audio_lang)."""
     speech_regions = audio.detect_speech_regions(video, audio_track_index)
