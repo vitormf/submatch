@@ -145,6 +145,7 @@ def test_parse_args_audio_track_language_preference(tmp_path):
 
 def test_check_dependencies_all_present():
     with patch("submatch.cli.shutil.which", return_value="/usr/bin/ffmpeg"), \
+         patch("submatch.cli.gpu.check_gpu_mismatch", return_value=None), \
          patch.dict(sys.modules, {"whisper": MagicMock()}):
         cli.check_dependencies()
 
@@ -153,6 +154,7 @@ def test_check_dependencies_missing_ffmpeg():
     def fake_which(name):
         return None if name == "ffmpeg" else "/usr/bin/ffs"
     with patch("submatch.cli.shutil.which", side_effect=fake_which), \
+         patch("submatch.cli.gpu.check_gpu_mismatch", return_value=None), \
          patch.dict(sys.modules, {"whisper": MagicMock()}):
         with pytest.raises(SystemExit) as exc:
             cli.check_dependencies()
@@ -163,6 +165,7 @@ def test_check_dependencies_missing_ffsubsync():
     def fake_which(name):
         return "/usr/bin/ffmpeg" if name == "ffmpeg" else None
     with patch("submatch.cli.shutil.which", side_effect=fake_which), \
+         patch("submatch.cli.gpu.check_gpu_mismatch", return_value=None), \
          patch.dict(sys.modules, {"whisper": MagicMock()}):
         with pytest.raises(SystemExit) as exc:
             cli.check_dependencies()
@@ -173,12 +176,14 @@ def test_check_dependencies_skip_sync_ignores_missing_ffs():
     def fake_which(name):
         return "/usr/bin/ffmpeg" if name == "ffmpeg" else None
     with patch("submatch.cli.shutil.which", side_effect=fake_which), \
+         patch("submatch.cli.gpu.check_gpu_mismatch", return_value=None), \
          patch.dict(sys.modules, {"whisper": MagicMock()}):
         cli.check_dependencies(skip_sync=True)  # should not raise
 
 
 def test_check_dependencies_missing_whisper():
     with patch("submatch.cli.shutil.which", return_value="/usr/bin/ffmpeg"), \
+         patch("submatch.cli.gpu.check_gpu_mismatch", return_value=None), \
          patch.dict(sys.modules, {"whisper": None}):
         with pytest.raises(SystemExit) as exc:
             cli.check_dependencies()
@@ -2472,3 +2477,19 @@ def test_clear_cache_flag(tmp_path, capsys):
     )
     assert result.returncode == 0
     assert list(cache_dir.glob("*.json")) == []
+
+
+def test_check_dependencies_prints_gpu_warning(capsys):
+    with patch("submatch.cli.gpu.check_gpu_mismatch", return_value="Warning: NVIDIA GPU detected"), \
+         patch("submatch.cli.shutil.which", return_value="/usr/bin/ffmpeg"), \
+         patch.dict(sys.modules, {"whisper": MagicMock()}):
+        cli.check_dependencies(skip_sync=True)
+    assert "NVIDIA GPU detected" in capsys.readouterr().err
+
+
+def test_check_dependencies_no_output_when_no_gpu_warning(capsys):
+    with patch("submatch.cli.gpu.check_gpu_mismatch", return_value=None), \
+         patch("submatch.cli.shutil.which", return_value="/usr/bin/ffmpeg"), \
+         patch.dict(sys.modules, {"whisper": MagicMock()}):
+        cli.check_dependencies(skip_sync=True)
+    assert "NVIDIA" not in capsys.readouterr().err
