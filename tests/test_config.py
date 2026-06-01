@@ -100,3 +100,30 @@ def test_load_config_invalid_device_exits(tmp_path):
          pytest.raises(SystemExit) as exc:
         config.load_config()
     assert exc.value.code == 2
+
+
+def test_cache_ttl_days_accepted(tmp_path):
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text("cache_ttl_days = 7\n")
+    with patch.object(config, "_USER_CONFIG", cfg_file), \
+         patch.object(config, "_PROJECT_CONFIG", tmp_path / "none.toml"):
+        result = config.load_config()
+    assert result["cache_ttl_days"] == 7
+
+
+def test_cache_max_mb_accepted(tmp_path):
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text("cache_max_mb = 100\n")
+    with patch.object(config, "_USER_CONFIG", cfg_file), \
+         patch.object(config, "_PROJECT_CONFIG", tmp_path / "none.toml"):
+        result = config.load_config()
+    assert result["cache_max_mb"] == 100
+
+
+def test_cache_dir_accepted(tmp_path):
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text('cache_dir = "/tmp/my_cache"\n')
+    with patch.object(config, "_USER_CONFIG", cfg_file), \
+         patch.object(config, "_PROJECT_CONFIG", tmp_path / "none.toml"):
+        result = config.load_config()
+    assert result["cache_dir"] == "/tmp/my_cache"
