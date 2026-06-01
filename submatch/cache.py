@@ -44,12 +44,18 @@ def load(
             audio_track_index=data.get("audio_track_index", 0),
             audio_track_lang=data.get("audio_track_lang"),
         )
-        data["last_used"] = time.time()
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f)
-        return vc
     except Exception:
         return None
+
+    # Write-back last_used in separate try/except: don't discard valid cache hit on write failure
+    data["last_used"] = time.time()
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+    except Exception:
+        pass  # best-effort; stale last_used is acceptable
+
+    return vc
 
 
 def store(
@@ -73,7 +79,7 @@ def store(
             "mtime": mtime,
             "model": model,
             "n_segments": n_segments,
-            "audio_track_index": vc.audio_track_index,
+            "audio_track_index": audio_track_index,
             "audio_lang": vc.audio_lang,
             "audio_track_lang": vc.audio_track_lang,
             "created_at": now,
