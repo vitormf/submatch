@@ -194,7 +194,7 @@ def _make_pipeline_patches(tmp_path, extra_argv=()):
 
     subs = [Subtitle(1, 1_000, 3_500, "Hello world")]
     segs = [Segment(60_000, 90_000, "Hello world", 2)]
-    mock_trans = MagicMock(text="hello world", language="en")
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0)
     lang = LanguageResult(
         audio="en", subtitle_detected="en", subtitle_filename="en",
         video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
@@ -208,8 +208,12 @@ def _make_pipeline_patches(tmp_path, extra_argv=()):
         patch("submatch.cli.audio.has_audio_track", return_value=True),
         patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000),
         patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"),
+        patch("submatch.cli.audio.detect_speech_regions", return_value=[]),
         patch("submatch.cli.subtitle.parse", return_value=subs),
         patch("submatch.cli.sampler.select_segments", return_value=segs),
+        patch("submatch.cli.sampler.audio_candidate_segments",
+              return_value=[[60_000]]),
+        patch("submatch.cli.sampler.segments_from_starts", return_value=segs),
         patch("submatch.cli.transcribe.load_model", return_value=MagicMock()),
         patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans),
         patch("submatch.cli.language.detect_from_text", return_value="en"),
@@ -315,7 +319,7 @@ def test_main_sync_success_reparses_srt(tmp_path):
 
     subs = [Subtitle(1, 1_000, 3_500, "Hello world")]
     segs = [Segment(60_000, 90_000, "Hello world", 2)]
-    mock_trans = MagicMock(text="hello world", language="en")
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0)
     lang = LanguageResult(
         audio="en", subtitle_detected="en", subtitle_filename="en",
         video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
@@ -326,7 +330,10 @@ def test_main_sync_success_reparses_srt(tmp_path):
          patch("submatch.cli.audio.has_audio_track", return_value=True), \
          patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
          patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
+         patch("submatch.cli.audio.detect_speech_regions", return_value=[]), \
          patch("submatch.cli.sampler.select_segments", return_value=segs), \
+         patch("submatch.cli.sampler.audio_candidate_segments", return_value=[[60_000]]), \
+         patch("submatch.cli.sampler.segments_from_starts", return_value=segs), \
          patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
          patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
          patch("submatch.cli.language.detect_from_text", return_value="en"), \
@@ -375,7 +382,7 @@ def test_main_keep_synced_saves_file(tmp_path):
 
     subs = [Subtitle(1, 1_000, 3_500, "Hello world")]
     segs = [Segment(60_000, 90_000, "Hello world", 2)]
-    mock_trans = MagicMock(text="hello world", language="en")
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0)
     lang = LanguageResult(
         audio="en", subtitle_detected="en", subtitle_filename="en",
         video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
@@ -388,8 +395,11 @@ def test_main_keep_synced_saves_file(tmp_path):
          patch("submatch.cli.audio.has_audio_track", return_value=True), \
          patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
          patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
+         patch("submatch.cli.audio.detect_speech_regions", return_value=[]), \
          patch("submatch.cli.subtitle.parse", return_value=subs), \
          patch("submatch.cli.sampler.select_segments", return_value=segs), \
+         patch("submatch.cli.sampler.audio_candidate_segments", return_value=[[60_000]]), \
+         patch("submatch.cli.sampler.segments_from_starts", return_value=segs), \
          patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
          patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
          patch("submatch.cli.language.detect_from_text", return_value="en"), \
@@ -413,7 +423,7 @@ def test_main_sync_failure_continues(tmp_path):
     subtitle.write_text(SAMPLE_SRT)
     subs = [Subtitle(1, 1_000, 3_500, "Hello world")]
     segs = [Segment(60_000, 90_000, "Hello world", 2)]
-    mock_trans = MagicMock(text="hello world", language="en")
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0)
     lang = LanguageResult(
         audio="en", subtitle_detected="en", subtitle_filename="en",
         video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
@@ -423,8 +433,11 @@ def test_main_sync_failure_continues(tmp_path):
          patch("submatch.cli.audio.has_audio_track", return_value=True), \
          patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
          patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
+         patch("submatch.cli.audio.detect_speech_regions", return_value=[]), \
          patch("submatch.cli.subtitle.parse", return_value=subs), \
          patch("submatch.cli.sampler.select_segments", return_value=segs), \
+         patch("submatch.cli.sampler.audio_candidate_segments", return_value=[[60_000]]), \
+         patch("submatch.cli.sampler.segments_from_starts", return_value=segs), \
          patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
          patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
          patch("submatch.cli.language.detect_from_text", return_value="en"), \
@@ -447,7 +460,7 @@ def _make_batch_patches(tmp_path, extra_argv=()):
 
     subs = [Subtitle(1, 1_000, 3_500, "Hello world")]
     segs = [Segment(60_000, 90_000, "Hello world", 2)]
-    mock_trans = MagicMock(text="hello world", language="en")
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0)
     lang = LanguageResult(
         audio="en", subtitle_detected="en", subtitle_filename="en",
         video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
@@ -460,8 +473,12 @@ def _make_batch_patches(tmp_path, extra_argv=()):
         patch("submatch.cli.check_dependencies"),
         patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000),
         patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"),
+        patch("submatch.cli.audio.detect_speech_regions", return_value=[]),
         patch("submatch.cli.subtitle.parse", return_value=subs),
         patch("submatch.cli.sampler.select_segments", return_value=segs),
+        patch("submatch.cli.sampler.audio_candidate_segments",
+              return_value=[[60_000]]),
+        patch("submatch.cli.sampler.segments_from_starts", return_value=segs),
         patch("submatch.cli.transcribe.load_model", return_value=MagicMock()),
         patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans),
         patch("submatch.cli.language.detect_from_text", return_value="en"),
@@ -515,7 +532,7 @@ def test_batch_candidates_mode(tmp_path):
 
     subs_parsed = [Subtitle(1, 1_000, 3_500, "Hello world")]
     segs = [Segment(60_000, 90_000, "Hello world", 2)]
-    mock_trans = MagicMock(text="hello world", language="en")
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0)
     lang = LanguageResult(
         audio="en", subtitle_detected="en", subtitle_filename="en",
         video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
@@ -527,8 +544,11 @@ def test_batch_candidates_mode(tmp_path):
          patch("submatch.cli.audio.has_audio_track", return_value=True), \
          patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
          patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
+         patch("submatch.cli.audio.detect_speech_regions", return_value=[]), \
          patch("submatch.cli.subtitle.parse", return_value=subs_parsed), \
          patch("submatch.cli.sampler.select_segments", return_value=segs), \
+         patch("submatch.cli.sampler.audio_candidate_segments", return_value=[[60_000]]), \
+         patch("submatch.cli.sampler.segments_from_starts", return_value=segs), \
          patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
          patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
          patch("submatch.cli.language.detect_from_text", return_value="en"), \
@@ -578,7 +598,7 @@ def _make_two_pair_patches(tmp_path, extra_argv=()):
 
     subs = [Subtitle(1, 1_000, 3_500, "Hello world")]
     segs = [Segment(60_000, 90_000, "Hello world", 2)]
-    mock_trans = MagicMock(text="hello world", language="en")
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0)
     lang = LanguageResult(
         audio="en", subtitle_detected="en", subtitle_filename="en",
         video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
@@ -591,8 +611,12 @@ def _make_two_pair_patches(tmp_path, extra_argv=()):
         patch("submatch.cli.check_dependencies"),
         patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000),
         patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"),
+        patch("submatch.cli.audio.detect_speech_regions", return_value=[]),
         patch("submatch.cli.subtitle.parse", return_value=subs),
         patch("submatch.cli.sampler.select_segments", return_value=segs),
+        patch("submatch.cli.sampler.audio_candidate_segments",
+              return_value=[[60_000]]),
+        patch("submatch.cli.sampler.segments_from_starts", return_value=segs),
         patch("submatch.cli.transcribe.load_model", return_value=MagicMock()),
         patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans),
         patch("submatch.cli.language.detect_from_text", return_value="en"),
@@ -795,7 +819,7 @@ def test_batch_recursive_dir_mode(tmp_path):
 
     subs_parsed = [Subtitle(1, 1_000, 3_500, "Hello world")]
     segs = [Segment(60_000, 90_000, "Hello world", 2)]
-    mock_trans = MagicMock(text="hello world", language="en")
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0)
     lang = LanguageResult(
         audio="en", subtitle_detected="en", subtitle_filename="en",
         video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
@@ -807,8 +831,11 @@ def test_batch_recursive_dir_mode(tmp_path):
          patch("submatch.cli.audio.has_audio_track", return_value=True), \
          patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
          patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
+         patch("submatch.cli.audio.detect_speech_regions", return_value=[]), \
          patch("submatch.cli.subtitle.parse", return_value=subs_parsed), \
          patch("submatch.cli.sampler.select_segments", return_value=segs), \
+         patch("submatch.cli.sampler.audio_candidate_segments", return_value=[[60_000]]), \
+         patch("submatch.cli.sampler.segments_from_starts", return_value=segs), \
          patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
          patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
          patch("submatch.cli.language.detect_from_text", return_value="en"), \
@@ -846,7 +873,7 @@ def test_main_video_only_auto_discovers_subtitle(tmp_path):
 
     subs_parsed = [Subtitle(1, 1_000, 3_500, "Hello world")]
     segs = [Segment(60_000, 90_000, "Hello world", 2)]
-    mock_trans = MagicMock(text="hello world", language="en")
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0)
     lang = LanguageResult(
         audio="en", subtitle_detected="en", subtitle_filename="en",
         video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
@@ -857,8 +884,11 @@ def test_main_video_only_auto_discovers_subtitle(tmp_path):
          patch("submatch.cli.audio.has_audio_track", return_value=True), \
          patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
          patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
+         patch("submatch.cli.audio.detect_speech_regions", return_value=[]), \
          patch("submatch.cli.subtitle.parse", return_value=subs_parsed), \
          patch("submatch.cli.sampler.select_segments", return_value=segs), \
+         patch("submatch.cli.sampler.audio_candidate_segments", return_value=[[60_000]]), \
+         patch("submatch.cli.sampler.segments_from_starts", return_value=segs), \
          patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
          patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
          patch("submatch.cli.language.detect_from_text", return_value="en"), \
@@ -879,7 +909,7 @@ def test_main_subtitle_only_finds_video(tmp_path):
 
     subs_parsed = [Subtitle(1, 1_000, 3_500, "Hello world")]
     segs = [Segment(60_000, 90_000, "Hello world", 2)]
-    mock_trans = MagicMock(text="hello world", language="en")
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0)
     lang = LanguageResult(
         audio="en", subtitle_detected="en", subtitle_filename="en",
         video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
@@ -890,8 +920,11 @@ def test_main_subtitle_only_finds_video(tmp_path):
          patch("submatch.cli.audio.has_audio_track", return_value=True), \
          patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
          patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
+         patch("submatch.cli.audio.detect_speech_regions", return_value=[]), \
          patch("submatch.cli.subtitle.parse", return_value=subs_parsed), \
          patch("submatch.cli.sampler.select_segments", return_value=segs), \
+         patch("submatch.cli.sampler.audio_candidate_segments", return_value=[[60_000]]), \
+         patch("submatch.cli.sampler.segments_from_starts", return_value=segs), \
          patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
          patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
          patch("submatch.cli.language.detect_from_text", return_value="en"), \
@@ -925,7 +958,7 @@ def test_batch_recursive_candidates_mode(tmp_path):
 
     subs_parsed = [Subtitle(1, 1_000, 3_500, "Hello world")]
     segs = [Segment(60_000, 90_000, "Hello world", 2)]
-    mock_trans = MagicMock(text="hello world", language="en")
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0)
     lang = LanguageResult(
         audio="en", subtitle_detected="en", subtitle_filename="en",
         video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
@@ -937,8 +970,11 @@ def test_batch_recursive_candidates_mode(tmp_path):
          patch("submatch.cli.audio.has_audio_track", return_value=True), \
          patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
          patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
+         patch("submatch.cli.audio.detect_speech_regions", return_value=[]), \
          patch("submatch.cli.subtitle.parse", return_value=subs_parsed), \
          patch("submatch.cli.sampler.select_segments", return_value=segs), \
+         patch("submatch.cli.sampler.audio_candidate_segments", return_value=[[60_000]]), \
+         patch("submatch.cli.sampler.segments_from_starts", return_value=segs), \
          patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
          patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
          patch("submatch.cli.language.detect_from_text", return_value="en"), \
@@ -1172,7 +1208,7 @@ def test_score_pair_cross_language_uses_embeddings(tmp_path):
 
     subs_parsed = [Subtitle(1, 1_000, 3_500, "Olá mundo")]
     segs = [Segment(60_000, 90_000, "Olá mundo", 2)]
-    mock_trans = MagicMock(text="hello world", language="en")
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0)
     lang = LanguageResult(
         audio="en", subtitle_detected="pt", subtitle_filename="pt",
         video_metadata=None, expected=None, mismatch=True,
@@ -1187,8 +1223,11 @@ def test_score_pair_cross_language_uses_embeddings(tmp_path):
          patch("submatch.cli.audio.has_audio_track", return_value=True), \
          patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
          patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
+         patch("submatch.cli.audio.detect_speech_regions", return_value=[]), \
          patch("submatch.cli.subtitle.parse", return_value=subs_parsed), \
          patch("submatch.cli.sampler.select_segments", return_value=segs), \
+         patch("submatch.cli.sampler.audio_candidate_segments", return_value=[[60_000]]), \
+         patch("submatch.cli.sampler.segments_from_starts", return_value=segs), \
          patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
          patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
          patch("submatch.cli.language.detect_from_text", return_value="pt"), \
@@ -1229,7 +1268,7 @@ def test_cross_threshold_used_for_cross_language_pair(tmp_path):
 
     subs_parsed = [Subtitle(1, 1_000, 3_500, "Olá mundo")]
     segs = [Segment(60_000, 90_000, "Olá mundo", 2)]
-    mock_trans = MagicMock(text="hello world", language="en")
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0)
     lang = LanguageResult(
         audio="en", subtitle_detected="pt", subtitle_filename="pt",
         video_metadata=None, expected=None, mismatch=True,
@@ -1244,8 +1283,11 @@ def test_cross_threshold_used_for_cross_language_pair(tmp_path):
          patch("submatch.cli.audio.has_audio_track", return_value=True), \
          patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
          patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
+         patch("submatch.cli.audio.detect_speech_regions", return_value=[]), \
          patch("submatch.cli.subtitle.parse", return_value=subs_parsed), \
          patch("submatch.cli.sampler.select_segments", return_value=segs), \
+         patch("submatch.cli.sampler.audio_candidate_segments", return_value=[[60_000]]), \
+         patch("submatch.cli.sampler.segments_from_starts", return_value=segs), \
          patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
          patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
          patch("submatch.cli.language.detect_from_text", return_value="pt"), \
@@ -1296,7 +1338,7 @@ def test_batch_sync_bar_description(tmp_path):
 
     subs_parsed = [Subtitle(1, 1_000, 3_500, "Hello world")]
     segs = [Segment(60_000, 90_000, "Hello world", 2)]
-    mock_trans = MagicMock(text="hello world", language="en")
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0)
     lang = LanguageResult(
         audio="en", subtitle_detected="en", subtitle_filename="en",
         video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
@@ -1306,8 +1348,11 @@ def test_batch_sync_bar_description(tmp_path):
          patch("submatch.cli.check_dependencies"), \
          patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
          patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
+         patch("submatch.cli.audio.detect_speech_regions", return_value=[]), \
          patch("submatch.cli.subtitle.parse", return_value=subs_parsed), \
          patch("submatch.cli.sampler.select_segments", return_value=segs), \
+         patch("submatch.cli.sampler.audio_candidate_segments", return_value=[[60_000]]), \
+         patch("submatch.cli.sampler.segments_from_starts", return_value=segs), \
          patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
          patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
          patch("submatch.cli.language.detect_from_text", return_value="en"), \
@@ -1377,7 +1422,7 @@ def test_batch_reuses_transcription_cache_for_same_video(tmp_path):
 
     subs_parsed = [Subtitle(1, 1_000, 3_500, "Hello world")]
     segs = [Segment(60_000, 90_000, "Hello world", 2)]
-    mock_trans = MagicMock(text="hello world", language="en")
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0)
     lang = LanguageResult(
         audio="en", subtitle_detected="en", subtitle_filename="en",
         video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
@@ -1389,8 +1434,10 @@ def test_batch_reuses_transcription_cache_for_same_video(tmp_path):
          patch("submatch.cli.check_dependencies"), \
          patch("submatch.cli.audio.get_duration_ms", mock_get_duration), \
          patch("submatch.cli.audio.extract_segment", mock_extract), \
+         patch("submatch.cli.audio.detect_speech_regions", return_value=[]), \
          patch("submatch.cli.subtitle.parse", return_value=subs_parsed), \
          patch("submatch.cli.sampler.select_segments", return_value=segs), \
+         patch("submatch.cli.sampler.audio_candidate_segments", return_value=[[60_000]]), \
          patch("submatch.cli.sampler.segments_from_starts", return_value=segs), \
          patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
          patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
@@ -1469,7 +1516,7 @@ def test_batch_parallel_sync_cleans_up_synced_file(tmp_path):
 
     subs_parsed = [Subtitle(1, 1_000, 3_500, "Hello world")]
     segs = [Segment(60_000, 90_000, "Hello world", 2)]
-    mock_trans = MagicMock(text="hello world", language="en")
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0)
     lang = LanguageResult(
         audio="en", subtitle_detected="en", subtitle_filename="en",
         video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
@@ -1480,8 +1527,11 @@ def test_batch_parallel_sync_cleans_up_synced_file(tmp_path):
          patch("submatch.cli.check_dependencies"), \
          patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
          patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
+         patch("submatch.cli.audio.detect_speech_regions", return_value=[]), \
          patch("submatch.cli.subtitle.parse", return_value=subs_parsed), \
          patch("submatch.cli.sampler.select_segments", return_value=segs), \
+         patch("submatch.cli.sampler.audio_candidate_segments", return_value=[[60_000]]), \
+         patch("submatch.cli.sampler.segments_from_starts", return_value=segs), \
          patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
          patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
          patch("submatch.cli.language.detect_from_text", return_value="en"), \
@@ -1642,7 +1692,7 @@ def test_main_drift_exits_1(tmp_path):
 
     subs = [Subtitle(1, 1_000, 3_500, "Hello world")]
     segs = [Segment(60_000, 90_000, "Hello world", 2)]
-    mock_trans = MagicMock(text="hello world", language="en")
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0)
     lang = LanguageResult(
         audio="en", subtitle_detected="en", subtitle_filename="en",
         video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
@@ -1681,7 +1731,7 @@ def test_main_resync_replaces_subtitle(tmp_path):
 
     subs = [Subtitle(1, 1_000, 3_500, "Hello world")]
     segs = [Segment(60_000, 90_000, "Hello world", 2)]
-    mock_trans = MagicMock(text="hello world", language="en")
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0)
     lang = LanguageResult(
         audio="en", subtitle_detected="en", subtitle_filename="en",
         video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
@@ -1693,8 +1743,11 @@ def test_main_resync_replaces_subtitle(tmp_path):
          patch("submatch.cli.audio.has_audio_track", return_value=True), \
          patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
          patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
+         patch("submatch.cli.audio.detect_speech_regions", return_value=[]), \
          patch("submatch.cli.subtitle.parse", return_value=subs), \
          patch("submatch.cli.sampler.select_segments", return_value=segs), \
+         patch("submatch.cli.sampler.audio_candidate_segments", return_value=[[60_000]]), \
+         patch("submatch.cli.sampler.segments_from_starts", return_value=segs), \
          patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
          patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
          patch("submatch.cli.language.detect_from_text", return_value="en"), \
@@ -1721,7 +1774,7 @@ def test_batch_sequential_resync(tmp_path):
 
     subs = [Subtitle(1, 1_000, 3_500, "Hello world")]
     segs = [Segment(60_000, 90_000, "Hello world", 2)]
-    mock_trans = MagicMock(text="hello world", language="en")
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0)
     lang = LanguageResult(
         audio="en", subtitle_detected="en", subtitle_filename="en",
         video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
@@ -1761,7 +1814,7 @@ def test_batch_parallel_resync(tmp_path):
 
     subs = [Subtitle(1, 1_000, 3_500, "Hello world")]
     segs = [Segment(60_000, 90_000, "Hello world", 2)]
-    mock_trans = MagicMock(text="hello world", language="en")
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0)
     lang = LanguageResult(
         audio="en", subtitle_detected="en", subtitle_filename="en",
         video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
@@ -1944,7 +1997,7 @@ def test_score_pair_resolve_audio_track_called_once_per_video(tmp_path):
 
     subs = [Subtitle(1, 1_000, 3_500, "Hello world")]
     segs = [Segment(60_000, 90_000, "Hello world", 2)]
-    mock_trans = MagicMock(text="hello world", language="en")
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0)
     lang = LanguageResult(
         audio="en", subtitle_detected="en", subtitle_filename="en",
         video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
@@ -1980,7 +2033,7 @@ def test_score_pair_passes_audio_track_to_extract_segment(tmp_path):
 
     subs = [Subtitle(1, 1_000, 3_500, "Hello world")]
     segs = [Segment(60_000, 90_000, "Hello world", 2)]
-    mock_trans = MagicMock(text="hello world", language="en")
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0)
     lang = LanguageResult(
         audio="en", subtitle_detected="en", subtitle_filename="en",
         video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
@@ -2246,3 +2299,63 @@ def test_poll_without_watch_warns(tmp_path, capsys):
         with pytest.raises(SystemExit):
             cli.main()
     assert "warning" in capsys.readouterr().err.lower()
+
+
+# ── _audio_driven_transcribe ───────────────────────────────────────────────────
+
+def test_audio_driven_transcribe_retries_on_bad_no_speech_prob(tmp_path):
+    """Quality gate rejects high no_speech_prob and retries with next candidate."""
+    from submatch.cli import _audio_driven_transcribe
+    from submatch.transcribe import TranscriptionResult
+
+    bad = TranscriptionResult(text="uh", language="en", no_speech_prob=0.9)
+    good = TranscriptionResult(text="she left before I could say goodbye", language="en", no_speech_prob=0.1)
+    responses = [bad, good]
+
+    mock_wav = MagicMock()
+    mock_wav.unlink = MagicMock()
+
+    with patch("submatch.cli.audio.extract_segment", return_value=mock_wav), \
+         patch("submatch.cli.transcribe.transcribe_segment", side_effect=responses), \
+         patch("submatch.cli.audio.detect_speech_regions", return_value=[]), \
+         patch("submatch.cli.audio.get_duration_ms", return_value=3_600_000), \
+         patch("submatch.cli.sampler.audio_candidate_segments",
+               return_value=[[100_000, 200_000]]):
+        starts, texts, lang = _audio_driven_transcribe(
+            video=Path("fake.mkv"),
+            audio_track_index=0,
+            n_seg=1,
+            model=MagicMock(),
+        )
+
+    assert len(starts) == 1
+    assert texts[0] == "she left before I could say goodbye"
+
+
+def test_audio_driven_transcribe_fallback_uses_most_words(tmp_path):
+    """When all candidates fail quality gate, uses the one with most words."""
+    from submatch.cli import _audio_driven_transcribe
+    from submatch.transcribe import TranscriptionResult
+
+    short = TranscriptionResult(text="uh", language="en", no_speech_prob=0.95)
+    longer = TranscriptionResult(text="she left before I could say goodbye there", language="en", no_speech_prob=0.8)
+    responses = [short, longer]
+
+    mock_wav = MagicMock()
+    mock_wav.unlink = MagicMock()
+
+    with patch("submatch.cli.audio.extract_segment", return_value=mock_wav), \
+         patch("submatch.cli.transcribe.transcribe_segment", side_effect=responses), \
+         patch("submatch.cli.audio.detect_speech_regions", return_value=[]), \
+         patch("submatch.cli.audio.get_duration_ms", return_value=3_600_000), \
+         patch("submatch.cli.sampler.audio_candidate_segments",
+               return_value=[[100_000, 200_000]]):
+        starts, texts, lang = _audio_driven_transcribe(
+            video=Path("fake.mkv"),
+            audio_track_index=0,
+            n_seg=1,
+            model=MagicMock(),
+        )
+
+    assert len(starts) == 1
+    assert texts[0] == "she left before I could say goodbye there"

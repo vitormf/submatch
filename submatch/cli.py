@@ -252,6 +252,72 @@ def _get_embed_model():
     return _embed_local.model
 
 
+def _audio_driven_transcribe(
+    video: Path,
+    audio_track_index: int,
+    n_seg: int,
+    model,
+    duration_ms: int = 0,
+    show_progress: bool = False,
+    on_segment=None,
+) -> tuple[list[int], list[str], str | None]:
+    """Select segments via audio VAD + quality gate. Returns (starts_ms, texts, audio_lang)."""
+    speech_regions = audio.detect_speech_regions(video, audio_track_index)
+    if not duration_ms:
+        duration_ms = audio.get_duration_ms(video)
+    zone_candidates = sampler.audio_candidate_segments(
+        speech_regions, duration_ms, n_zones=n_seg, candidates_per_zone=2
+    )
+
+    accepted_starts: list[int] = []
+    accepted_texts: list[str] = []
+    audio_lang: str | None = None
+    n_zones = len(zone_candidates)
+
+    for zone_idx, candidates in enumerate(zone_candidates):
+        if on_segment is not None:
+            on_segment(zone_idx + 1, n_zones)
+        elif show_progress:
+            print(f"  [{zone_idx + 1}/{n_zones}]", end="\r", file=sys.stderr)
+
+        best: tuple[int, str] | None = None
+        best_words = -1
+        best_lang: str | None = None
+        accepted: tuple[int, str] | None = None
+        accepted_lang: str | None = None
+
+        for start_ms in candidates:
+            try:
+                wav_path = audio.extract_segment(video, start_ms, 30_000, audio_track=audio_track_index)
+                try:
+                    trans = transcribe.transcribe_segment(model, wav_path)
+                finally:
+                    wav_path.unlink(missing_ok=True)
+
+                words = len(trans.text.split())
+                if best is None or words > best_words:
+                    best = (start_ms, trans.text)
+                    best_words = words
+                    best_lang = trans.language
+
+                if trans.no_speech_prob < 0.6 and words >= 3:
+                    accepted = (start_ms, trans.text)
+                    accepted_lang = trans.language
+                    break
+            except Exception as exc:
+                print(f"Warning: candidate at {start_ms}ms failed: {exc}", file=sys.stderr)
+
+        chosen = accepted if accepted is not None else best
+        chosen_lang = accepted_lang if accepted is not None else best_lang
+        if chosen is not None:
+            accepted_starts.append(chosen[0])
+            accepted_texts.append(chosen[1])
+            if audio_lang is None and chosen_lang is not None:
+                audio_lang = chosen_lang
+
+    return accepted_starts, accepted_texts, audio_lang
+
+
 def _score_group_parallel(
     video: Path,
     subs: list[Path],
@@ -351,49 +417,71 @@ def _score_pair(
         new_cache: _VideoCache
 
         if video_cache is None:
+            _no_cache = getattr(args, 'no_cache', False)
             duration_ms = audio.get_duration_ms(video)
-            segments = sampler.select_segments(subtitles, duration_ms, n=args.segments)
-            n_seg = len(segments)
+            n_seg = args.segments or sampler.auto_segment_count(duration_ms)
             audio_lang: str | None = None
-            _t = _phase("segment selection", _t)
+            _t = _phase("duration + segment count", _t)
 
-            for i, seg in enumerate(segments):
-                if on_segment is not None:
-                    on_segment(i + 1, n_seg)
-                elif show_progress:
-                    print(f"  [{i + 1}/{n_seg}]", end="\r", file=sys.stderr)
-                _t_seg = time.monotonic()
-                try:
-                    wav_path = audio.extract_segment(video, seg.start_ms, 30_000, audio_track=audio_track_index)
-                    _t_extract = time.monotonic()
+            if _no_cache:
+                # Subtitle-driven path (original behaviour, used when cache disabled)
+                segments = sampler.select_segments(subtitles, duration_ms, n=args.segments)
+                for i, seg in enumerate(segments):
+                    if on_segment is not None:
+                        on_segment(i + 1, len(segments))
+                    elif show_progress:
+                        print(f"  [{i + 1}/{len(segments)}]", end="\r", file=sys.stderr)
+                    _t_seg = time.monotonic()
                     try:
-                        trans = transcribe.transcribe_segment(model, wav_path)
-                        _t_transcribe = time.monotonic()
-                        if i == 0:
-                            audio_lang = trans.language
-                        transcription_pairs.append((i + 1, seg, trans.text))
-                    finally:
-                        wav_path.unlink(missing_ok=True)
-                    if _timing:
-                        print(
-                            f"  seg {i+1}/{n_seg}  extract {_t_extract-_t_seg:.2f}s"
-                            f"  transcribe {_t_transcribe-_t_extract:.2f}s",
-                            file=sys.stderr,
-                        )
-                except Exception as exc:
-                    print(f"Warning: segment {i + 1} failed: {exc}", file=sys.stderr)
-            _t = _phase("transcription total", _t)
+                        wav_path = audio.extract_segment(video, seg.start_ms, 30_000, audio_track=audio_track_index)
+                        _t_extract = time.monotonic()
+                        try:
+                            trans = transcribe.transcribe_segment(model, wav_path)
+                            _t_transcribe = time.monotonic()
+                            if i == 0:
+                                audio_lang = trans.language
+                            transcription_pairs.append((i + 1, seg, trans.text))
+                        finally:
+                            wav_path.unlink(missing_ok=True)
+                        if _timing:
+                            print(
+                                f"  seg {i+1}/{len(segments)}  extract {_t_extract-_t_seg:.2f}s"
+                                f"  transcribe {_t_transcribe-_t_extract:.2f}s",
+                                file=sys.stderr,
+                            )
+                    except Exception as exc:
+                        print(f"Warning: segment {i + 1} failed: {exc}", file=sys.stderr)
+                _t = _phase("transcription total", _t)
+                new_cache = _VideoCache(
+                    segment_starts=[seg.start_ms for _, seg, _ in transcription_pairs],
+                    transcriptions=[t for _, _, t in transcription_pairs],
+                    audio_lang=audio_lang,
+                    audio_track_index=audio_track_index,
+                    audio_track_lang=audio_track_lang,
+                )
+            else:
+                # Audio-driven path (default; cache lookup happens in Task 8)
+                starts, texts, audio_lang = _audio_driven_transcribe(
+                    video, audio_track_index, n_seg, model,
+                    duration_ms=duration_ms,
+                    show_progress=show_progress, on_segment=on_segment,
+                )
+                cached_segs = sampler.segments_from_starts(subtitles, starts)
+                transcription_pairs = [
+                    (i + 1, seg, txt)
+                    for i, (seg, txt) in enumerate(zip(cached_segs, texts))
+                ]
+                _t = _phase("audio-driven transcription", _t)
+                new_cache = _VideoCache(
+                    segment_starts=starts,
+                    transcriptions=texts,
+                    audio_lang=audio_lang,
+                    audio_track_index=audio_track_index,
+                    audio_track_lang=audio_track_lang,
+                )
 
             if show_progress:
                 print()
-
-            new_cache = _VideoCache(
-                segment_starts=[seg.start_ms for _, seg, _ in transcription_pairs],
-                transcriptions=[t for _, _, t in transcription_pairs],
-                audio_lang=audio_lang,
-                audio_track_index=audio_track_index,
-                audio_track_lang=audio_track_lang,
-            )
         else:
             # Reuse transcriptions from the first subtitle for this video.
             # Still re-syncs per subtitle (each has its own drift), then looks up
