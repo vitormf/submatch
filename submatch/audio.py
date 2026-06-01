@@ -1,6 +1,7 @@
 from __future__ import annotations
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -139,3 +140,43 @@ def extract_segment(video_path: Path, start_ms: int, duration_ms: int, audio_tra
     if proc.returncode != 0:
         raise subprocess.CalledProcessError(proc.returncode, cmd)
     return out_path
+
+
+def detect_speech_regions(video_path: Path, audio_track: int = 0) -> list[tuple[int, int]]:
+    """Return non-silent (speech) spans as (start_ms, end_ms) pairs.
+
+    Uses ffmpeg silencedetect. Returns [] on any failure so callers can fall back.
+    """
+    try:
+        cmd = [
+            "ffmpeg", "-i", str(video_path),
+            "-map", f"0:a:{audio_track}",
+            "-af", "silencedetect=noise=-30dB:duration=0.5",
+            "-f", "null", "-",
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        stderr = result.stderr
+
+        duration_match = re.search(r"Duration: (\d+):(\d+):([\d.]+)", stderr)
+        if not duration_match:
+            return []
+        h, m, s = duration_match.groups()
+        total_ms = int((int(h) * 3600 + int(m) * 60 + float(s)) * 1000)
+
+        silence_starts = [float(x) for x in re.findall(r"silence_start: ([\d.]+)", stderr)]
+        silence_ends = [float(x) for x in re.findall(r"silence_end: ([\d.]+)", stderr)]
+
+        speech_regions: list[tuple[int, int]] = []
+        prev_end_ms = 0
+        for sil_start, sil_end in zip(silence_starts, silence_ends):
+            sil_start_ms = int(sil_start * 1000)
+            sil_end_ms = int(sil_end * 1000)
+            if sil_start_ms > prev_end_ms:
+                speech_regions.append((prev_end_ms, sil_start_ms))
+            prev_end_ms = sil_end_ms
+        if prev_end_ms < total_ms:
+            speech_regions.append((prev_end_ms, total_ms))
+
+        return [(s, e) for s, e in speech_regions if e > s]
+    except Exception:
+        return []
