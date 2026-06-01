@@ -96,7 +96,7 @@ def parse_args() -> argparse.Namespace:
                         help="seconds between polls in --poll mode (default: 10)")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument("--no-cache", action="store_true", dest="no_cache",
-                        help="disable transcription cache for this run")
+                        help="disable transcription cache and use subtitle-driven segment selection")
     parser.add_argument("--clear-cache", action="store_true", dest="clear_cache",
                         help="delete all cached transcriptions and exit")
 
@@ -247,7 +247,6 @@ def _get_embed_model():
 
 
 def _cache_config(args: argparse.Namespace) -> dict:
-    import os
     dir_str = getattr(args, 'cache_dir', None) or os.environ.get("SUBMATCH_CACHE_DIR")
     return {
         "dir": Path(dir_str).expanduser() if dir_str else _cache_module._DEFAULT_CACHE_DIR,
@@ -854,16 +853,8 @@ def main() -> None:
     args = parse_args()
 
     if getattr(args, 'clear_cache', False):
-        import os
-        cfg = {}
-        try:
-            from submatch import config as _config
-            cfg = _config.load_config()
-        except Exception:
-            pass
-        dir_str = cfg.get("cache_dir") or os.environ.get("SUBMATCH_CACHE_DIR")
-        cache_dir = Path(dir_str).expanduser() if dir_str else _cache_module._DEFAULT_CACHE_DIR
-        count = _cache_module.clear(cache_dir)
+        _cfg = _cache_config(args)
+        count = _cache_module.clear(_cfg["dir"])
         print(f"Cleared {count} cached transcription(s).")
         sys.exit(0)
 
