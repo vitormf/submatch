@@ -2359,3 +2359,85 @@ def test_audio_driven_transcribe_fallback_uses_most_words(tmp_path):
 
     assert len(starts) == 1
     assert texts[0] == "she left before I could say goodbye there"
+
+
+# ── cache flags ────────────────────────────────────────────────────────────────
+
+def test_no_cache_flag_bypasses_disk_cache():
+    """--no-cache must not call cache.load or cache.store."""
+    import argparse
+    from submatch.cli import _score_pair
+
+    args = argparse.Namespace(
+        model="base", threshold=0.35, segments=None, no_sync=True,
+        language=None, verbose=False, timing=False, audio_track=None,
+        cross_threshold=None, resync=False, pass_unsure=False,
+        drift_threshold=2.0, no_cache=True, cache_ttl_days=30,
+        cache_max_mb=200, cache_dir=None,
+    )
+    model = MagicMock()
+
+    with patch("submatch.cache.load") as mock_load, \
+         patch("submatch.cache.store") as mock_store, \
+         patch("submatch.cli.audio.get_duration_ms", return_value=3_600_000), \
+         patch("submatch.cli.sampler.select_segments", return_value=[]), \
+         patch("submatch.cli.subtitle.parse", return_value=[]), \
+         patch("submatch.cli.sync.sync_subtitle", side_effect=RuntimeError("skip")):
+        try:
+            _score_pair(Path("fake.mkv"), Path("fake.srt"), args, model)
+        except Exception:
+            pass
+        mock_load.assert_not_called()
+        mock_store.assert_not_called()
+
+
+def test_cache_hit_skips_transcription(tmp_path):
+    """On a disk cache hit, transcribe_segment must not be called."""
+    import argparse
+    from submatch.cli import _score_pair
+    from submatch.cache import VideoCache
+
+    args = argparse.Namespace(
+        model="base", threshold=0.35, segments=None, no_sync=True,
+        language=None, verbose=False, timing=False, audio_track=None,
+        cross_threshold=None, resync=False, pass_unsure=False,
+        drift_threshold=2.0, no_cache=False, cache_ttl_days=30,
+        cache_max_mb=200, cache_dir=str(tmp_path),
+    )
+    model = MagicMock()
+
+    cached = VideoCache(
+        segment_starts=[100_000],
+        transcriptions=["hello world this is a test sentence"],
+        audio_lang="en",
+        audio_track_index=0,
+        audio_track_lang=None,
+    )
+
+    with patch("submatch.cache.load", return_value=cached), \
+         patch("submatch.cli.transcribe.transcribe_segment") as mock_transcribe, \
+         patch("submatch.cli.audio.get_duration_ms", return_value=3_600_000), \
+         patch("submatch.cli.subtitle.parse", return_value=[]), \
+         patch("submatch.cli.sync.sync_subtitle", side_effect=RuntimeError("skip")):
+        try:
+            _score_pair(Path("fake.mkv"), Path("fake.srt"), args, model)
+        except Exception:
+            pass
+        mock_transcribe.assert_not_called()
+
+
+def test_clear_cache_flag(tmp_path, capsys):
+    """--clear-cache deletes cache entries and exits 0."""
+    import subprocess, sys as _sys
+    cache_dir = tmp_path / "submatch"
+    cache_dir.mkdir()
+    (cache_dir / "abc123.json").write_text('{"test": 1}')
+
+    import os
+    env = {**os.environ, "SUBMATCH_CACHE_DIR": str(cache_dir)}
+    result = subprocess.run(
+        [_sys.executable, "-m", "submatch.cli", "--clear-cache"],
+        env=env, capture_output=True, text=True,
+    )
+    assert result.returncode == 0
+    assert list(cache_dir.glob("*.json")) == []
