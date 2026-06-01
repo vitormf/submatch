@@ -274,7 +274,7 @@ def _audio_driven_transcribe(
 
     accepted_starts: list[int] = []
     accepted_texts: list[str] = []
-    audio_lang: str | None = None
+    lang_votes: list[str] = []
     n_zones = len(zone_candidates)
 
     for zone_idx, candidates in enumerate(zone_candidates):
@@ -315,8 +315,18 @@ def _audio_driven_transcribe(
         if chosen is not None:
             accepted_starts.append(chosen[0])
             accepted_texts.append(chosen[1])
-            if audio_lang is None and chosen_lang is not None:
-                audio_lang = chosen_lang
+        if chosen_lang is not None:
+            lang_votes.append(chosen_lang)
+
+    # Majority vote across all zones for robust language detection.
+    # Require strict majority (>50%) to avoid false cross-language on noisy/music zones.
+    audio_lang: str | None = None
+    if lang_votes:
+        from collections import Counter
+        counts = Counter(lang_votes)
+        top_lang, top_count = counts.most_common(1)[0]
+        if top_count * 2 > len(lang_votes):
+            audio_lang = top_lang
 
     return accepted_starts, accepted_texts, audio_lang
 

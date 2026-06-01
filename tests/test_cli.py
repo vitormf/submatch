@@ -2363,6 +2363,34 @@ def test_audio_driven_transcribe_fallback_uses_most_words(tmp_path):
     assert texts[0] == "she left before I could say goodbye there"
 
 
+def test_audio_driven_transcribe_tied_lang_votes_returns_none():
+    """A 1:1 tie between zone language votes must not produce a false cross_language."""
+    from submatch.cli import _audio_driven_transcribe
+    from submatch.transcribe import TranscriptionResult
+
+    zone1 = TranscriptionResult(text="hello world foo bar", language="ko", no_speech_prob=0.1)
+    zone2 = TranscriptionResult(text="look at these cakes and pies yeah", language="en", no_speech_prob=0.1)
+    responses = [zone1, zone2]
+
+    mock_wav = MagicMock()
+    mock_wav.unlink = MagicMock()
+
+    with patch("submatch.cli.audio.extract_segment", return_value=mock_wav), \
+         patch("submatch.cli.transcribe.transcribe_segment", side_effect=responses), \
+         patch("submatch.cli.audio.detect_speech_regions", return_value=[]), \
+         patch("submatch.cli.audio.get_duration_ms", return_value=3_600_000), \
+         patch("submatch.cli.sampler.audio_candidate_segments",
+               return_value=[[100_000], [200_000]]):
+        _, _, lang = _audio_driven_transcribe(
+            video=Path("fake.mkv"),
+            audio_track_index=0,
+            n_seg=2,
+            model=MagicMock(),
+        )
+
+    assert lang is None
+
+
 # ── cache flags ────────────────────────────────────────────────────────────────
 
 def test_no_cache_flag_bypasses_disk_cache():
