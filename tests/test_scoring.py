@@ -168,6 +168,7 @@ def _mock_base(mock_sub, mock_lang, mock_audio, mock_sampler, mock_transcribe, m
     from submatch.transcribe import TranscriptionResult
     from submatch.compare import SegmentScore
     mock_sub.parse.return_value = [Subtitle(index=1, start_ms=1000, end_ms=5000, text="hello")]
+    mock_sub.is_image_based.return_value = False
     mock_lang.detect_from_filename.return_value = "en"
     mock_lang.detect_from_text.return_value = "en"
     mock_lang.detect_from_video.return_value = None
@@ -261,3 +262,196 @@ def test_score_pair_verbose_segment_exception_warning(
     config = PipelineConfig(sync=False, use_cache=False, verbose=True, on_segment=None, device="cpu")
     _score_pair(video, sub, config, MagicMock())
     assert "audio extraction failed" in capsys.readouterr().err
+
+
+def test_resolve_ocr_lang_from_filename():
+    from submatch.scoring import _resolve_ocr_lang
+    from pathlib import Path
+    from unittest.mock import patch
+
+    with patch("submatch.scoring.language.detect_from_filename", return_value="pt"), \
+         patch("submatch.scoring.language.detect_from_video", return_value=None):
+        result = _resolve_ocr_lang(Path("movie.pt.sub"), Path("movie.mkv"))
+    assert result == "por"
+
+
+def test_resolve_ocr_lang_from_video_metadata():
+    from submatch.scoring import _resolve_ocr_lang
+    from pathlib import Path
+    from unittest.mock import patch
+
+    with patch("submatch.scoring.language.detect_from_filename", return_value=None), \
+         patch("submatch.scoring.language.detect_from_video", return_value="ja"):
+        result = _resolve_ocr_lang(Path("movie.sub"), Path("movie.mkv"))
+    assert result == "jpn"
+
+
+def test_resolve_ocr_lang_returns_none_when_undetected():
+    from submatch.scoring import _resolve_ocr_lang
+    from pathlib import Path
+    from unittest.mock import patch
+
+    with patch("submatch.scoring.language.detect_from_filename", return_value=None), \
+         patch("submatch.scoring.language.detect_from_video", return_value=None):
+        result = _resolve_ocr_lang(Path("movie.sub"), Path("movie.mkv"))
+    assert result is None
+
+
+def test_score_pair_calls_ocr_for_image_subtitle(tmp_path):
+    """When subtitle is image-based, ocr_window is called once per segment."""
+    from unittest.mock import patch, MagicMock
+    from submatch.scoring import _score_pair
+    from submatch.pipeline import PipelineConfig
+    from submatch.cache import VideoCache
+    from submatch.language import LanguageResult
+
+    video = tmp_path / "movie.mkv"
+    video.touch()
+    sub = tmp_path / "movie.sub"
+    sub.touch()
+
+    lang_result = LanguageResult(
+        audio=None, subtitle_detected=None, subtitle_filename=None,
+        video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
+    )
+    cached = VideoCache(
+        segment_starts=[0, 30_000],
+        transcriptions=["hello world", "goodbye"],
+        audio_lang="en",
+        audio_track_index=0,
+        audio_track_lang=None,
+    )
+
+    with patch("submatch.scoring.subtitle.parse", return_value=[]), \
+         patch("submatch.scoring.subtitle.is_image_based", return_value=True), \
+         patch("submatch.scoring.language.detect_from_filename", return_value="en"), \
+         patch("submatch.scoring.language.detect_from_video", return_value=None), \
+         patch("submatch.scoring.language.detect_from_text", return_value=None), \
+         patch("submatch.scoring.language.build_result", return_value=lang_result), \
+         patch("submatch.scoring.ocr.pytesseract", new=MagicMock()), \
+         patch("submatch.scoring.ocr.ocr_window", return_value="hello world") as mock_ocr:
+        config = PipelineConfig(use_cache=False, sync=False)
+        result, _ = _score_pair(video, sub, config, MagicMock(), video_cache=cached)
+
+    assert mock_ocr.call_count == 2
+    assert len(result.segments) > 0  # OCR text flowed through to segment scoring
+
+
+def test_score_pair_ocr_exception_on_one_segment_continues(tmp_path):
+    """If ocr_window raises for one segment, remaining segments are still processed."""
+    from unittest.mock import patch, MagicMock
+    from submatch.scoring import _score_pair
+    from submatch.pipeline import PipelineConfig
+    from submatch.cache import VideoCache
+    from submatch.language import LanguageResult
+
+    video = tmp_path / "movie.mkv"
+    video.touch()
+    sub = tmp_path / "movie.sub"
+    sub.touch()
+
+    lang_result = LanguageResult(
+        audio=None, subtitle_detected=None, subtitle_filename=None,
+        video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
+    )
+    cached = VideoCache(
+        segment_starts=[0, 30_000],
+        transcriptions=["hello", "world"],
+        audio_lang="en",
+        audio_track_index=0,
+        audio_track_lang=None,
+    )
+
+    with patch("submatch.scoring.subtitle.parse", return_value=[]), \
+         patch("submatch.scoring.subtitle.is_image_based", return_value=True), \
+         patch("submatch.scoring.language.detect_from_filename", return_value=None), \
+         patch("submatch.scoring.language.detect_from_video", return_value=None), \
+         patch("submatch.scoring.language.detect_from_text", return_value=None), \
+         patch("submatch.scoring.language.build_result", return_value=lang_result), \
+         patch("submatch.scoring.ocr.pytesseract", new=MagicMock()), \
+         patch("submatch.scoring.ocr.ocr_window",
+               side_effect=[RuntimeError("frame extraction failed"), "world text"]) as mock_ocr:
+        config = PipelineConfig(use_cache=False, sync=False, verbose=True)
+        _score_pair(video, sub, config, MagicMock(), video_cache=cached)
+
+    # Both segments were attempted despite the first raising
+    assert mock_ocr.call_count == 2
+
+
+def test_score_pair_warns_when_pytesseract_missing(tmp_path, capsys):
+    """When pytesseract is None, a warning is printed for image-based subtitles."""
+    from unittest.mock import patch, MagicMock
+    from submatch.scoring import _score_pair
+    from submatch.pipeline import PipelineConfig
+    from submatch.cache import VideoCache
+    from submatch.language import LanguageResult
+
+    video = tmp_path / "movie.mkv"
+    video.touch()
+    sub = tmp_path / "movie.sub"
+    sub.touch()
+
+    lang_result = LanguageResult(
+        audio=None, subtitle_detected=None, subtitle_filename=None,
+        video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
+    )
+    cached = VideoCache(
+        segment_starts=[0],
+        transcriptions=["hello"],
+        audio_lang="en",
+        audio_track_index=0,
+        audio_track_lang=None,
+    )
+
+    with patch("submatch.scoring.subtitle.parse", return_value=[]), \
+         patch("submatch.scoring.subtitle.is_image_based", return_value=True), \
+         patch("submatch.scoring.language.detect_from_filename", return_value=None), \
+         patch("submatch.scoring.language.detect_from_video", return_value=None), \
+         patch("submatch.scoring.language.detect_from_text", return_value=None), \
+         patch("submatch.scoring.language.build_result", return_value=lang_result), \
+         patch("submatch.scoring.ocr.pytesseract", new=None), \
+         patch("submatch.scoring.ocr.ocr_window") as mock_ocr:
+        config = PipelineConfig(use_cache=False, sync=False)  # verbose=False — warning fires unconditionally
+        _score_pair(video, sub, config, MagicMock(), video_cache=cached)
+
+    mock_ocr.assert_not_called()
+    captured = capsys.readouterr()
+    assert "pytesseract" in captured.err
+
+
+def test_score_pair_does_not_call_ocr_for_text_subtitle(tmp_path):
+    """When subtitle is text-based (SRT), ocr_window must not be called."""
+    from unittest.mock import patch, MagicMock
+    from submatch.scoring import _score_pair
+    from submatch.pipeline import PipelineConfig
+    from submatch.cache import VideoCache
+    from submatch.language import LanguageResult
+
+    video = tmp_path / "movie.mkv"
+    video.touch()
+    sub = tmp_path / "movie.srt"
+    sub.touch()
+
+    lang_result = LanguageResult(
+        audio=None, subtitle_detected=None, subtitle_filename=None,
+        video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
+    )
+    cached = VideoCache(
+        segment_starts=[0],
+        transcriptions=["hello"],
+        audio_lang="en",
+        audio_track_index=0,
+        audio_track_lang=None,
+    )
+
+    with patch("submatch.scoring.subtitle.parse", return_value=[]), \
+         patch("submatch.scoring.subtitle.is_image_based", return_value=False), \
+         patch("submatch.scoring.language.detect_from_filename", return_value=None), \
+         patch("submatch.scoring.language.detect_from_video", return_value=None), \
+         patch("submatch.scoring.language.detect_from_text", return_value=None), \
+         patch("submatch.scoring.language.build_result", return_value=lang_result), \
+         patch("submatch.scoring.ocr.ocr_window") as mock_ocr:
+        config = PipelineConfig(use_cache=False, sync=False)
+        _score_pair(video, sub, config, MagicMock(), video_cache=cached)
+
+    mock_ocr.assert_not_called()
