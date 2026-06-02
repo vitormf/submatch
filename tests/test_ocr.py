@@ -1,8 +1,6 @@
 from __future__ import annotations
 import sys
-from pathlib import Path
-from unittest.mock import patch, MagicMock, call
-import pytest
+from unittest.mock import patch, MagicMock
 
 # pytesseract is an optional dependency not installed in the dev venv.
 # Inject a MagicMock so that `import pytesseract` inside submatch/ocr.py
@@ -30,7 +28,7 @@ def test_ocr_window_returns_text(tmp_path):
     sub = tmp_path / "subtitle.sub"
     sub.touch()
 
-    with patch("submatch.ocr.subprocess.Popen", return_value=_mock_proc()) as mock_popen, \
+    with patch("submatch.ocr.subprocess.Popen", return_value=_mock_proc()), \
          patch("submatch.ocr._frames_in_dir", return_value=[frame]), \
          patch("submatch.ocr.pytesseract.image_to_string", return_value="Hello world") as mock_tess:
         from submatch.ocr import ocr_window
@@ -180,3 +178,19 @@ def test_detect_lang_from_frame_returns_none_on_failure(tmp_path):
         result = _detect_lang_from_frame(frame)
 
     assert result is None
+
+
+def test_ocr_window_pytesseract_runtime_error_returns_empty(tmp_path):
+    """If pytesseract raises at runtime (e.g. tesseract binary missing), return ''."""
+    sub = tmp_path / "subtitle.sub"
+    sub.touch()
+    frame = tmp_path / "frame0001.png"
+    frame.touch()
+
+    with patch("submatch.ocr.subprocess.Popen", return_value=_mock_proc()), \
+         patch("submatch.ocr._frames_in_dir", return_value=[frame]), \
+         patch("submatch.ocr.pytesseract.image_to_string", side_effect=Exception("TesseractNotFoundError")):
+        from submatch.ocr import ocr_window
+        result = ocr_window(sub, 0, 30_000, lang="eng")
+
+    assert result == ""

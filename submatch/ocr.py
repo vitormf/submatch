@@ -12,7 +12,7 @@ except ImportError:
 
 
 _SCRIPT_TO_TESSERACT: dict[str, str] = {
-    "latin": "eng",
+    "latin": "eng",  # script only; specific language detected upstream via metadata
     "japanese": "jpn",
     "han": "chi_sim",
     "hangul": "kor",
@@ -80,6 +80,8 @@ def ocr_window(
             os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
             proc.wait()
             raise
+        # Non-zero returncode means ffmpeg couldn't read the source (unsupported format,
+        # missing codec, etc.). Frames dir will be empty → ocr_window returns "".
 
         frames = _frames_in_dir(tmp_path)
         if not frames:
@@ -91,8 +93,11 @@ def ocr_window(
 
         texts: list[str] = []
         for frame in frames:
-            text = pytesseract.image_to_string(str(frame), lang=tess_lang).strip()
-            if text:
-                texts.append(text)
+            try:
+                text = pytesseract.image_to_string(str(frame), lang=tess_lang).strip()
+                if text:
+                    texts.append(text)
+            except Exception:
+                pass
 
         return " ".join(texts)
