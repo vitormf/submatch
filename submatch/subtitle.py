@@ -45,5 +45,8 @@ def parse(path: Path) -> list[Subtitle]:
 
 
 def is_image_based(path: Path) -> bool:
-    """Return True if *path* is an image-based subtitle format (VOBSUB or PGS)."""
+    """Return True if *path* is an image-based subtitle format (VOBSUB .sub or PGS .sup).
+
+    .idx sidecar files are intentionally excluded — callers always work with the .sub data file.
+    """
     return path.suffix.lower() in _IMAGE_EXTENSIONS
