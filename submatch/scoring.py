@@ -103,7 +103,7 @@ def _audio_driven_transcribe(
                     best_words = words
                     best_lang = trans.language
 
-                if trans.no_speech_prob < 0.6 and words >= 3:
+                if trans.no_speech_prob < 0.6 and words >= 3 and trans.avg_logprob > -1.0:
                     accepted = (start_ms, trans.text)
                     accepted_lang = trans.language
                     break
@@ -257,8 +257,18 @@ def _score_pair(
         cross_lang = _is_cross_language(audio_lang, subtitle_lang)
         embed_model = _get_embed_model() if cross_lang else None
 
+        # Skip windows where the subtitle has no text but Whisper heard something —
+        # that pattern (empty subtitle, non-empty transcription) indicates musical
+        # content where scoring against an empty reference gives a false F1=0.
+        # When both are empty (silence/no-speech), F1=1.0 is a valid signal.
+        scored_pairs = [
+            (idx, seg, trans_text)
+            for idx, seg, trans_text in transcription_pairs
+            if seg.word_count > 0 or not trans_text.strip()
+        ]
+
         segment_results: list[SegmentResult] = []
-        for idx, seg, trans_text in transcription_pairs:
+        for idx, seg, trans_text in scored_pairs:
             if cross_lang:
                 score = embeddings.cross_language_score(seg.subtitle_text, trans_text, embed_model)
             else:
