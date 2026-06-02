@@ -1,4 +1,4 @@
-.PHONY: install test integration-test lint clean merge setup-worktree local-setup
+.PHONY: install test integration-test integration-test-fast lint clean merge setup-worktree local-setup
 
 install:
 	pip install -e ".[dev]"
@@ -9,6 +9,10 @@ test:
 integration-test:
 	python tests/integration/prepare.py
 	pytest tests/integration/ -v -s --no-cov -x --timeout=120
+
+integration-test-fast:
+	python tests/integration/prepare.py
+	pytest tests/integration/ -m "integration and not slow" -v -s --no-cov -x --timeout=120
 
 lint:
 	ruff check submatch/ tests/
