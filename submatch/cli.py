@@ -56,6 +56,32 @@ def _fmt_eta(secs: int) -> str:
 _SUMMARY_THRESHOLD = 8
 
 
+@dataclasses.dataclass
+class _ProgressTracker:
+    n_total: int
+    pair_idx: int = 0
+    ema_pair_time: float | None = None
+    pair_start: float = dataclasses.field(default_factory=time.monotonic)
+
+    _EMA_ALPHA = 0.3
+
+    def eta_header(self) -> str:
+        pair_n = self.pair_idx + 1
+        if self.ema_pair_time is not None:
+            pct = int(100 * self.pair_idx / self.n_total)
+            eta = _fmt_eta(int(self.ema_pair_time * (self.n_total - self.pair_idx)))
+            return f"[{pair_n}/{self.n_total}  {pct}%  {eta}]"
+        return f"[{pair_n}/{self.n_total}]"
+
+    def advance(self, took: float) -> None:
+        if self.ema_pair_time is None:
+            self.ema_pair_time = took
+        else:
+            self.ema_pair_time = self._EMA_ALPHA * took + (1 - self._EMA_ALPHA) * self.ema_pair_time
+        self.pair_idx += 1
+        self.pair_start = time.monotonic()
+
+
 def _print_run_summary(pairs: list[tuple[Path, Path]]) -> None:
     n = len(pairs)
     if n == 0:
@@ -113,32 +139,22 @@ def _run_batch(
 
     n_total = len(pairs_to_run)
     _tty = sys.stderr.isatty()
-    _pair_idx = [0]
-    _ema_pair_time: list[float | None] = [None]
-    _pair_start: list[float] = [time.monotonic()]
-    _EMA_ALPHA = 0.3
+    tracker = _ProgressTracker(n_total=n_total)
 
     print(f"Loading model ({args.model})...", file=sys.stderr, flush=True)
 
     def _on_segment(seg_idx: int, seg_total: int) -> None:
         if not _tty:
             return
-        idx = _pair_idx[0]
+        idx = tracker.pair_idx
         if idx >= len(pairs_to_run):  # pragma: no cover
             return  # pragma: no cover
         sub_name = pairs_to_run[idx][1].name
-        pair_n = idx + 1
-        if _ema_pair_time[0] is not None:  # pragma: no cover
-            pct = int(100 * idx / n_total)  # pragma: no cover
-            eta = _fmt_eta(int(_ema_pair_time[0] * (n_total - idx)))  # pragma: no cover
-            header = f"[{pair_n}/{n_total}  {pct}%  {eta}]"  # pragma: no cover
-        else:
-            header = f"[{pair_n}/{n_total}]"
-        print(f"{header} {sub_name}... {seg_idx}/{seg_total}", end="\r",
+        print(f"{tracker.eta_header()} {sub_name}... {seg_idx}/{seg_total}", end="\r",
               file=sys.stderr, flush=True)
 
     def _on_pair_complete(pair_result: BatchPairResult) -> None:
-        took = time.monotonic() - _pair_start[0]
+        took = time.monotonic() - tracker.pair_start
         if _tty:
             print("\r\033[K", end="", file=sys.stderr, flush=True)
         if pair_result.error:
@@ -153,12 +169,7 @@ def _run_batch(
         if (config.delete_failures and pair_result.result and
                 pair_result.result.state == MatchState.FAIL):
             print(f"Deleted: {pair_result.subtitle}")
-        if _ema_pair_time[0] is None:
-            _ema_pair_time[0] = took
-        else:
-            _ema_pair_time[0] = _EMA_ALPHA * took + (1 - _EMA_ALPHA) * _ema_pair_time[0]
-        _pair_idx[0] += 1
-        _pair_start[0] = time.monotonic()
+        tracker.advance(took)
 
     config = dataclasses.replace(
         _args_to_config(args),
@@ -169,6 +180,7 @@ def _run_batch(
     try:
         results = _pipeline.run_batch(pairs_to_run, config)
     except ImportError as exc:
+        telemetry.capture(exc)
         print(f"Error: {exc}", file=sys.stderr)
         return 2
 
@@ -311,6 +323,7 @@ def main() -> None:
     try:
         result = _pipeline.run(args.video, args.subtitle, config)
     except ImportError as exc:
+        telemetry.capture(exc)
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(2)
 

@@ -5,7 +5,7 @@ import tempfile
 import threading
 from collections import Counter
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from submatch import audio, compare, embeddings, language, ocr, sampler, subtitle, sync, telemetry, transcribe
 from submatch import cache as _cache_module
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 _embed_local = threading.local()
 
 
-def _get_embed_model():
+def _get_embed_model() -> Any:
     if not hasattr(_embed_local, "model"):
         try:
             _embed_local.model = embeddings.load_embedding_model()
@@ -71,7 +71,7 @@ def _audio_driven_transcribe(
     video: Path,
     audio_track_index: int,
     n_seg: int,
-    model,
+    model: Any,
     config: PipelineConfig,
     duration_ms: int = 0,
 ) -> tuple[list[int], list[str], str | None]:
@@ -162,10 +162,10 @@ def _build_match_result(
     config: "PipelineConfig",
     audio_track_index: int,
     audio_track_lang: str | None,
-    sync_result=None,
+    sync_result: "sync.SyncResult | None" = None,
 ) -> MatchResult:
     cross_lang = _is_cross_language(audio_lang, subtitle_lang)
-    embed_model = _get_embed_model() if cross_lang else None
+    embed_model: Any = _get_embed_model() if cross_lang else None
 
     # Skip windows where the subtitle has no text but Whisper heard something —
     # that pattern (empty subtitle, non-empty transcription) indicates musical
@@ -233,11 +233,105 @@ def _build_match_result(
     return match_result
 
 
+def _gather_transcriptions(
+    video: Path,
+    subtitles: list["subtitle.Subtitle"],
+    audio_track_index: int,
+    audio_track_lang: str | None,
+    config: "PipelineConfig",
+    model: Any,
+    video_cache: _cache_module.VideoCache | None = None,
+) -> tuple[list[tuple[int, "sampler.Segment", str]], _cache_module.VideoCache, str | None]:
+    """Return (transcription_pairs, new_cache, audio_lang)."""
+    if video_cache is not None:
+        audio_lang = video_cache.audio_lang
+        cached_segs = sampler.segments_from_starts(subtitles, video_cache.segment_starts)
+        transcription_pairs = [
+            (i + 1, seg, trans)
+            for i, (seg, trans) in enumerate(zip(cached_segs, video_cache.transcriptions))
+        ]
+        return transcription_pairs, video_cache, audio_lang
+
+    duration_ms = audio.get_duration_ms(video)
+    n_seg = config.segments or sampler.auto_segment_count(duration_ms)
+    audio_lang: str | None = None
+    transcription_pairs: list[tuple[int, sampler.Segment, str]] = []
+
+    if not config.use_cache:
+        segs = sampler.select_segments(subtitles, duration_ms, n=config.segments)
+        for i, seg in enumerate(segs):
+            if config.on_segment is not None:
+                config.on_segment(i + 1, len(segs))
+            elif config.verbose:
+                print(f"  [{i + 1}/{len(segs)}]", end="\r", file=sys.stderr)
+            try:
+                wav_path = audio.extract_segment(
+                    video, seg.start_ms, 30_000, audio_track=audio_track_index
+                )
+                try:
+                    trans = transcribe.transcribe_segment(model, wav_path)
+                    if i == 0:
+                        audio_lang = trans.language
+                    transcription_pairs.append((i + 1, seg, trans.text))
+                finally:
+                    wav_path.unlink(missing_ok=True)
+            except Exception as exc:
+                telemetry.capture(exc)
+                if config.verbose:
+                    print(f"Warning: segment {i + 1} failed: {exc}", file=sys.stderr)
+        if config.verbose:
+            print()
+        new_cache = _cache_module.VideoCache(
+            segment_starts=[seg.start_ms for _, seg, _ in transcription_pairs],
+            transcriptions=[t for _, _, t in transcription_pairs],
+            audio_lang=audio_lang,
+            audio_track_index=audio_track_index,
+            audio_track_lang=audio_track_lang,
+        )
+        return transcription_pairs, new_cache, audio_lang
+
+    _cfg = _cache_config(config)
+    _mtime = video.stat().st_mtime
+    _disk_hit = _cache_module.load(
+        video, _mtime, config.model, n_seg, audio_track_index, _cfg["dir"]
+    )
+    if _disk_hit is not None:
+        audio_lang = _disk_hit.audio_lang
+        cached_segs = sampler.segments_from_starts(subtitles, _disk_hit.segment_starts)
+        transcription_pairs = [
+            (i + 1, seg, txt)
+            for i, (seg, txt) in enumerate(zip(cached_segs, _disk_hit.transcriptions))
+        ]
+        return transcription_pairs, _disk_hit, audio_lang
+
+    starts, texts, audio_lang = _audio_driven_transcribe(
+        video, audio_track_index, n_seg, model, config,
+        duration_ms=duration_ms,
+    )
+    cached_segs = sampler.segments_from_starts(subtitles, starts)
+    transcription_pairs = [
+        (i + 1, seg, txt)
+        for i, (seg, txt) in enumerate(zip(cached_segs, texts))
+    ]
+    new_cache = _cache_module.VideoCache(
+        segment_starts=starts,
+        transcriptions=texts,
+        audio_lang=audio_lang,
+        audio_track_index=audio_track_index,
+        audio_track_lang=audio_track_lang,
+    )
+    _cache_module.store(
+        video, _mtime, config.model, n_seg, audio_track_index,
+        new_cache, _cfg["dir"], _cfg["ttl_days"], _cfg["max_mb"],
+    )
+    return transcription_pairs, new_cache, audio_lang
+
+
 def _score_pair(
     video: Path,
     subtitle_path: Path,
     config: "PipelineConfig",
-    model,
+    model: Any,
     video_cache: _cache_module.VideoCache | None = None,
 ) -> tuple[MatchResult, _cache_module.VideoCache]:
     subtitles = subtitle.parse(subtitle_path)
@@ -254,88 +348,29 @@ def _score_pair(
         if config.audio_track:
             audio_track_index, audio_track_lang = audio.resolve_audio_track(video, config.audio_track)
 
-    transcription_pairs: list[tuple[int, sampler.Segment, str]] = []
-    new_cache: _cache_module.VideoCache
+    transcription_pairs, new_cache, audio_lang = _gather_transcriptions(
+        video, subtitles, audio_track_index, audio_track_lang, config, model, video_cache
+    )
 
-    if video_cache is None:
-        duration_ms = audio.get_duration_ms(video)
-        n_seg = config.segments or sampler.auto_segment_count(duration_ms)
-        audio_lang: str | None = None
-
-        if not config.use_cache:
-            segs = sampler.select_segments(subtitles, duration_ms, n=config.segments)
-            for i, seg in enumerate(segs):
-                if config.on_segment is not None:
-                    config.on_segment(i + 1, len(segs))
-                elif config.verbose:
-                    print(f"  [{i + 1}/{len(segs)}]", end="\r", file=sys.stderr)
+    # OCR: populate subtitle_text for image-based subtitle tracks
+    _is_image_sub = subtitle.is_image_based(subtitle_path)
+    if _is_image_sub:
+        if ocr.pytesseract is None:
+            print("Warning: pytesseract not installed — cannot OCR image-based subtitle",
+                  file=sys.stderr)
+        else:
+            ocr_lang = _resolve_ocr_lang(subtitle_path, video)
+            for _, seg, _ in transcription_pairs:
                 try:
-                    wav_path = audio.extract_segment(
-                        video, seg.start_ms, 30_000, audio_track=audio_track_index
+                    seg.subtitle_text = ocr.ocr_window(
+                        subtitle_path, seg.start_ms, 30_000, lang=ocr_lang
                     )
-                    try:
-                        trans = transcribe.transcribe_segment(model, wav_path)
-                        if i == 0:
-                            audio_lang = trans.language
-                        transcription_pairs.append((i + 1, seg, trans.text))
-                    finally:
-                        wav_path.unlink(missing_ok=True)
+                    seg.word_count = len(seg.subtitle_text.split())
                 except Exception as exc:
                     telemetry.capture(exc)
                     if config.verbose:
-                        print(f"Warning: segment {i + 1} failed: {exc}", file=sys.stderr)
-            if config.verbose:
-                print()
-            new_cache = _cache_module.VideoCache(
-                segment_starts=[seg.start_ms for _, seg, _ in transcription_pairs],
-                transcriptions=[t for _, _, t in transcription_pairs],
-                audio_lang=audio_lang,
-                audio_track_index=audio_track_index,
-                audio_track_lang=audio_track_lang,
-            )
-        else:
-            _cfg = _cache_config(config)
-            _mtime = video.stat().st_mtime
-            _disk_hit = _cache_module.load(
-                video, _mtime, config.model, n_seg, audio_track_index, _cfg["dir"]
-            )
-            if _disk_hit is not None:
-                audio_lang = _disk_hit.audio_lang
-                cached_segs = sampler.segments_from_starts(subtitles, _disk_hit.segment_starts)
-                transcription_pairs = [
-                    (i + 1, seg, txt)
-                    for i, (seg, txt) in enumerate(zip(cached_segs, _disk_hit.transcriptions))
-                ]
-                new_cache = _disk_hit
-            else:
-                starts, texts, audio_lang = _audio_driven_transcribe(
-                    video, audio_track_index, n_seg, model, config,
-                    duration_ms=duration_ms,
-                )
-                cached_segs = sampler.segments_from_starts(subtitles, starts)
-                transcription_pairs = [
-                    (i + 1, seg, txt)
-                    for i, (seg, txt) in enumerate(zip(cached_segs, texts))
-                ]
-                new_cache = _cache_module.VideoCache(
-                    segment_starts=starts,
-                    transcriptions=texts,
-                    audio_lang=audio_lang,
-                    audio_track_index=audio_track_index,
-                    audio_track_lang=audio_track_lang,
-                )
-                _cache_module.store(
-                    video, _mtime, config.model, n_seg, audio_track_index,
-                    new_cache, _cfg["dir"], _cfg["ttl_days"], _cfg["max_mb"],
-                )
-    else:
-        audio_lang = video_cache.audio_lang
-        cached_segs = sampler.segments_from_starts(subtitles, video_cache.segment_starts)
-        transcription_pairs = [
-            (i + 1, seg, trans)
-            for i, (seg, trans) in enumerate(zip(cached_segs, video_cache.transcriptions))
-        ]
-        new_cache = video_cache
+                        print(f"Warning: OCR failed for segment at {seg.start_ms}ms: {exc}",
+                              file=sys.stderr)
 
     # OCR: populate subtitle_text for image-based subtitle tracks
     _is_image_sub = subtitle.is_image_based(subtitle_path)

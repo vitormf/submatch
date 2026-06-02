@@ -870,3 +870,57 @@ def test_process_video_subs_resync_on_drift(tmp_path):
     assert len(results) == 1
     assert results[0].result.resynced is True
     assert call_count[0] == 2
+
+
+# ── _maybe_resync unit tests ──────────────────────────────────────────────────
+
+def test_maybe_resync_noop_when_not_drift():
+    from submatch.pipeline import _maybe_resync
+    from submatch.types import MatchState
+    from unittest.mock import MagicMock
+    result = MagicMock()
+    result.state = MatchState.PASS
+    config = MagicMock()
+    config.resync = True
+    assert _maybe_resync(result, MagicMock(), MagicMock(), config, MagicMock()) is result
+
+
+def test_maybe_resync_noop_when_resync_false():
+    from submatch.pipeline import _maybe_resync
+    from submatch.types import MatchState
+    from unittest.mock import MagicMock
+    result = MagicMock()
+    result.state = MatchState.DRIFT
+    result.sync = MagicMock()
+    config = MagicMock()
+    config.resync = False
+    assert _maybe_resync(result, MagicMock(), MagicMock(), config, MagicMock()) is result
+
+
+def test_maybe_resync_copies_rescores_and_sets_resynced(tmp_path):
+    from submatch.pipeline import _maybe_resync
+    from submatch.types import MatchState
+    from submatch.sync import SyncResult
+    from unittest.mock import MagicMock, patch
+
+    sub = tmp_path / "s.srt"
+    sub.write_text("original")
+    synced = tmp_path / "synced.srt"
+    synced.write_text("synced content")
+
+    sync_r = SyncResult(synced_srt_path=synced, offset_seconds=2.0, drift_detected=True)
+    result = MagicMock()
+    result.state = MatchState.DRIFT
+    result.sync = sync_r
+    config = PipelineConfig(resync=True)
+
+    new_result = MagicMock()
+
+    with patch("submatch.pipeline._scoring._score_pair", return_value=(new_result, MagicMock())), \
+         patch("submatch.pipeline._scoring._determine_state", return_value=MatchState.PASS):
+        out = _maybe_resync(result, sub, tmp_path / "v.mkv", config, MagicMock())
+
+    assert out is new_result
+    assert out.resynced is True
+    assert not synced.exists()
+    assert sub.read_text() == "synced content"
