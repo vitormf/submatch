@@ -251,7 +251,7 @@ def test_main_sync_success_reparses_srt(tmp_path):
          patch("submatch.scoring.sync.sync_subtitle", return_value=sync_result), \
          patch("submatch.scoring.compare.aggregate", side_effect=[0.0, 1.0]), \
          patch("submatch.scoring.subtitle.parse", return_value=subs) as mock_parse:
-        with pytest.raises(SystemExit) as exc:
+        with pytest.raises(SystemExit):
             cli.main()
 
     # first pass fails (aggregate=0.0), sync runs, second pass passes (aggregate=1.0)
