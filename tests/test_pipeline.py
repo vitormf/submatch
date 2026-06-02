@@ -10,7 +10,6 @@ from submatch.output import BatchPairResult, MatchResult, MatchState
 from submatch.pipeline import PipelineConfig, run, run_batch
 from submatch.sampler import Segment
 from submatch.subtitle import Subtitle
-from submatch.sync import SyncResult
 from submatch.transcribe import TranscriptionResult
 
 VIDEO = Path("movie.mkv")

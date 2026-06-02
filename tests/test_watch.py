@@ -6,7 +6,6 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 from submatch import watch
-from submatch.pipeline import PipelineConfig
 
 
 # ── helpers ────────────────────────────────────────────────────────────────────
