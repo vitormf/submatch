@@ -63,3 +63,97 @@ def test_is_cross_language_none():
     from submatch.scoring import _is_cross_language
     assert _is_cross_language(None, "en") is False
     assert _is_cross_language("en", None) is False
+
+
+def test_score_pair_cache_hit_uses_cached_transcriptions(tmp_path):
+    """When _disk_hit is not None, transcription_pairs come from the cache (lines 281-287)."""
+    from unittest.mock import patch, MagicMock
+    from submatch.scoring import _score_pair
+    from submatch.pipeline import PipelineConfig
+    from submatch.cache import VideoCache
+    from submatch.language import LanguageResult
+
+    video = tmp_path / "movie.mkv"
+    video.touch()
+    sub = tmp_path / "movie.srt"
+    sub.write_text("")
+
+    cached = VideoCache(
+        segment_starts=[60_000],
+        transcriptions=["hello world cached text"],
+        audio_lang="en",
+        audio_track_index=0,
+        audio_track_lang=None,
+    )
+    lang = LanguageResult(
+        audio="en", subtitle_detected="en", subtitle_filename="en",
+        video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
+    )
+    config = PipelineConfig(
+        model="base", threshold=0.35, segments=None, sync=False,
+        language=None, verbose=False, audio_track=None,
+        cross_threshold=None, resync=False,
+        drift_threshold=2.0, use_cache=True,
+        cache_ttl_days=30, cache_max_mb=200, cache_dir=tmp_path,
+    )
+
+    with patch("submatch.cache.load", return_value=cached), \
+         patch("submatch.scoring.audio.get_duration_ms", return_value=3_600_000), \
+         patch("submatch.scoring.subtitle.parse", return_value=[]), \
+         patch("submatch.scoring.sampler.segments_from_starts", return_value=[]), \
+         patch("submatch.scoring.language.detect_from_text", return_value="en"), \
+         patch("submatch.scoring.language.detect_from_filename", return_value="en"), \
+         patch("submatch.scoring.language.detect_from_video", return_value=None), \
+         patch("submatch.scoring.language.build_result", return_value=lang), \
+         patch("submatch.scoring.transcribe.transcribe_segment") as mock_transcribe:
+        result, cache_out = _score_pair(video, sub, config, MagicMock())
+
+    mock_transcribe.assert_not_called()
+    assert cache_out is cached
+
+
+def test_score_pair_sync_runtime_error_keeps_fail(tmp_path):
+    """When lazy sync triggers but ffs raises RuntimeError, keep the FAIL result (lines 348-350)."""
+    from unittest.mock import patch, MagicMock
+    from submatch.scoring import _score_pair
+    from submatch.pipeline import PipelineConfig
+    from submatch.sampler import Segment
+    from submatch.subtitle import Subtitle
+    from submatch.language import LanguageResult
+    from submatch.types import MatchState
+
+    video = tmp_path / "movie.mkv"
+    video.touch()
+    sub = tmp_path / "movie.srt"
+    sub.write_text("")
+
+    subs = [Subtitle(1, 1_000, 3_500, "Hello world")]
+    segs = [Segment(60_000, 90_000, "Hello world", 2)]
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5)
+    mock_wav = MagicMock()
+    mock_wav.unlink = MagicMock()
+    lang = LanguageResult(
+        audio="en", subtitle_detected="en", subtitle_filename="en",
+        video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
+    )
+    config = PipelineConfig(
+        sync=True, segments=None, model="base", language=None,
+        cross_threshold=None, threshold=0.35, resync=False, drift_threshold=2.0,
+        device="cpu", use_cache=False,
+    )
+
+    with patch("submatch.scoring.audio.get_duration_ms", return_value=3_600_000), \
+         patch("submatch.scoring.audio.extract_segment", return_value=mock_wav), \
+         patch("submatch.scoring.sampler.select_segments", return_value=segs), \
+         patch("submatch.scoring.transcribe.transcribe_segment", return_value=mock_trans), \
+         patch("submatch.scoring.subtitle.parse", return_value=subs), \
+         patch("submatch.scoring.language.detect_from_text", return_value="en"), \
+         patch("submatch.scoring.language.detect_from_filename", return_value="en"), \
+         patch("submatch.scoring.language.detect_from_video", return_value=None), \
+         patch("submatch.scoring.language.build_result", return_value=lang), \
+         patch("submatch.scoring.compare.aggregate", return_value=0.0), \
+         patch("submatch.scoring.sync.sync_subtitle",
+               side_effect=RuntimeError("ffs not available")):
+        result, _ = _score_pair(video, sub, config, MagicMock())
+
+    assert result.state == MatchState.FAIL
