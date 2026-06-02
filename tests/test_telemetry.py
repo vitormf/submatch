@@ -240,3 +240,79 @@ def test_submatch_no_telemetry_set_in_test_suite():
         "real events to the production Sentry project. "
         "Add `os.environ['SUBMATCH_NO_TELEMETRY'] = '1'` to tests/conftest.py."
     )
+
+
+# ── direct URL detection ──────────────────────────────────────────────────────
+
+def test_get_direct_url_returns_without_raising():
+    # Covers lines 9-13: _get_direct_url is always mocked in other tests; call it directly
+    result = telemetry._get_direct_url()
+    assert result is None or isinstance(result, str)
+
+
+def test_get_direct_url_handles_exception():
+    # Covers lines 12-13: exception handler in _get_direct_url
+    mock_distribution = MagicMock(side_effect=RuntimeError("not found"))
+    with patch("importlib.metadata.distribution", mock_distribution):
+        result = telemetry._get_direct_url()
+    assert result is None
+
+
+# ── scrub list and edge cases ─────────────────────────────────────────────────
+
+def test_scrub_list_value():
+    # Covers line 28: list branch of _scrub
+    result = telemetry._scrub(["/home/user/file.mkv", "text", 42])
+    assert result == ["<path>", "text", 42]
+
+
+def test_scrub_nested_list():
+    # Covers line 28 again with nesting
+    result = telemetry._scrub(["/path/a", ["/path/b", "safe"]])
+    assert result[0] == "<path>"
+    assert result[1] == ["<path>", "safe"]
+
+
+# ── init with telemetry arg ───────────────────────────────────────────────────
+
+def test_telemetry_false_arg_disables_init(monkeypatch):
+    # Covers line 60: telemetry=False short-circuits init
+    # Must remove SUBMATCH_NO_TELEMETRY so that check doesn't fire first (line 57)
+    monkeypatch.delenv("SUBMATCH_NO_TELEMETRY", raising=False)
+    monkeypatch.setattr(telemetry, "_get_direct_url", lambda: None)
+    mock_sdk = MagicMock()
+    with patch.dict(sys.modules, {"sentry_sdk": mock_sdk}):
+        telemetry.init(_args(telemetry=False))
+    mock_sdk.init.assert_not_called()
+    assert not telemetry._enabled
+
+
+# ── import error handling ─────────────────────────────────────────────────────
+
+def test_init_when_sentry_sdk_not_installed(monkeypatch):
+    # Covers lines 82-83: ImportError path when sentry_sdk is missing
+    monkeypatch.delenv("SUBMATCH_NO_TELEMETRY", raising=False)
+    monkeypatch.setattr(telemetry, "_get_direct_url", lambda: None)
+    with patch.dict(sys.modules, {"sentry_sdk": None}):
+        telemetry.init(_args())
+    assert not telemetry._enabled
+
+
+# ── exception handling ────────────────────────────────────────────────────────
+
+def test_set_mode_swallows_exception():
+    # Covers lines 92-93: exception handler in set_mode
+    telemetry._enabled = True
+    mock_sdk = MagicMock()
+    mock_sdk.set_tag.side_effect = RuntimeError("sentry down")
+    with patch.dict(sys.modules, {"sentry_sdk": mock_sdk}):
+        telemetry.set_mode("batch")  # must not raise
+
+
+def test_capture_swallows_exception():
+    # Covers lines 102-103: exception handler in capture
+    telemetry._enabled = True
+    mock_sdk = MagicMock()
+    mock_sdk.capture_exception.side_effect = RuntimeError("sentry down")
+    with patch.dict(sys.modules, {"sentry_sdk": mock_sdk}):
+        telemetry.capture(ValueError("test"))  # must not raise
