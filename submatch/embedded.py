@@ -54,7 +54,7 @@ def _extract_image_track(video: Path, track: dict, dest_dir: Path) -> Path:
     else:
         dest = dest_dir / f"embedded_s{idx}_{lang}.sub"
         cmd = ["ffmpeg", "-y", "-i", str(video),
-               "-map", f"0:s:{idx}", str(dest)]
+               "-map", f"0:s:{idx}", "-c:s", "copy", str(dest)]
 
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, preexec_fn=os.setsid)
     try:

@@ -214,9 +214,38 @@ def test_list_subtitle_tracks_codec_none_when_absent():
 def test_extract_all_subtitle_tracks_image_track_produces_sub(tmp_path):
     """dvd_subtitle tracks must be extracted to .sub, not .srt."""
     tracks = [{"index": 0, "lang": "eng", "title": None, "codec": "dvd_subtitle"}]
-    with patch("submatch.embedded.subprocess.Popen", return_value=_mock_proc()):
+    with patch("submatch.embedded.subprocess.Popen", return_value=_mock_proc()) as mock_popen:
         result = extract_all_subtitle_tracks(Path("movie.mkv"), tracks, tmp_path)
     assert result[0].suffix == ".sub"
+    cmd = mock_popen.call_args[0][0]
+    assert "-c:s" in cmd
+    cs_idx = cmd.index("-c:s")
+    assert cmd[cs_idx + 1] == "copy"
+
+
+def test_extract_all_subtitle_tracks_image_track_propagates_error(tmp_path):
+    """ffmpeg error on an image track must raise CalledProcessError."""
+    tracks = [{"index": 0, "lang": "eng", "title": None, "codec": "dvd_subtitle"}]
+    with patch("submatch.embedded.subprocess.Popen", return_value=_mock_proc(returncode=1)):
+        with pytest.raises(subprocess.CalledProcessError):
+            extract_all_subtitle_tracks(Path("movie.mkv"), tracks, tmp_path)
+
+
+def test_extract_all_subtitle_tracks_image_track_keyboard_interrupt_kills_process_group(tmp_path):
+    """KeyboardInterrupt during image track extraction must kill the process group and re-raise."""
+    import signal
+    tracks = [{"index": 0, "lang": "eng", "title": None, "codec": "dvd_subtitle"}]
+    proc = MagicMock()
+    proc.communicate.side_effect = KeyboardInterrupt
+    proc.pid = 12345
+    with patch("submatch.embedded.subprocess.Popen", return_value=proc), \
+         patch("submatch.embedded.os.getpgid", return_value=12345) as mock_getpgid, \
+         patch("submatch.embedded.os.killpg") as mock_killpg:
+        with pytest.raises(KeyboardInterrupt):
+            extract_all_subtitle_tracks(Path("movie.mkv"), tracks, tmp_path)
+    mock_getpgid.assert_called_once_with(12345)
+    mock_killpg.assert_called_once_with(12345, signal.SIGTERM)
+    proc.wait.assert_called_once()
 
 
 def test_extract_all_subtitle_tracks_pgs_track_produces_sup(tmp_path):
