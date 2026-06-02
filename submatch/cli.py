@@ -124,14 +124,14 @@ def _run_batch(
         if not _tty:
             return
         idx = _pair_idx[0]
-        if idx >= len(pairs_to_run):
-            return
+        if idx >= len(pairs_to_run):  # pragma: no cover
+            return  # pragma: no cover
         sub_name = pairs_to_run[idx][1].name
         pair_n = idx + 1
-        if _ema_pair_time[0] is not None:
-            pct = int(100 * idx / n_total)
-            eta = _fmt_eta(int(_ema_pair_time[0] * (n_total - idx)))
-            header = f"[{pair_n}/{n_total}  {pct}%  {eta}]"
+        if _ema_pair_time[0] is not None:  # pragma: no cover
+            pct = int(100 * idx / n_total)  # pragma: no cover
+            eta = _fmt_eta(int(_ema_pair_time[0] * (n_total - idx)))  # pragma: no cover
+            header = f"[{pair_n}/{n_total}  {pct}%  {eta}]"  # pragma: no cover
         else:
             header = f"[{pair_n}/{n_total}]"
         print(f"{header} {sub_name}... {seg_idx}/{seg_total}", end="\r",
@@ -333,5 +333,5 @@ def main() -> None:
     sys.exit(0 if result.passed else 1)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     main()

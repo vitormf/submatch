@@ -4,7 +4,7 @@ install:
 	pip install -e ".[dev]"
 
 test:
-	pytest tests/ --ignore=tests/integration --cov-fail-under=95 -v
+	pytest tests/ --ignore=tests/integration --cov-fail-under=99 -v
 
 integration-test:
 	python tests/integration/prepare.py

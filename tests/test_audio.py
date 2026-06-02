@@ -335,3 +335,20 @@ def test_detect_speech_regions_returns_empty_when_no_duration():
     with patch("submatch.audio.subprocess.run", return_value=mock_result):
         regions = detect_speech_regions(Path("video.mkv"), audio_track=0)
     assert regions == []
+
+
+def test_lang_match_returns_false_for_empty_track_lang():
+    from submatch.audio import _lang_match
+    assert _lang_match("en", None) is False
+    assert _lang_match("en", "") is False
+
+
+def test_extract_segment_raises_on_nonzero_returncode(tmp_path):
+    video = tmp_path / "v.mp4"
+    video.touch()
+    proc = MagicMock()
+    proc.returncode = 1
+    proc.communicate.return_value = (b"", b"error output")
+    with patch("submatch.audio.subprocess.Popen", return_value=proc), \
+         pytest.raises(subprocess.CalledProcessError):
+        extract_segment(video, start_ms=0, duration_ms=5_000)
