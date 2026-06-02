@@ -404,8 +404,9 @@ def test_score_pair_ocr_exception_on_one_segment_continues(tmp_path):
     assert mock_ocr.call_count == 2
 
 
-def test_score_pair_warns_when_pytesseract_missing(tmp_path, capsys):
-    """When pytesseract is None, a warning is printed for image-based subtitles."""
+def test_score_pair_exits_when_tesseract_missing(tmp_path, capsys):
+    """When tesseract binary is missing, sys.exit(2) with install instructions."""
+    import pytest
     from unittest.mock import patch, MagicMock
     from submatch.scoring import _score_pair
     from submatch.pipeline import PipelineConfig
@@ -435,14 +436,17 @@ def test_score_pair_warns_when_pytesseract_missing(tmp_path, capsys):
          patch("submatch.scoring.language.detect_from_video", return_value=None), \
          patch("submatch.scoring.language.detect_from_text", return_value=None), \
          patch("submatch.scoring.language.build_result", return_value=lang_result), \
-         patch("submatch.scoring.ocr.pytesseract", new=None), \
+         patch("submatch.scoring.ocr.is_tesseract_available", return_value=False), \
          patch("submatch.scoring.ocr.ocr_window") as mock_ocr:
-        config = PipelineConfig(use_cache=False, sync=False)  # verbose=False — warning fires unconditionally
-        _score_pair(video, sub, config, MagicMock(), video_cache=cached)
+        config = PipelineConfig(use_cache=False, sync=False)
+        with pytest.raises(SystemExit) as exc_info:
+            _score_pair(video, sub, config, MagicMock(), video_cache=cached)
 
+    assert exc_info.value.code == 2
     mock_ocr.assert_not_called()
     captured = capsys.readouterr()
-    assert "pytesseract" in captured.err
+    assert "Tesseract" in captured.err
+    assert "tesseract-ocr.github.io" in captured.err
 
 
 def test_score_pair_does_not_call_ocr_for_text_subtitle(tmp_path):
