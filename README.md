@@ -81,7 +81,7 @@ submatch /media/shows/ --sub-lang pt --filter "*.srt"   # both must pass
 
 ### Cross-language matching
 
-When the subtitle language differs from the audio language (e.g. English audio with Portuguese subtitles), `submatch` automatically switches from token F1 scoring to multilingual semantic similarity using [`paraphrase-multilingual-MiniLM-L12-v2`](https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2). The score is normalized so the same `--threshold` applies to both same-language and cross-language pairs.
+When the subtitle language differs from the audio language (e.g. English audio with Portuguese subtitles), `submatch` automatically switches from token F1 scoring to multilingual semantic similarity using [`paraphrase-multilingual-MiniLM-L12-v2`](https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2). Cross-language pairs use a default threshold of `0.20` (instead of the `0.35` default for same-language pairs) because semantic similarity scores across language pairs are inherently lower even for correct matches.
 
 Use `--cross-threshold` to tune the pass/fail cutoff for translated subtitles independently:
 
@@ -134,6 +134,7 @@ Language is detected automatically from the filename or video metadata; Tesserac
 | Indonesian | ✓ | ✓ |
 | Italian | ✓ | ✓ |
 | Japanese | ✓ | ✓ |
+| Kannada | ✓ | ✓ |
 | Korean | ✓ | ✓ |
 | Latvian | ✓ | ✓ |
 | Lithuanian | ✓ | ✓ |
@@ -157,7 +158,7 @@ Language is detected automatically from the filename or video metadata; Tesserac
 | Ukrainian | ✓ | ✓ |
 | Vietnamese | ✓ | ✓ |
 
-**Audio** — Whisper can transcribe the spoken language. Chinese (Simplified) is tested via Shanghainese and Guiyangese speakers; standard Mandarin is expected to work. Basque, Filipino, Tamil, and Telugu are supported by Whisper but cross-language subtitle scoring falls well below threshold with the `base` model; use `--model small` or larger for these languages. **Subtitle** — submatch can score a subtitle in that language using token F1 (same-language) or multilingual sentence embeddings (cross-language, via [`paraphrase-multilingual-MiniLM-L12-v2`](https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2)).
+**Audio** — Whisper can transcribe the spoken language. Chinese (Simplified) is tested via Shanghainese and Guiyangese speakers; standard Mandarin is expected to work. Basque and Filipino consistently score below the cross-language threshold with the `base` model across all tested content. Tamil and Telugu score below threshold in most content but pass in some; use `--model small` or larger for more reliable results with these languages. **Subtitle** — submatch can score a subtitle in that language using token F1 (same-language) or multilingual sentence embeddings (cross-language, via [`paraphrase-multilingual-MiniLM-L12-v2`](https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2)).
 
 ## Options
 
@@ -165,7 +166,7 @@ Language is detected automatically from the filename or video metadata; Tesserac
 |---|---|---|
 | `--model` | `base` | Whisper model: `tiny`, `base`, `small`, `medium`, `large` |
 | `--threshold` | `0.35` | Pass/fail confidence cutoff (0–1) |
-| `--cross-threshold` | same as `--threshold` | Pass/fail threshold for cross-language pairs |
+| `--cross-threshold` | `0.20` | Pass/fail threshold for cross-language pairs |
 | `--segments` | auto | Number of audio segments to sample |
 | `--audio-track` | `0` | Audio track to use: integer index (0-based) or comma-separated language preference list (`jp,en,pt`). Default: track 0. |
 | `--embedded` | off | Score embedded subtitle tracks in the video container instead of external files |
