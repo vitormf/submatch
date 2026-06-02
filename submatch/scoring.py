@@ -330,9 +330,8 @@ def _score_pair(
     _is_image_sub = subtitle.is_image_based(subtitle_path)
     if _is_image_sub:
         if ocr.pytesseract is None:
-            if config.verbose:
-                print("Warning: pytesseract not installed — cannot OCR image-based subtitle",
-                      file=sys.stderr)
+            print("Warning: pytesseract not installed — cannot OCR image-based subtitle",
+                  file=sys.stderr)
         else:
             ocr_lang = _resolve_ocr_lang(subtitle_path, video)
             for _, seg, _ in transcription_pairs:
