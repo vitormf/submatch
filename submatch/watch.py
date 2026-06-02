@@ -21,8 +21,6 @@ def _score_and_print(video: Path, sub: Path, config) -> None:
     from submatch import pipeline as _pipeline, output
     try:
         result = _pipeline.run(video, sub, config)
-        if result.sync and result.sync.synced_srt_path:
-            result.sync.synced_srt_path.unlink(missing_ok=True)
         output.print_human(result, verbose=config.verbose, video=video, subtitle=sub)
     except Exception as exc:
         print(f"Error: {video.name} / {sub.name}: {exc}", file=sys.stderr)

@@ -6,7 +6,7 @@ import pytest
 
 from submatch.compare import SegmentScore
 from submatch.language import LanguageResult
-from submatch.output import BatchPairResult, MatchResult, MatchState
+from submatch.types import BatchPairResult, MatchResult, MatchState
 from submatch.pipeline import PipelineConfig, run, run_batch
 from submatch.sampler import Segment
 from submatch.subtitle import Subtitle
@@ -250,3 +250,222 @@ def test_run_batch_uses_parallel_when_workers_gt_1(mock_rw, mock_rd, mock_sgp):
     results = run_batch([(VIDEO, SUB)], config)
     assert mock_sgp.called
     assert len(results) == 1
+
+
+# ── pass_unsure ────────────────────────────────────────────────────────────────
+
+def _make_unsure_result():
+    from submatch.language import LanguageResult
+    lang = LanguageResult(audio=None, subtitle_detected=None, subtitle_filename=None,
+                          video_metadata=None, expected=None, mismatch=False,
+                          mismatch_details=[])
+    return MatchResult(confidence=0.0, passed=False, threshold=0.35,
+                       language=lang, sync=None, segments=[], model="base",
+                       state=MatchState.UNSURE)
+
+
+def test_pass_unsure_sets_passed_true_on_unsure(tmp_path):
+    video = tmp_path / "v.mkv"
+    sub = tmp_path / "s.srt"
+    config = PipelineConfig(pass_unsure=True)
+    result = _make_unsure_result()
+
+    with patch("submatch.pipeline._score_pair", return_value=(result, MagicMock())), \
+         patch("submatch.pipeline._get_model", return_value=MagicMock()), \
+         patch("submatch.pipeline._resolve_device", return_value="cpu"):
+        final = run(video, sub, config)
+
+    assert final.passed is True
+
+
+def test_pass_unsure_false_leaves_passed_false(tmp_path):
+    video = tmp_path / "v.mkv"
+    sub = tmp_path / "s.srt"
+    config = PipelineConfig(pass_unsure=False)
+    result = _make_unsure_result()
+
+    with patch("submatch.pipeline._score_pair", return_value=(result, MagicMock())), \
+         patch("submatch.pipeline._get_model", return_value=MagicMock()), \
+         patch("submatch.pipeline._resolve_device", return_value="cpu"):
+        final = run(video, sub, config)
+
+    assert final.passed is False
+
+
+def test_drift_result_always_fails(tmp_path):
+    """DRIFT result → passed=False regardless of confidence."""
+    from submatch.language import LanguageResult
+    from submatch.sync import SyncResult
+    video = tmp_path / "v.mkv"
+    sub = tmp_path / "s.srt"
+    lang = LanguageResult(audio="en", subtitle_detected="en", subtitle_filename="en",
+                          video_metadata=None, expected=None, mismatch=False,
+                          mismatch_details=[])
+    sync_tmp = tmp_path / "sync.srt"
+    sync_tmp.touch()
+    sync_r = SyncResult(synced_srt_path=sync_tmp, offset_seconds=3.0, drift_detected=True)
+    result = MatchResult(confidence=0.9, passed=True, threshold=0.35,
+                         language=lang, sync=sync_r, segments=[MagicMock()],
+                         model="base", state=MatchState.DRIFT)
+    config = PipelineConfig()
+
+    with patch("submatch.pipeline._score_pair", return_value=(result, MagicMock())), \
+         patch("submatch.pipeline._get_model", return_value=MagicMock()), \
+         patch("submatch.pipeline._resolve_device", return_value="cpu"):
+        final = run(video, sub, config)
+
+    assert final.passed is False
+
+
+# ── keep_synced ────────────────────────────────────────────────────────────────
+
+def _make_pass_result_with_sync(sync_tmp):
+    from submatch.language import LanguageResult
+    from submatch.sync import SyncResult
+    lang = LanguageResult(audio="en", subtitle_detected="en", subtitle_filename="en",
+                          video_metadata=None, expected=None, mismatch=False,
+                          mismatch_details=[])
+    sync_r = SyncResult(synced_srt_path=sync_tmp, offset_seconds=0.5, drift_detected=False)
+    return MatchResult(confidence=0.9, passed=True, threshold=0.35,
+                       language=lang, sync=sync_r, segments=[MagicMock()],
+                       model="base", state=MatchState.PASS)
+
+
+def test_keep_synced_copies_and_deletes_tmp(tmp_path):
+    video = tmp_path / "v.mkv"
+    sub = tmp_path / "s.srt"
+    sub.write_text("1\n00:00:01,000 --> 00:00:02,000\nHello\n")
+    sync_tmp = tmp_path / "sync.srt"
+    sync_tmp.write_text("[synced]")
+    config = PipelineConfig(keep_synced=True)
+    result = _make_pass_result_with_sync(sync_tmp)
+
+    with patch("submatch.pipeline._score_pair", return_value=(result, MagicMock())), \
+         patch("submatch.pipeline._get_model", return_value=MagicMock()), \
+         patch("submatch.pipeline._resolve_device", return_value="cpu"):
+        run(video, sub, config)
+
+    kept = sub.with_stem(sub.stem + ".synced")
+    assert kept.exists()
+    assert kept.read_text() == "[synced]"
+    assert not sync_tmp.exists()
+
+
+def test_keep_synced_false_deletes_tmp_only(tmp_path):
+    video = tmp_path / "v.mkv"
+    sub = tmp_path / "s.srt"
+    sub.write_text("1\n00:00:01,000 --> 00:00:02,000\nHello\n")
+    sync_tmp = tmp_path / "sync.srt"
+    sync_tmp.write_text("[synced]")
+    config = PipelineConfig(keep_synced=False)
+    result = _make_pass_result_with_sync(sync_tmp)
+
+    with patch("submatch.pipeline._score_pair", return_value=(result, MagicMock())), \
+         patch("submatch.pipeline._get_model", return_value=MagicMock()), \
+         patch("submatch.pipeline._resolve_device", return_value="cpu"):
+        run(video, sub, config)
+
+    kept = sub.with_stem(sub.stem + ".synced")
+    assert not kept.exists()
+    assert not sync_tmp.exists()
+
+
+# ── delete_failures ────────────────────────────────────────────────────────────
+
+def _make_fail_result():
+    from submatch.language import LanguageResult
+    lang = LanguageResult(audio="en", subtitle_detected="en", subtitle_filename="en",
+                          video_metadata=None, expected=None, mismatch=False,
+                          mismatch_details=[])
+    return MatchResult(confidence=0.1, passed=False, threshold=0.35,
+                       language=lang, sync=None, segments=[MagicMock()],
+                       model="base", state=MatchState.FAIL)
+
+
+def test_delete_failures_unlinks_subtitle_on_fail(tmp_path):
+    video = tmp_path / "v.mkv"
+    sub = tmp_path / "s.srt"
+    sub.write_text("1\n00:00:01,000 --> 00:00:02,000\nHello\n")
+    config = PipelineConfig(delete_failures=True)
+    result = _make_fail_result()
+
+    with patch("submatch.pipeline._score_pair", return_value=(result, MagicMock())), \
+         patch("submatch.pipeline._get_model", return_value=MagicMock()), \
+         patch("submatch.pipeline._resolve_device", return_value="cpu"):
+        run(video, sub, config)
+
+    assert not sub.exists()
+
+
+def test_delete_failures_false_keeps_subtitle_on_fail(tmp_path):
+    video = tmp_path / "v.mkv"
+    sub = tmp_path / "s.srt"
+    sub.write_text("1\n00:00:01,000 --> 00:00:02,000\nHello\n")
+    config = PipelineConfig(delete_failures=False)
+    result = _make_fail_result()
+
+    with patch("submatch.pipeline._score_pair", return_value=(result, MagicMock())), \
+         patch("submatch.pipeline._get_model", return_value=MagicMock()), \
+         patch("submatch.pipeline._resolve_device", return_value="cpu"):
+        run(video, sub, config)
+
+    assert sub.exists()
+
+
+# ── PipelineConfig.from_toml ───────────────────────────────────────────────────
+
+def test_from_toml_maps_model_and_threshold():
+    with patch("submatch.config.load_config", return_value={"model": "tiny", "threshold": 0.5}):
+        config = PipelineConfig.from_toml()
+    assert config.model == "tiny"
+    assert config.threshold == 0.5
+
+
+def test_from_toml_uses_defaults_when_config_empty():
+    with patch("submatch.config.load_config", return_value={}):
+        config = PipelineConfig.from_toml()
+    assert config.model == "base"
+    assert config.threshold == 0.35
+    assert config.sync is True
+    assert config.pass_unsure is False
+    assert config.keep_synced is False
+    assert config.delete_failures is False
+
+
+def test_from_toml_maps_new_fields():
+    with patch("submatch.config.load_config", return_value={
+        "pass_unsure": True,
+        "keep_synced": True,
+        "delete_failures": True,
+    }):
+        config = PipelineConfig.from_toml()
+    assert config.pass_unsure is True
+    assert config.keep_synced is True
+    assert config.delete_failures is True
+
+
+def test_from_toml_no_sync_maps_to_sync_false():
+    with patch("submatch.config.load_config", return_value={"no_sync": True}):
+        config = PipelineConfig.from_toml()
+    assert config.sync is False
+
+
+def test_from_toml_cache_dir_expands_tilde():
+    with patch("submatch.config.load_config", return_value={"cache_dir": "~/.cache/sm"}):
+        config = PipelineConfig.from_toml()
+    assert config.cache_dir is not None
+    assert not str(config.cache_dir).startswith("~")
+    assert str(config.cache_dir) == str(Path("~/.cache/sm").expanduser())
+
+
+def test_from_toml_cli_only_keys_are_ignored():
+    """Keys like no_recursive and sub_lang have no PipelineConfig field — silently ignored."""
+    with patch("submatch.config.load_config", return_value={
+        "no_recursive": True,
+        "sub_lang": ["en"],
+        "filter": "*.en.*",
+        "model": "small",
+    }):
+        config = PipelineConfig.from_toml()
+    assert config.model == "small"
+    assert not hasattr(config, "no_recursive")

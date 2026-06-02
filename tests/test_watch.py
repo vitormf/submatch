@@ -24,7 +24,8 @@ def test_find_pairs_non_recursive(tmp_path):
     mock.assert_called_once_with(tmp_path)
 
 
-def test_score_and_print_cleans_up_sync_tmp(tmp_path, capsys):
+def test_score_and_print_delegates_cleanup_to_pipeline(tmp_path, capsys):
+    """sync-tmp cleanup is now done inside _pipeline.run(); watch does not clean up."""
     video = tmp_path / "movie.mkv"
     sub = tmp_path / "movie.en.srt"
     sync_tmp = tmp_path / "sync.srt"
@@ -33,11 +34,12 @@ def test_score_and_print_cleans_up_sync_tmp(tmp_path, capsys):
     result = MagicMock()
     result.sync.synced_srt_path = sync_tmp
 
-    with patch("submatch.pipeline.run", return_value=result), \
+    with patch("submatch.pipeline.run", return_value=result) as mock_run, \
          patch("submatch.output.print_human"):
         watch._score_and_print(video, sub, MagicMock())
 
-    assert not sync_tmp.exists()
+    # pipeline.run was called — cleanup is pipeline's responsibility
+    mock_run.assert_called_once()
 
 
 def test_score_and_print_handles_exception(tmp_path, capsys):

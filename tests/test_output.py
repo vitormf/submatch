@@ -1,7 +1,5 @@
-from submatch.output import (
-    SegmentResult, MatchResult, MatchState, print_human,
-    _ms_to_ts, _bar,
-)
+from submatch.types import MatchState, MatchResult, SegmentResult
+from submatch.output import print_human, _ms_to_ts, _bar
 from submatch.language import LanguageResult
 from submatch.sync import SyncResult
 from pathlib import Path
@@ -146,9 +144,8 @@ def test_print_human_shows_video_metadata(capsys):
 
 # ── batch output ──────────────────────────────────────────────────────────────
 
-from submatch.output import (  # noqa: E402
-    BatchPairResult, print_batch_compact, print_batch_summary,
-)
+from submatch.types import BatchPairResult  # noqa: E402
+from submatch.output import print_batch_compact, print_batch_summary  # noqa: E402
 
 
 def _make_batch_pairs() -> list[BatchPairResult]:
