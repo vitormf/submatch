@@ -2,6 +2,7 @@ from __future__ import annotations
 import argparse
 import concurrent.futures
 import copy
+import dataclasses
 import os
 import shutil
 import sys
@@ -13,6 +14,7 @@ from pathlib import Path
 from submatch import __version__
 from submatch import audio, compare, embeddings, gpu, language, output, sampler, subtitle, sync, transcribe
 from submatch import cache as _cache_module
+from submatch import pipeline as _pipeline
 
 
 def _ensure_utf8_stdout() -> None:
@@ -256,6 +258,27 @@ def _cache_config(args: argparse.Namespace) -> dict:
         "ttl_days": getattr(args, 'cache_ttl_days', _cache_module._DEFAULT_TTL_DAYS) or _cache_module._DEFAULT_TTL_DAYS,
         "max_mb": getattr(args, 'cache_max_mb', _cache_module._DEFAULT_MAX_MB) or _cache_module._DEFAULT_MAX_MB,
     }
+
+
+def _args_to_config(args: argparse.Namespace) -> _pipeline.PipelineConfig:
+    return _pipeline.PipelineConfig(
+        model=args.model,
+        threshold=args.threshold,
+        cross_threshold=getattr(args, "cross_threshold", None),
+        segments=args.segments,
+        language=args.language,
+        sync=not args.no_sync,
+        drift_threshold=args.drift_threshold,
+        device=args.device,
+        audio_track=getattr(args, "audio_track", None),
+        workers=args.workers,
+        use_cache=not getattr(args, "no_cache", False),
+        cache_dir=Path(args.cache_dir).expanduser() if getattr(args, "cache_dir", None) else None,
+        cache_ttl_days=getattr(args, "cache_ttl_days", None),
+        cache_max_mb=getattr(args, "cache_max_mb", None),
+        resync=getattr(args, "resync", False),
+        verbose=args.verbose,
+    )
 
 
 def _audio_driven_transcribe(
@@ -866,7 +889,7 @@ def main() -> None:
     args = parse_args()
 
     if getattr(args, 'clear_cache', False):
-        _cfg = _cache_config(args)
+        _cfg = _pipeline._cache_config(_args_to_config(args))
         count = _cache_module.clear(_cfg["dir"])
         print(f"Cleared {count} cached transcription(s).")
         sys.exit(0)
