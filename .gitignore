@@ -23,3 +23,6 @@ venv/
 
 # Integration test fixtures (downloaded assets, not committed)
 tests/fixtures/
+
+# Local-only tests and fixtures (personal, never committed)
+tests/local/
