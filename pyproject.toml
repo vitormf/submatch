@@ -33,6 +33,7 @@ dependencies = [
     "tomli>=1.1.0; python_version < '3.11'",
     "watchdog>=3.0",
     "sentry-sdk>=2.0",
+    "pytesseract>=0.3.10",
 ]
 
 [project.optional-dependencies]
@@ -42,9 +43,6 @@ dev = [
     "pytest-timeout>=2.1",
     "ruff>=0.1",
     "hypothesis>=6.0",
-]
-ocr = [
-    "pytesseract>=0.3.10",
 ]
 
 [project.urls]

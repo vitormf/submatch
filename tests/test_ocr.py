@@ -1,15 +1,5 @@
 from __future__ import annotations
-import sys
 from unittest.mock import patch, MagicMock
-
-# pytesseract is an optional dependency not installed in the dev venv.
-# Inject a MagicMock so that `import pytesseract` inside submatch/ocr.py
-# succeeds at module load time, giving patch() a real target to patch.
-if "pytesseract" not in sys.modules:
-    sys.modules["pytesseract"] = MagicMock()
-
-# Ensure submatch.ocr is imported fresh after the stub is registered.
-sys.modules.pop("submatch.ocr", None)
 
 
 def _mock_proc(returncode=0):
@@ -132,17 +122,20 @@ def test_ocr_window_ffmpeg_uses_correct_time_args(tmp_path):
     assert cmd[t_idx + 1] == "30.0"
 
 
-def test_ocr_window_pytesseract_import_error_returns_empty(tmp_path):
-    sub = tmp_path / "subtitle.sub"
-    sub.touch()
+def test_is_tesseract_available_returns_true_when_installed():
+    """is_tesseract_available returns True when tesseract binary is on PATH."""
+    from submatch.ocr import is_tesseract_available
+    with patch("submatch.ocr.pytesseract.get_tesseract_version", return_value="5.0.0"):
+        assert is_tesseract_available() is True
 
-    import sys
-    with patch.dict(sys.modules, {"pytesseract": None}):
-        sys.modules.pop("submatch.ocr", None)
-        from submatch.ocr import ocr_window
-        result = ocr_window(sub, 0, 30_000, lang="eng")
 
-    assert result == ""
+def test_is_tesseract_available_returns_false_when_binary_missing():
+    """is_tesseract_available returns False when the tesseract binary is not found."""
+    import pytesseract
+    from submatch.ocr import is_tesseract_available
+    with patch("submatch.ocr.pytesseract.get_tesseract_version",
+               side_effect=pytesseract.TesseractNotFoundError):
+        assert is_tesseract_available() is False
 
 
 def test_detect_lang_from_frame_latin_script(tmp_path):
