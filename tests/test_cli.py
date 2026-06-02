@@ -299,6 +299,34 @@ def test_main_pipeline_fails(tmp_path):
     assert exc.value.code == 1
 
 
+def test_main_calls_telemetry_init(tmp_path):
+    _, _, ctx = _make_pipeline_patches(tmp_path, ["--no-sync"])
+    with patch("submatch.cli.telemetry.init") as mock_init, \
+         patch("submatch.cli.telemetry.set_mode"):
+        [c.__enter__() for c in ctx]
+        try:
+            with pytest.raises(SystemExit):
+                cli.main()
+        finally:
+            for c in reversed(ctx):
+                c.__exit__(None, None, None)
+    mock_init.assert_called_once()
+
+
+def test_main_sets_mode_single(tmp_path):
+    _, _, ctx = _make_pipeline_patches(tmp_path, ["--no-sync"])
+    with patch("submatch.cli.telemetry.init"), \
+         patch("submatch.cli.telemetry.set_mode") as mock_set_mode:
+        [c.__enter__() for c in ctx]
+        try:
+            with pytest.raises(SystemExit):
+                cli.main()
+        finally:
+            for c in reversed(ctx):
+                c.__exit__(None, None, None)
+    mock_set_mode.assert_called_with("single")
+
+
 def test_main_json_output(tmp_path):
     json_out = tmp_path / "out.json"
     _, _, ctx = _make_pipeline_patches(tmp_path, ["--json", str(json_out), "--threshold", "0.01"])
@@ -375,6 +403,24 @@ def test_main_segment_transcription_failure_warns(tmp_path, capsys):
     assert exc.value.code == 1
     err = capsys.readouterr().err
     assert "Warning" in err
+
+
+def test_main_segment_failure_calls_telemetry_capture(tmp_path):
+    _, _, ctx = _make_pipeline_patches(tmp_path, ["--no-sync"])
+    boom = RuntimeError("whisper exploded")
+    # Override the transcribe_segment mock to raise so capture() is triggered
+    ctx.append(patch("submatch.pipeline.transcribe.transcribe_segment", side_effect=boom))
+    with patch("submatch.cli.telemetry.init"), \
+         patch("submatch.cli.telemetry.set_mode"), \
+         patch("submatch.pipeline.telemetry.capture") as mock_capture:
+        [c.__enter__() for c in ctx]
+        try:
+            with pytest.raises(SystemExit):
+                cli.main()
+        finally:
+            for c in reversed(ctx):
+                c.__exit__(None, None, None)
+    mock_capture.assert_called_with(boom)
 
 
 def test_main_keep_synced_saves_file(tmp_path):
