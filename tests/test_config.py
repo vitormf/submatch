@@ -127,3 +127,23 @@ def test_cache_dir_accepted(tmp_path):
          patch.object(config, "_PROJECT_CONFIG", tmp_path / "none.toml"):
         result = config.load_config()
     assert result["cache_dir"] == "/tmp/my_cache"
+
+
+def test_load_config_telemetry_false(tmp_path):
+    cfg = tmp_path / "config.toml"
+    cfg.write_text("telemetry = false\n")
+    with patch.object(config, "_USER_CONFIG", cfg), \
+         patch.object(config, "_PROJECT_CONFIG", tmp_path / "no.toml"):
+        result = config.load_config()
+    assert result == {"telemetry": False}
+
+
+def test_load_config_unknown_key_warns_not_telemetry(tmp_path, capsys):
+    cfg = tmp_path / "config.toml"
+    cfg.write_text('telemetry = false\nmodel = "base"\n')
+    with patch.object(config, "_USER_CONFIG", cfg), \
+         patch.object(config, "_PROJECT_CONFIG", tmp_path / "no.toml"):
+        result = config.load_config()
+    captured = capsys.readouterr()
+    assert "telemetry" not in captured.err
+    assert result["telemetry"] is False
