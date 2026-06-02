@@ -18,8 +18,9 @@ def reset_telemetry():
 
 @pytest.fixture()
 def allow_telemetry(monkeypatch):
-    """Remove the test-suite opt-out so tests that verify telemetry enables can work."""
+    """Remove the test-suite opt-out and simulate a release install."""
     monkeypatch.delenv("SUBMATCH_NO_TELEMETRY", raising=False)
+    monkeypatch.setattr(telemetry, "_get_direct_url", lambda: None)
 
 
 def _args(**kwargs):
@@ -193,6 +194,40 @@ def test_set_mode_sets_tag_when_enabled():
     with patch.dict(sys.modules, {"sentry_sdk": mock_sdk}):
         telemetry.set_mode("batch")
     mock_sdk.set_tag.assert_called_once_with("submatch.mode", "batch")
+
+
+# ── dev install detection ─────────────────────────────────────────────────────
+
+def test_dev_install_detected_when_editable(allow_telemetry):
+    fake_direct_url = '{"url": "file:///home/user/submatch", "dir_info": {"editable": true}}'
+    mock_dist = MagicMock()
+    mock_dist.read_text.return_value = fake_direct_url
+    with patch("submatch.telemetry._get_direct_url", return_value=fake_direct_url):
+        mock_sdk = MagicMock()
+        with patch.dict(sys.modules, {"sentry_sdk": mock_sdk}):
+            telemetry.init(_args())
+    mock_sdk.init.assert_not_called()
+    assert not telemetry._enabled
+
+
+def test_dev_install_not_detected_when_release(allow_telemetry):
+    with patch("submatch.telemetry._get_direct_url", return_value=None):
+        mock_sdk = MagicMock()
+        with patch.dict(sys.modules, {"sentry_sdk": mock_sdk}):
+            telemetry.init(_args())
+    mock_sdk.init.assert_called_once()
+    assert telemetry._enabled
+
+
+def test_dev_install_not_detected_when_non_editable_direct_url(allow_telemetry):
+    # pip install . (non-editable from source dir) should still enable telemetry
+    non_editable = '{"url": "file:///home/user/submatch", "dir_info": {"editable": false}}'
+    with patch("submatch.telemetry._get_direct_url", return_value=non_editable):
+        mock_sdk = MagicMock()
+        with patch.dict(sys.modules, {"sentry_sdk": mock_sdk}):
+            telemetry.init(_args())
+    mock_sdk.init.assert_called_once()
+    assert telemetry._enabled
 
 
 # ── test-suite isolation ───────────────────────────────────────────────────────
