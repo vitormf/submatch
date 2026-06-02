@@ -1,5 +1,11 @@
+import os
 import shutil
 import static_ffmpeg
+
+# Prevent any test from accidentally sending events to the real Sentry project.
+# Tests that call cli.main() directly (without patching telemetry.init) would
+# otherwise initialize the SDK with the production DSN.
+os.environ.setdefault("SUBMATCH_NO_TELEMETRY", "1")
 
 if not shutil.which("ffmpeg"):
     static_ffmpeg.add_paths()
