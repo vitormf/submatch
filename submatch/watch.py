@@ -129,7 +129,7 @@ def _native_watch(
 
 def run_watch(args: argparse.Namespace, directory: Path) -> int:
     from submatch import pipeline as _pipeline
-    from submatch.cli import _args_to_config
+    from submatch.args import _args_to_config
 
     print(f"Watching {directory} — press Ctrl+C to stop", file=sys.stderr)
     device = _pipeline._resolve_device(args.device)

@@ -255,3 +255,8 @@ def test_parse_args_watch_flags(tmp_path):
     assert args.watch is True
     assert args.poll is True
     assert args.interval == 30
+
+
+def test_args_to_config_importable_from_args():
+    from submatch.args import _args_to_config
+    assert callable(_args_to_config)
