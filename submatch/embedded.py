@@ -45,16 +45,9 @@ def _extract_image_track(video: Path, track: dict, dest_dir: Path) -> Path:
     """Extract one image-based subtitle track to its native format (.sub or .sup)."""
     idx = track["index"]
     lang = track.get("lang") or "und"
-    codec = track.get("codec", "")
-
-    if codec == "hdmv_pgs_subtitle":
-        dest = dest_dir / f"embedded_s{idx}_{lang}.sup"
-        cmd = ["ffmpeg", "-y", "-i", str(video),
-               "-map", f"0:s:{idx}", "-c:s", "copy", str(dest)]
-    else:
-        dest = dest_dir / f"embedded_s{idx}_{lang}.sub"
-        cmd = ["ffmpeg", "-y", "-i", str(video),
-               "-map", f"0:s:{idx}", "-c:s", "copy", str(dest)]
+    ext = ".sup" if track.get("codec") == "hdmv_pgs_subtitle" else ".sub"
+    dest = dest_dir / f"embedded_s{idx}_{lang}{ext}"
+    cmd = ["ffmpeg", "-y", "-i", str(video), "-map", f"0:s:{idx}", "-c:s", "copy", str(dest)]
 
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, preexec_fn=os.setsid)
     try:
