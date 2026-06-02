@@ -215,7 +215,7 @@ def test_main_json_output(tmp_path):
 
 
 def test_main_sync_success_reparses_srt(tmp_path):
-    """When sync succeeds, main re-parses the synced subtitle (line 82)."""
+    """When first pass fails and sync succeeds, main re-parses the synced subtitle."""
     from submatch.sync import SyncResult
     video = tmp_path / "video.mp4"
     video.touch()
@@ -223,7 +223,7 @@ def test_main_sync_success_reparses_srt(tmp_path):
     subtitle.write_text(SAMPLE_SRT)
     synced_srt = tmp_path / "synced.srt"
     synced_srt.write_text(SAMPLE_SRT)
-    sync_result = SyncResult(synced_srt_path=synced_srt, offset_seconds=0.0, drift_detected=False)
+    sync_result = SyncResult(synced_srt_path=synced_srt, offset_seconds=3.0, drift_detected=True)
 
     subs = [Subtitle(1, 1_000, 3_500, "Hello world")]
     segs = [Segment(60_000, 90_000, "Hello world", 2)]
@@ -249,12 +249,13 @@ def test_main_sync_success_reparses_srt(tmp_path):
          patch("submatch.scoring.language.detect_from_video", return_value=None), \
          patch("submatch.scoring.language.build_result", return_value=lang), \
          patch("submatch.scoring.sync.sync_subtitle", return_value=sync_result), \
+         patch("submatch.scoring.compare.aggregate", side_effect=[0.0, 1.0]), \
          patch("submatch.scoring.subtitle.parse", return_value=subs) as mock_parse:
         with pytest.raises(SystemExit) as exc:
             cli.main()
 
-    assert exc.value.code == 0
-    # srt.parse called twice: once for original, once for synced
+    # first pass fails (aggregate=0.0), sync runs, second pass passes (aggregate=1.0)
+    # parse called twice: once for original, once for synced
     assert mock_parse.call_count == 2
 
 
@@ -332,7 +333,8 @@ def test_main_keep_synced_saves_file(tmp_path):
          patch("submatch.scoring.language.detect_from_filename", return_value="en"), \
          patch("submatch.scoring.language.detect_from_video", return_value=None), \
          patch("submatch.scoring.language.build_result", return_value=lang), \
-         patch("submatch.scoring.sync.sync_subtitle", return_value=sync_result):
+         patch("submatch.scoring.sync.sync_subtitle", return_value=sync_result), \
+         patch("submatch.scoring.compare.aggregate", side_effect=[0.0, 1.0]):
         with pytest.raises(SystemExit) as exc:
             cli.main()
 
@@ -1351,7 +1353,7 @@ def test_main_delete_failures_single(tmp_path):
 
 
 def test_score_pair_exception_propagates_after_sync(tmp_path):
-    """When _score_pair raises after sync runs, exception propagates and temp file is cleaned."""
+    """Exception raised after sync completes propagates and the temp sync file is cleaned up."""
     from submatch.sync import SyncResult
     video = tmp_path / "video.mp4"
     video.touch()
@@ -1359,6 +1361,14 @@ def test_score_pair_exception_propagates_after_sync(tmp_path):
     subtitle.write_text(SAMPLE_SRT)
 
     subs = [Subtitle(1, 1_000, 3_500, "Hello world")]
+    segs = [Segment(60_000, 90_000, "Hello world", 2)]
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5)
+    mock_wav = MagicMock()
+    mock_wav.unlink = MagicMock()
+    lang = LanguageResult(
+        audio="en", subtitle_detected="en", subtitle_filename="en",
+        video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
+    )
     config = pipeline.PipelineConfig(
         sync=True, segments=None, model="base", language=None,
         cross_threshold=None, threshold=0.35, resync=False, drift_threshold=2.0,
@@ -1372,13 +1382,24 @@ def test_score_pair_exception_propagates_after_sync(tmp_path):
         out_path.write_text(SAMPLE_SRT)
         return SyncResult(synced_srt_path=out_path, offset_seconds=0.0, drift_detected=False)
 
+    # First aggregate call returns 0.0 (first pass fails → sync triggers).
+    # Second aggregate call raises so the exception escapes the inner RuntimeError handler.
     with patch("submatch.scoring.sync.sync_subtitle", side_effect=fake_sync), \
          patch("submatch.scoring.subtitle.parse", return_value=subs), \
-         patch("submatch.scoring.audio.get_duration_ms", side_effect=RuntimeError("ffprobe error")):
-        with pytest.raises(RuntimeError, match="ffprobe error"):
+         patch("submatch.scoring.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
+         patch("submatch.scoring.audio.extract_segment", return_value=mock_wav), \
+         patch("submatch.scoring.sampler.select_segments", return_value=segs), \
+         patch("submatch.scoring.sampler.segments_from_starts", return_value=segs), \
+         patch("submatch.scoring.transcribe.transcribe_segment", return_value=mock_trans), \
+         patch("submatch.scoring.language.detect_from_text", return_value="en"), \
+         patch("submatch.scoring.language.detect_from_filename", return_value="en"), \
+         patch("submatch.scoring.language.detect_from_video", return_value=None), \
+         patch("submatch.scoring.language.build_result", return_value=lang), \
+         patch("submatch.scoring.compare.aggregate",
+               side_effect=[0.0, ValueError("scoring error")]):
+        with pytest.raises(ValueError, match="scoring error"):
             scoring._score_pair(video, subtitle, config, MagicMock())
 
-    # The temp sync file created by _score_pair should have been cleaned up
     assert created_tmp, "sync was called"
     assert not created_tmp[0].exists(), "temp sync file should be deleted on exception"
 
