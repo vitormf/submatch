@@ -180,6 +180,7 @@ def _run_batch(
     try:
         results = _pipeline.run_batch(pairs_to_run, config)
     except ImportError as exc:
+        telemetry.capture(exc)
         print(f"Error: {exc}", file=sys.stderr)
         return 2
 
@@ -322,6 +323,7 @@ def main() -> None:
     try:
         result = _pipeline.run(args.video, args.subtitle, config)
     except ImportError as exc:
+        telemetry.capture(exc)
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(2)
 
