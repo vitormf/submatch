@@ -55,7 +55,7 @@ def parse_args() -> argparse.Namespace:
                         help="delete subtitle files that fail the match check")
     parser.add_argument(
         "--cross-threshold", type=float, default=None, dest="cross_threshold",
-        help="pass/fail threshold for cross-language pairs (default: same as --threshold)",
+        help="pass/fail threshold for cross-language pairs (default: 0.20)",
     )
     parser.add_argument("--resync", action="store_true",
                         help="if timing drift detected (DRIFT), resync subtitle in place and re-score")
