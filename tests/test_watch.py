@@ -30,17 +30,12 @@ def test_score_and_print_cleans_up_sync_tmp(tmp_path, capsys):
     sync_tmp = tmp_path / "sync.srt"
     sync_tmp.touch()
 
-    from submatch import output
     result = MagicMock()
     result.sync.synced_srt_path = sync_tmp
-    result.state = output.MatchState.PASS
 
-    args = MagicMock()
-    args.verbose = False
-
-    with patch("submatch.cli._score_pair", return_value=(result, MagicMock())), \
+    with patch("submatch.pipeline.run", return_value=result), \
          patch("submatch.output.print_human"):
-        watch._score_and_print(video, sub, args, MagicMock())
+        watch._score_and_print(video, sub, MagicMock())
 
     assert not sync_tmp.exists()
 
@@ -48,11 +43,9 @@ def test_score_and_print_cleans_up_sync_tmp(tmp_path, capsys):
 def test_score_and_print_handles_exception(tmp_path, capsys):
     video = tmp_path / "movie.mkv"
     sub = tmp_path / "movie.en.srt"
-    args = MagicMock()
-    args.verbose = False
 
-    with patch("submatch.cli._score_pair", side_effect=RuntimeError("boom")):
-        watch._score_and_print(video, sub, args, MagicMock())  # must not raise
+    with patch("submatch.pipeline.run", side_effect=RuntimeError("boom")):
+        watch._score_and_print(video, sub, MagicMock())  # must not raise
 
     assert "Error" in capsys.readouterr().err
 
@@ -67,14 +60,14 @@ def test_score_existing_returns_all_pairs(tmp_path):
     args.no_recursive = False
     args.sub_lang = None
     args.filter = None
-    model = MagicMock()
+    config = MagicMock()
 
     with patch("submatch.watch._find_pairs", return_value=[(video, sub)]), \
          patch("submatch.watch._score_and_print") as mock_score:
-        result = watch._score_existing(args, tmp_path, model)
+        result = watch._score_existing(args, tmp_path, config)
 
     assert result == {(video, sub)}
-    mock_score.assert_called_once_with(video, sub, args, model)
+    mock_score.assert_called_once_with(video, sub, config)
 
 
 def test_score_existing_applies_filter(tmp_path):
@@ -86,16 +79,16 @@ def test_score_existing_applies_filter(tmp_path):
     args.no_recursive = False
     args.sub_lang = ["en"]
     args.filter = None
-    model = MagicMock()
+    config = MagicMock()
 
     from submatch import batch
     with patch("submatch.watch._find_pairs", return_value=[(video, sub_en), (video, sub_pt)]), \
          patch.object(batch, "filter_pairs", return_value=[(video, sub_en)]), \
          patch("submatch.watch._score_and_print") as mock_score:
-        result = watch._score_existing(args, tmp_path, model)
+        result = watch._score_existing(args, tmp_path, config)
 
     assert result == {(video, sub_en)}
-    mock_score.assert_called_once_with(video, sub_en, args, model)
+    mock_score.assert_called_once_with(video, sub_en, config)
 
 
 # ── _poll_loop ─────────────────────────────────────────────────────────────────
@@ -108,7 +101,7 @@ def test_poll_loop_scores_new_pairs(tmp_path):
     args.no_recursive = False
     args.sub_lang = None
     args.filter = None
-    model = MagicMock()
+    config = MagicMock()
     known: set = set()
     scored = []
 
@@ -121,10 +114,10 @@ def test_poll_loop_scores_new_pairs(tmp_path):
 
     with patch("submatch.watch._find_pairs", return_value=[(video, sub)]), \
          patch("submatch.watch._score_and_print",
-               side_effect=lambda v, s, a, m: scored.append((v, s))), \
+               side_effect=lambda v, s, c: scored.append((v, s))), \
          patch("time.sleep", side_effect=fake_sleep):
         with pytest.raises(KeyboardInterrupt):
-            watch._poll_loop(args, tmp_path, known, model, 10)
+            watch._poll_loop(config, tmp_path, known, args, 10)
 
     assert (video, sub) in known
     assert (video, sub) in scored
@@ -138,14 +131,13 @@ def test_poll_loop_skips_known_pairs(tmp_path):
     args.no_recursive = False
     args.sub_lang = None
     args.filter = None
-    model = MagicMock()
     known = {(video, sub)}
 
     with patch("submatch.watch._find_pairs", return_value=[(video, sub)]), \
          patch("submatch.watch._score_and_print") as mock_score, \
          patch("time.sleep", side_effect=KeyboardInterrupt):
         with pytest.raises(KeyboardInterrupt):
-            watch._poll_loop(args, tmp_path, known, model, 10)
+            watch._poll_loop(MagicMock(), tmp_path, known, args, 10)
 
     mock_score.assert_not_called()
 
@@ -160,7 +152,7 @@ def _make_handler(args=None, known=None):
         args.verbose = False
     if known is None:
         known = set()
-    return watch._SubtitleEventHandler(args, MagicMock(), known, threading.Lock())
+    return watch._SubtitleEventHandler(MagicMock(), known, threading.Lock(), args)
 
 
 def _event(src_path: Path, is_directory: bool = False):
@@ -240,7 +232,7 @@ def test_event_handler_applies_sub_lang_filter(tmp_path):
     args.sub_lang = ["en"]
     args.filter = None
     args.verbose = False
-    handler = watch._SubtitleEventHandler(args, MagicMock(), known, threading.Lock())
+    handler = watch._SubtitleEventHandler(MagicMock(), known, threading.Lock(), args)
 
     with patch("submatch.batch.find_pairs", return_value=[(video, sub_en), (video, sub_pt)]), \
          patch("submatch.batch.filter_pairs", return_value=[(video, sub_en)]), \
@@ -264,7 +256,7 @@ def test_native_watch_oserror_propagates(tmp_path):
 
     with patch("watchdog.observers.Observer", return_value=mock_observer):
         with pytest.raises(OSError):
-            watch._native_watch(args, tmp_path, known, MagicMock())
+            watch._native_watch(MagicMock(), tmp_path, known, args)
 
 
 def test_native_watch_stops_observer_on_keyboard_interrupt(tmp_path):
@@ -277,7 +269,7 @@ def test_native_watch_stops_observer_on_keyboard_interrupt(tmp_path):
 
     with patch("watchdog.observers.Observer", return_value=mock_observer):
         with pytest.raises(KeyboardInterrupt):
-            watch._native_watch(args, tmp_path, known, MagicMock())
+            watch._native_watch(MagicMock(), tmp_path, known, args)
 
     mock_observer.stop.assert_called_once()
     mock_observer.join.assert_called()
@@ -301,8 +293,9 @@ def _watch_args(poll: bool = False, interval: int = 10):
 def test_run_watch_prints_startup_message(tmp_path, capsys):
     args = _watch_args(poll=True)
 
-    with patch("submatch.cli._resolve_device", return_value="cpu"), \
-         patch("submatch.transcribe.load_model", return_value=MagicMock()), \
+    with patch("submatch.pipeline._resolve_device", return_value="cpu"), \
+         patch("submatch.pipeline._get_model", return_value=MagicMock()), \
+         patch("submatch.cli._args_to_config", return_value=MagicMock()), \
          patch("submatch.watch._score_existing", return_value=set()), \
          patch("submatch.watch._poll_loop", side_effect=KeyboardInterrupt):
         watch.run_watch(args, tmp_path)
@@ -315,8 +308,9 @@ def test_run_watch_prints_startup_message(tmp_path, capsys):
 def test_run_watch_poll_calls_poll_loop(tmp_path):
     args = _watch_args(poll=True)
 
-    with patch("submatch.cli._resolve_device", return_value="cpu"), \
-         patch("submatch.transcribe.load_model", return_value=MagicMock()), \
+    with patch("submatch.pipeline._resolve_device", return_value="cpu"), \
+         patch("submatch.pipeline._get_model", return_value=MagicMock()), \
+         patch("submatch.cli._args_to_config", return_value=MagicMock()), \
          patch("submatch.watch._score_existing", return_value=set()), \
          patch("submatch.watch._poll_loop", side_effect=KeyboardInterrupt) as mock_poll:
         watch.run_watch(args, tmp_path)
@@ -327,8 +321,9 @@ def test_run_watch_poll_calls_poll_loop(tmp_path):
 def test_run_watch_default_calls_native_watch(tmp_path):
     args = _watch_args(poll=False)
 
-    with patch("submatch.cli._resolve_device", return_value="cpu"), \
-         patch("submatch.transcribe.load_model", return_value=MagicMock()), \
+    with patch("submatch.pipeline._resolve_device", return_value="cpu"), \
+         patch("submatch.pipeline._get_model", return_value=MagicMock()), \
+         patch("submatch.cli._args_to_config", return_value=MagicMock()), \
          patch("submatch.watch._score_existing", return_value=set()), \
          patch("submatch.watch._native_watch", side_effect=KeyboardInterrupt) as mock_native:
         watch.run_watch(args, tmp_path)
@@ -339,8 +334,9 @@ def test_run_watch_default_calls_native_watch(tmp_path):
 def test_run_watch_keyboard_interrupt_returns_0(tmp_path, capsys):
     args = _watch_args(poll=True)
 
-    with patch("submatch.cli._resolve_device", return_value="cpu"), \
-         patch("submatch.transcribe.load_model", return_value=MagicMock()), \
+    with patch("submatch.pipeline._resolve_device", return_value="cpu"), \
+         patch("submatch.pipeline._get_model", return_value=MagicMock()), \
+         patch("submatch.cli._args_to_config", return_value=MagicMock()), \
          patch("submatch.watch._score_existing", return_value=set()), \
          patch("submatch.watch._poll_loop", side_effect=KeyboardInterrupt):
         result = watch.run_watch(args, tmp_path)
@@ -352,8 +348,9 @@ def test_run_watch_keyboard_interrupt_returns_0(tmp_path, capsys):
 def test_run_watch_watchdog_oserror_returns_2(tmp_path, capsys):
     args = _watch_args(poll=False)
 
-    with patch("submatch.cli._resolve_device", return_value="cpu"), \
-         patch("submatch.transcribe.load_model", return_value=MagicMock()), \
+    with patch("submatch.pipeline._resolve_device", return_value="cpu"), \
+         patch("submatch.pipeline._get_model", return_value=MagicMock()), \
+         patch("submatch.cli._args_to_config", return_value=MagicMock()), \
          patch("submatch.watch._score_existing", return_value=set()), \
          patch("submatch.watch._native_watch", side_effect=OSError("not supported")):
         result = watch.run_watch(args, tmp_path)
