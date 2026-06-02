@@ -5,7 +5,7 @@ import tempfile
 import threading
 from collections import Counter
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from submatch import audio, compare, embeddings, language, sampler, subtitle, sync, telemetry, transcribe
 from submatch import cache as _cache_module
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 _embed_local = threading.local()
 
 
-def _get_embed_model():
+def _get_embed_model() -> Any:
     if not hasattr(_embed_local, "model"):
         try:
             _embed_local.model = embeddings.load_embedding_model()
@@ -60,7 +60,7 @@ def _audio_driven_transcribe(
     video: Path,
     audio_track_index: int,
     n_seg: int,
-    model,
+    model: Any,
     config: PipelineConfig,
     duration_ms: int = 0,
 ) -> tuple[list[int], list[str], str | None]:
@@ -140,10 +140,10 @@ def _build_match_result(
     config: "PipelineConfig",
     audio_track_index: int,
     audio_track_lang: str | None,
-    sync_result=None,
+    sync_result: "sync.SyncResult | None" = None,
 ) -> MatchResult:
     cross_lang = _is_cross_language(audio_lang, subtitle_lang)
-    embed_model = _get_embed_model() if cross_lang else None
+    embed_model: Any = _get_embed_model() if cross_lang else None
 
     # Skip windows where the subtitle has no text but Whisper heard something —
     # that pattern (empty subtitle, non-empty transcription) indicates musical
@@ -217,7 +217,7 @@ def _gather_transcriptions(
     audio_track_index: int,
     audio_track_lang: str | None,
     config: "PipelineConfig",
-    model,
+    model: Any,
     video_cache: _cache_module.VideoCache | None = None,
 ) -> tuple[list[tuple[int, "sampler.Segment", str]], _cache_module.VideoCache, str | None]:
     """Return (transcription_pairs, new_cache, audio_lang)."""
@@ -309,7 +309,7 @@ def _score_pair(
     video: Path,
     subtitle_path: Path,
     config: "PipelineConfig",
-    model,
+    model: Any,
     video_cache: _cache_module.VideoCache | None = None,
 ) -> tuple[MatchResult, _cache_module.VideoCache]:
     subtitles = subtitle.parse(subtitle_path)
