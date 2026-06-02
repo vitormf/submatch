@@ -576,3 +576,126 @@ def test_run_scores_normally_with_odd_segment_count(
     config = PipelineConfig(use_cache=False, sync=False, device="cpu")
     result = run(VIDEO, SUB, config)
     assert result.state == MatchState.PASS
+
+
+# ── lazy sync ─────────────────────────────────────────────────────────────────
+
+@patch("submatch.scoring.sync")
+@patch("submatch.scoring.compare")
+@patch("submatch.scoring.transcribe")
+@patch("submatch.scoring.sampler")
+@patch("submatch.scoring.audio")
+@patch("submatch.scoring.language")
+@patch("submatch.scoring.subtitle")
+def test_sync_not_called_when_first_pass_passes(
+    mock_sub, mock_lang, mock_audio, mock_sampler, mock_transcribe, mock_compare, mock_sync
+):
+    """ffs must not run when the first scoring pass already passes."""
+    _apply_mocks(mock_sub, mock_lang, mock_audio, mock_sampler, mock_transcribe, mock_compare)
+    mock_compare.aggregate.return_value = 0.9
+    config = PipelineConfig(use_cache=False, sync=True, device="cpu")
+    result = run(VIDEO, SUB, config)
+    assert result.state == MatchState.PASS
+    mock_sync.sync_subtitle.assert_not_called()
+
+
+@patch("submatch.scoring.sync")
+@patch("submatch.scoring.compare")
+@patch("submatch.scoring.transcribe")
+@patch("submatch.scoring.sampler")
+@patch("submatch.scoring.audio")
+@patch("submatch.scoring.language")
+@patch("submatch.scoring.subtitle")
+def test_sync_called_when_first_pass_fails(
+    mock_sub, mock_lang, mock_audio, mock_sampler, mock_transcribe, mock_compare, mock_sync
+):
+    """ffs must run when first pass fails and sync=True."""
+    _apply_mocks(mock_sub, mock_lang, mock_audio, mock_sampler, mock_transcribe, mock_compare)
+    mock_compare.aggregate.return_value = 0.1
+    from submatch.sync import SyncResult
+    sync_tmp = MagicMock()
+    mock_sync.sync_subtitle.return_value = SyncResult(
+        synced_srt_path=sync_tmp, offset_seconds=3.0, drift_detected=True
+    )
+    mock_sub.parse.side_effect = [
+        [Subtitle(index=1, start_ms=1000, end_ms=5000, text="Hello world")],
+        [Subtitle(index=1, start_ms=4000, end_ms=8000, text="Hello world")],
+    ]
+    config = PipelineConfig(use_cache=False, sync=True, device="cpu")
+    run(VIDEO, SUB, config)
+    mock_sync.sync_subtitle.assert_called_once()
+
+
+@patch("submatch.scoring.sync")
+@patch("submatch.scoring.compare")
+@patch("submatch.scoring.transcribe")
+@patch("submatch.scoring.sampler")
+@patch("submatch.scoring.audio")
+@patch("submatch.scoring.language")
+@patch("submatch.scoring.subtitle")
+def test_sync_not_called_when_no_sync(
+    mock_sub, mock_lang, mock_audio, mock_sampler, mock_transcribe, mock_compare, mock_sync
+):
+    """ffs must never run when sync=False, even if first pass fails."""
+    _apply_mocks(mock_sub, mock_lang, mock_audio, mock_sampler, mock_transcribe, mock_compare)
+    mock_compare.aggregate.return_value = 0.1
+    config = PipelineConfig(use_cache=False, sync=False, device="cpu")
+    result = run(VIDEO, SUB, config)
+    assert result.state == MatchState.FAIL
+    mock_sync.sync_subtitle.assert_not_called()
+
+
+@patch("submatch.scoring.sync")
+@patch("submatch.scoring.compare")
+@patch("submatch.scoring.transcribe")
+@patch("submatch.scoring.sampler")
+@patch("submatch.scoring.audio")
+@patch("submatch.scoring.language")
+@patch("submatch.scoring.subtitle")
+def test_drift_state_when_sync_rescues_failing_pair(
+    mock_sub, mock_lang, mock_audio, mock_sampler, mock_transcribe, mock_compare, mock_sync
+):
+    """First pass FAIL + second pass PASS after ffs → DRIFT."""
+    _apply_mocks(mock_sub, mock_lang, mock_audio, mock_sampler, mock_transcribe, mock_compare)
+    mock_compare.aggregate.side_effect = [0.1, 0.9]
+    mock_sampler.segments_from_starts.return_value = [_seg()]
+    from submatch.sync import SyncResult
+    sync_tmp = MagicMock()
+    mock_sync.sync_subtitle.return_value = SyncResult(
+        synced_srt_path=sync_tmp, offset_seconds=3.0, drift_detected=True
+    )
+    mock_sub.parse.side_effect = [
+        [Subtitle(index=1, start_ms=1000, end_ms=5000, text="Hello world")],
+        [Subtitle(index=1, start_ms=4000, end_ms=8000, text="Hello world")],
+    ]
+    config = PipelineConfig(use_cache=False, sync=True, device="cpu")
+    result = run(VIDEO, SUB, config)
+    assert result.state == MatchState.DRIFT
+
+
+@patch("submatch.scoring.sync")
+@patch("submatch.scoring.compare")
+@patch("submatch.scoring.transcribe")
+@patch("submatch.scoring.sampler")
+@patch("submatch.scoring.audio")
+@patch("submatch.scoring.language")
+@patch("submatch.scoring.subtitle")
+def test_fail_state_when_sync_does_not_rescue(
+    mock_sub, mock_lang, mock_audio, mock_sampler, mock_transcribe, mock_compare, mock_sync
+):
+    """First pass FAIL + second pass FAIL after ffs → FAIL."""
+    _apply_mocks(mock_sub, mock_lang, mock_audio, mock_sampler, mock_transcribe, mock_compare)
+    mock_compare.aggregate.side_effect = [0.1, 0.1]
+    mock_sampler.segments_from_starts.return_value = [_seg()]
+    from submatch.sync import SyncResult
+    sync_tmp = MagicMock()
+    mock_sync.sync_subtitle.return_value = SyncResult(
+        synced_srt_path=sync_tmp, offset_seconds=3.0, drift_detected=True
+    )
+    mock_sub.parse.side_effect = [
+        [Subtitle(index=1, start_ms=1000, end_ms=5000, text="Hello world")],
+        [Subtitle(index=1, start_ms=4000, end_ms=8000, text="Hello world")],
+    ]
+    config = PipelineConfig(use_cache=False, sync=True, device="cpu")
+    result = run(VIDEO, SUB, config)
+    assert result.state == MatchState.FAIL
