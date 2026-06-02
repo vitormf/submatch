@@ -95,13 +95,7 @@ The model is downloaded on first use (~90 MB) and cached by sentence-transformer
 
 SRT, WebVTT, ASS/SSA (and any other format supported by [pysubs2](https://github.com/tkarabela/pysubs2)).
 
-**Image-based subtitles (VOBSUB `.sub` / PGS `.sup`)** are supported via OCR. Install [Tesseract](https://github.com/tesseract-ocr/tesseract) and the `pytesseract` Python binding:
-
-```bash
-# macOS
-brew install tesseract
-pip install "submatch[ocr]"
-```
+**Image-based subtitles (VOBSUB `.sub` / PGS `.sup`)** are supported via OCR. `pytesseract` is included with `pip install submatch`, but the Tesseract engine itself must be installed separately — see the [Tesseract installation guide](https://tesseract-ocr.github.io/tessdoc/Installation.html) for your platform.
 
 Language is detected automatically from the filename or video metadata; Tesseract's OSD is used as a fallback. Only the time windows that Whisper transcribes are OCR'd — not the full subtitle stream.
 
