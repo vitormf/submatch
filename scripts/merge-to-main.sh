@@ -25,11 +25,8 @@ ruff check submatch/ tests/
 echo "==> Unit tests..."
 pytest --tb=short -q
 
-echo "==> Integration fixtures..."
-python tests/integration/prepare.py
-
-echo "==> Integration tests..."
-pytest tests/integration/ --tb=short -q -x --timeout=120
+echo "==> Integration tests (fast tier)..."
+make integration-test-fast
 
 echo "==> Merging '$BRANCH' into main..."
 git -C "$MAIN_ROOT" merge --no-ff "$BRANCH" -m "Merge branch '$BRANCH'"
