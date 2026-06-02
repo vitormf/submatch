@@ -10,7 +10,7 @@ from submatch import __version__
 from submatch import audio, gpu, output, telemetry
 from submatch import cache as _cache_module
 from submatch import pipeline as _pipeline
-from submatch.types import BatchPairResult, MatchState
+from submatch.types import BatchPairResult, MatchResult, MatchState
 
 
 def _ensure_utf8_stdout() -> None:
@@ -146,7 +146,7 @@ def _fmt_eta(secs: int) -> str:
     return f"~{secs // 3600}:{(secs % 3600) // 60:02d}:{secs % 60:02d}"
 
 
-def _should_fail(result: output.MatchResult, pass_unsure: bool) -> bool:
+def _should_fail(result: MatchResult, pass_unsure: bool) -> bool:
     if result.state == MatchState.PASS:
         return False
     if result.state == MatchState.UNSURE and pass_unsure:
