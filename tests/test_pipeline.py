@@ -20,12 +20,12 @@ SUB2 = Path("other.en.srt")
 
 @pytest.fixture(autouse=True)
 def reset_model_caches():
-    from submatch import pipeline
-    for store in (pipeline._model_local, pipeline._embed_local):
+    from submatch import pipeline, scoring
+    for store in (pipeline._model_local, scoring._embed_local):
         if hasattr(store, "model"):
             del store.model
     yield
-    for store in (pipeline._model_local, pipeline._embed_local):
+    for store in (pipeline._model_local, scoring._embed_local):
         if hasattr(store, "model"):
             del store.model
 
@@ -93,12 +93,12 @@ def test_pipeline_config_override():
 
 # ---- run() ----
 
-@patch("submatch.pipeline.compare")
-@patch("submatch.pipeline.transcribe")
-@patch("submatch.pipeline.sampler")
-@patch("submatch.pipeline.audio")
-@patch("submatch.pipeline.language")
-@patch("submatch.pipeline.subtitle")
+@patch("submatch.scoring.compare")
+@patch("submatch.scoring.transcribe")
+@patch("submatch.scoring.sampler")
+@patch("submatch.scoring.audio")
+@patch("submatch.scoring.language")
+@patch("submatch.scoring.subtitle")
 def test_run_returns_pass_result(mock_sub, mock_lang, mock_audio, mock_sampler, mock_transcribe, mock_compare):
     _apply_mocks(mock_sub, mock_lang, mock_audio, mock_sampler, mock_transcribe, mock_compare)
     config = PipelineConfig(use_cache=False, sync=False, device="cpu")
@@ -111,12 +111,12 @@ def test_run_returns_pass_result(mock_sub, mock_lang, mock_audio, mock_sampler, 
     assert result.segments[0].score == 0.9
 
 
-@patch("submatch.pipeline.compare")
-@patch("submatch.pipeline.transcribe")
-@patch("submatch.pipeline.sampler")
-@patch("submatch.pipeline.audio")
-@patch("submatch.pipeline.language")
-@patch("submatch.pipeline.subtitle")
+@patch("submatch.scoring.compare")
+@patch("submatch.scoring.transcribe")
+@patch("submatch.scoring.sampler")
+@patch("submatch.scoring.audio")
+@patch("submatch.scoring.language")
+@patch("submatch.scoring.subtitle")
 def test_run_returns_fail_result(mock_sub, mock_lang, mock_audio, mock_sampler, mock_transcribe, mock_compare):
     _apply_mocks(mock_sub, mock_lang, mock_audio, mock_sampler, mock_transcribe, mock_compare)
     mock_compare.aggregate.return_value = 0.1
@@ -126,12 +126,12 @@ def test_run_returns_fail_result(mock_sub, mock_lang, mock_audio, mock_sampler, 
     assert result.confidence == 0.1
 
 
-@patch("submatch.pipeline.compare")
-@patch("submatch.pipeline.transcribe")
-@patch("submatch.pipeline.sampler")
-@patch("submatch.pipeline.audio")
-@patch("submatch.pipeline.language")
-@patch("submatch.pipeline.subtitle")
+@patch("submatch.scoring.compare")
+@patch("submatch.scoring.transcribe")
+@patch("submatch.scoring.sampler")
+@patch("submatch.scoring.audio")
+@patch("submatch.scoring.language")
+@patch("submatch.scoring.subtitle")
 def test_run_returns_unsure_when_no_segments(mock_sub, mock_lang, mock_audio, mock_sampler, mock_transcribe, mock_compare):
     _apply_mocks(mock_sub, mock_lang, mock_audio, mock_sampler, mock_transcribe, mock_compare)
     mock_sampler.select_segments.return_value = []
@@ -141,12 +141,12 @@ def test_run_returns_unsure_when_no_segments(mock_sub, mock_lang, mock_audio, mo
     assert result.state == MatchState.UNSURE
 
 
-@patch("submatch.pipeline.compare")
-@patch("submatch.pipeline.transcribe")
-@patch("submatch.pipeline.sampler")
-@patch("submatch.pipeline.audio")
-@patch("submatch.pipeline.language")
-@patch("submatch.pipeline.subtitle")
+@patch("submatch.scoring.compare")
+@patch("submatch.scoring.transcribe")
+@patch("submatch.scoring.sampler")
+@patch("submatch.scoring.audio")
+@patch("submatch.scoring.language")
+@patch("submatch.scoring.subtitle")
 def test_run_verbose_false_no_output(mock_sub, mock_lang, mock_audio, mock_sampler, mock_transcribe, mock_compare, capsys):
     _apply_mocks(mock_sub, mock_lang, mock_audio, mock_sampler, mock_transcribe, mock_compare)
     config = PipelineConfig(use_cache=False, sync=False, device="cpu", verbose=False)
@@ -156,12 +156,12 @@ def test_run_verbose_false_no_output(mock_sub, mock_lang, mock_audio, mock_sampl
     assert captured.err == ""
 
 
-@patch("submatch.pipeline.compare")
-@patch("submatch.pipeline.transcribe")
-@patch("submatch.pipeline.sampler")
-@patch("submatch.pipeline.audio")
-@patch("submatch.pipeline.language")
-@patch("submatch.pipeline.subtitle")
+@patch("submatch.scoring.compare")
+@patch("submatch.scoring.transcribe")
+@patch("submatch.scoring.sampler")
+@patch("submatch.scoring.audio")
+@patch("submatch.scoring.language")
+@patch("submatch.scoring.subtitle")
 def test_on_segment_callback_fires_per_segment(mock_sub, mock_lang, mock_audio, mock_sampler, mock_transcribe, mock_compare):
     _apply_mocks(mock_sub, mock_lang, mock_audio, mock_sampler, mock_transcribe, mock_compare)
     seg2 = Segment(start_ms=90_000, end_ms=120_000, subtitle_text="Goodbye", word_count=1)
@@ -174,12 +174,12 @@ def test_on_segment_callback_fires_per_segment(mock_sub, mock_lang, mock_audio, 
 
 # ---- run_batch() ----
 
-@patch("submatch.pipeline.compare")
-@patch("submatch.pipeline.transcribe")
-@patch("submatch.pipeline.sampler")
-@patch("submatch.pipeline.audio")
-@patch("submatch.pipeline.language")
-@patch("submatch.pipeline.subtitle")
+@patch("submatch.scoring.compare")
+@patch("submatch.scoring.transcribe")
+@patch("submatch.scoring.sampler")
+@patch("submatch.scoring.audio")
+@patch("submatch.scoring.language")
+@patch("submatch.scoring.subtitle")
 def test_run_batch_returns_list_of_results(mock_sub, mock_lang, mock_audio, mock_sampler, mock_transcribe, mock_compare):
     _apply_mocks(mock_sub, mock_lang, mock_audio, mock_sampler, mock_transcribe, mock_compare)
     config = PipelineConfig(use_cache=False, sync=False, device="cpu", workers=1)
@@ -191,12 +191,12 @@ def test_run_batch_returns_list_of_results(mock_sub, mock_lang, mock_audio, mock
     assert results[0].subtitle == SUB
 
 
-@patch("submatch.pipeline.compare")
-@patch("submatch.pipeline.transcribe")
-@patch("submatch.pipeline.sampler")
-@patch("submatch.pipeline.audio")
-@patch("submatch.pipeline.language")
-@patch("submatch.pipeline.subtitle")
+@patch("submatch.scoring.compare")
+@patch("submatch.scoring.transcribe")
+@patch("submatch.scoring.sampler")
+@patch("submatch.scoring.audio")
+@patch("submatch.scoring.language")
+@patch("submatch.scoring.subtitle")
 def test_run_batch_reuses_cache_for_same_video(mock_sub, mock_lang, mock_audio, mock_sampler, mock_transcribe, mock_compare):
     _apply_mocks(mock_sub, mock_lang, mock_audio, mock_sampler, mock_transcribe, mock_compare)
     sub2 = Path("movie.pt.srt")
@@ -207,12 +207,12 @@ def test_run_batch_reuses_cache_for_same_video(mock_sub, mock_lang, mock_audio, 
     assert mock_audio.get_duration_ms.call_count == 1
 
 
-@patch("submatch.pipeline.compare")
-@patch("submatch.pipeline.transcribe")
-@patch("submatch.pipeline.sampler")
-@patch("submatch.pipeline.audio")
-@patch("submatch.pipeline.language")
-@patch("submatch.pipeline.subtitle")
+@patch("submatch.scoring.compare")
+@patch("submatch.scoring.transcribe")
+@patch("submatch.scoring.sampler")
+@patch("submatch.scoring.audio")
+@patch("submatch.scoring.language")
+@patch("submatch.scoring.subtitle")
 def test_run_batch_on_pair_complete_fires_per_pair(mock_sub, mock_lang, mock_audio, mock_sampler, mock_transcribe, mock_compare):
     _apply_mocks(mock_sub, mock_lang, mock_audio, mock_sampler, mock_transcribe, mock_compare)
     completed = []
@@ -225,12 +225,12 @@ def test_run_batch_on_pair_complete_fires_per_pair(mock_sub, mock_lang, mock_aud
     assert all(isinstance(r, BatchPairResult) for r in completed)
 
 
-@patch("submatch.pipeline.compare")
-@patch("submatch.pipeline.transcribe")
-@patch("submatch.pipeline.sampler")
-@patch("submatch.pipeline.audio")
-@patch("submatch.pipeline.language")
-@patch("submatch.pipeline.subtitle")
+@patch("submatch.scoring.compare")
+@patch("submatch.scoring.transcribe")
+@patch("submatch.scoring.sampler")
+@patch("submatch.scoring.audio")
+@patch("submatch.scoring.language")
+@patch("submatch.scoring.subtitle")
 def test_run_batch_records_error_for_failing_pair(mock_sub, mock_lang, mock_audio, mock_sampler, mock_transcribe, mock_compare):
     _apply_mocks(mock_sub, mock_lang, mock_audio, mock_sampler, mock_transcribe, mock_compare)
     mock_audio.get_duration_ms.side_effect = RuntimeError("ffprobe failed")
@@ -270,7 +270,7 @@ def test_pass_unsure_sets_passed_true_on_unsure(tmp_path):
     config = PipelineConfig(pass_unsure=True)
     result = _make_unsure_result()
 
-    with patch("submatch.pipeline._score_pair", return_value=(result, MagicMock())), \
+    with patch("submatch.scoring._score_pair", return_value=(result, MagicMock())), \
          patch("submatch.pipeline._get_model", return_value=MagicMock()), \
          patch("submatch.pipeline._resolve_device", return_value="cpu"):
         final = run(video, sub, config)
@@ -284,7 +284,7 @@ def test_pass_unsure_false_leaves_passed_false(tmp_path):
     config = PipelineConfig(pass_unsure=False)
     result = _make_unsure_result()
 
-    with patch("submatch.pipeline._score_pair", return_value=(result, MagicMock())), \
+    with patch("submatch.scoring._score_pair", return_value=(result, MagicMock())), \
          patch("submatch.pipeline._get_model", return_value=MagicMock()), \
          patch("submatch.pipeline._resolve_device", return_value="cpu"):
         final = run(video, sub, config)
@@ -309,7 +309,7 @@ def test_drift_result_always_fails(tmp_path):
                          model="base", state=MatchState.DRIFT)
     config = PipelineConfig()
 
-    with patch("submatch.pipeline._score_pair", return_value=(result, MagicMock())), \
+    with patch("submatch.scoring._score_pair", return_value=(result, MagicMock())), \
          patch("submatch.pipeline._get_model", return_value=MagicMock()), \
          patch("submatch.pipeline._resolve_device", return_value="cpu"):
         final = run(video, sub, config)
@@ -340,7 +340,7 @@ def test_keep_synced_copies_and_deletes_tmp(tmp_path):
     config = PipelineConfig(keep_synced=True)
     result = _make_pass_result_with_sync(sync_tmp)
 
-    with patch("submatch.pipeline._score_pair", return_value=(result, MagicMock())), \
+    with patch("submatch.scoring._score_pair", return_value=(result, MagicMock())), \
          patch("submatch.pipeline._get_model", return_value=MagicMock()), \
          patch("submatch.pipeline._resolve_device", return_value="cpu"):
         run(video, sub, config)
@@ -360,7 +360,7 @@ def test_keep_synced_false_deletes_tmp_only(tmp_path):
     config = PipelineConfig(keep_synced=False)
     result = _make_pass_result_with_sync(sync_tmp)
 
-    with patch("submatch.pipeline._score_pair", return_value=(result, MagicMock())), \
+    with patch("submatch.scoring._score_pair", return_value=(result, MagicMock())), \
          patch("submatch.pipeline._get_model", return_value=MagicMock()), \
          patch("submatch.pipeline._resolve_device", return_value="cpu"):
         run(video, sub, config)
@@ -389,7 +389,7 @@ def test_delete_failures_unlinks_subtitle_on_fail(tmp_path):
     config = PipelineConfig(delete_failures=True)
     result = _make_fail_result()
 
-    with patch("submatch.pipeline._score_pair", return_value=(result, MagicMock())), \
+    with patch("submatch.scoring._score_pair", return_value=(result, MagicMock())), \
          patch("submatch.pipeline._get_model", return_value=MagicMock()), \
          patch("submatch.pipeline._resolve_device", return_value="cpu"):
         run(video, sub, config)
@@ -404,7 +404,7 @@ def test_delete_failures_false_keeps_subtitle_on_fail(tmp_path):
     config = PipelineConfig(delete_failures=False)
     result = _make_fail_result()
 
-    with patch("submatch.pipeline._score_pair", return_value=(result, MagicMock())), \
+    with patch("submatch.scoring._score_pair", return_value=(result, MagicMock())), \
          patch("submatch.pipeline._get_model", return_value=MagicMock()), \
          patch("submatch.pipeline._resolve_device", return_value="cpu"):
         run(video, sub, config)

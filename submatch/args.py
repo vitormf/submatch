@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 from submatch import __version__
+from submatch import pipeline as _pipeline
 
 
 def parse_args() -> argparse.Namespace:
@@ -98,3 +99,27 @@ def parse_args() -> argparse.Namespace:
             args.sub_lang = list(_sub_lang_default)
 
     return args
+
+
+def _args_to_config(args: argparse.Namespace) -> _pipeline.PipelineConfig:
+    return _pipeline.PipelineConfig(
+        model=args.model,
+        threshold=args.threshold,
+        cross_threshold=getattr(args, "cross_threshold", None),
+        segments=args.segments,
+        language=args.language,
+        sync=not args.no_sync,
+        drift_threshold=args.drift_threshold,
+        device=args.device,
+        audio_track=getattr(args, "audio_track", None),
+        workers=args.workers,
+        use_cache=not getattr(args, "no_cache", False),
+        cache_dir=Path(args.cache_dir).expanduser() if getattr(args, "cache_dir", None) else None,
+        cache_ttl_days=getattr(args, "cache_ttl_days", None),
+        cache_max_mb=getattr(args, "cache_max_mb", None),
+        resync=getattr(args, "resync", False),
+        pass_unsure=getattr(args, "pass_unsure", False),
+        keep_synced=getattr(args, "keep_synced", False),
+        delete_failures=getattr(args, "delete_failures", False),
+        verbose=args.verbose,
+    )
