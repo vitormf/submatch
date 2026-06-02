@@ -115,3 +115,32 @@ def test_transcribe_segment_no_segments_gives_no_speech_prob_one(tmp_path):
     wav.touch()
     result = transcribe_segment(mock_model, wav)
     assert result.no_speech_prob == 1.0
+
+
+def test_transcribe_segment_captures_avg_logprob(tmp_path):
+    mock_model = MagicMock()
+    mock_model.transcribe.return_value = {
+        "text": "hello world",
+        "language": "en",
+        "segments": [
+            {"no_speech_prob": 0.1, "avg_logprob": -0.4},
+            {"no_speech_prob": 0.2, "avg_logprob": -0.8},
+        ],
+    }
+    wav = tmp_path / "seg.wav"
+    wav.touch()
+    result = transcribe_segment(mock_model, wav)
+    assert result.avg_logprob == pytest.approx(-0.6)
+
+
+def test_transcribe_segment_no_segments_gives_avg_logprob_zero(tmp_path):
+    mock_model = MagicMock()
+    mock_model.transcribe.return_value = {
+        "text": "",
+        "language": "en",
+        "segments": [],
+    }
+    wav = tmp_path / "seg.wav"
+    wav.touch()
+    result = transcribe_segment(mock_model, wav)
+    assert result.avg_logprob == 0.0
