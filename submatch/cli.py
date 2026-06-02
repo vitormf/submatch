@@ -339,19 +339,16 @@ def _run_embedded(
             vid_dir = tmp_dir / video.stem
             vid_dir.mkdir(exist_ok=True)
 
-            for track in tracks:
-                lang_tag = track["lang"] or "unk"
-                dest = vid_dir / f"embedded_s{track['index']}_{lang_tag}.srt"
-                try:
-                    _embedded.extract_subtitle_track(video, track["index"], dest)
+            try:
+                extracted = _embedded.extract_all_subtitle_tracks(video, tracks, vid_dir)
+                for idx, dest in extracted.items():
                     pairs.append((video, dest))
-                except Exception as exc:
-                    telemetry.capture(exc)
-                    print(
-                        f"Warning: could not extract track {track['index']} "
-                        f"from {video.name}: {exc}",
-                        file=sys.stderr,
-                    )
+            except Exception as exc:
+                telemetry.capture(exc)
+                print(
+                    f"Warning: could not extract subtitle tracks from {video.name}: {exc}",
+                    file=sys.stderr,
+                )
 
         if not pairs:
             print("No embedded subtitle tracks found.", file=sys.stderr)
