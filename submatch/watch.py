@@ -17,19 +17,19 @@ def _find_pairs(directory: Path, recursive: bool) -> list[tuple[Path, Path]]:
     return batch.find_pairs(directory)
 
 
-def _score_and_print(video: Path, sub: Path, args: argparse.Namespace, model) -> None:
-    from submatch import cli, output
+def _score_and_print(video: Path, sub: Path, config) -> None:
+    from submatch import pipeline as _pipeline, output
     try:
-        result, _ = cli._score_pair(video, sub, args, model, show_progress=False)
+        result = _pipeline.run(video, sub, config)
         if result.sync and result.sync.synced_srt_path:
             result.sync.synced_srt_path.unlink(missing_ok=True)
-        output.print_human(result, verbose=args.verbose, video=video, subtitle=sub)
+        output.print_human(result, verbose=config.verbose, video=video, subtitle=sub)
     except Exception as exc:
         print(f"Error: {video.name} / {sub.name}: {exc}", file=sys.stderr)
 
 
 def _score_existing(
-    args: argparse.Namespace, directory: Path, model
+    args: argparse.Namespace, directory: Path, config
 ) -> set[tuple[Path, Path]]:
     recursive = not getattr(args, "no_recursive", False)
     pairs = _find_pairs(directory, recursive)
@@ -40,16 +40,16 @@ def _score_existing(
     )
     known: set[tuple[Path, Path]] = set()
     for video, sub in pairs:
-        _score_and_print(video, sub, args, model)
+        _score_and_print(video, sub, config)
         known.add((video, sub))
     return known
 
 
 def _poll_loop(
-    args: argparse.Namespace,
+    config,
     directory: Path,
     known_pairs: set[tuple[Path, Path]],
-    model,
+    args: argparse.Namespace,
     interval: int,
 ) -> None:
     recursive = not getattr(args, "no_recursive", False)
@@ -63,23 +63,23 @@ def _poll_loop(
         )
         for video, sub in pairs:
             if (video, sub) not in known_pairs:
-                _score_and_print(video, sub, args, model)
+                _score_and_print(video, sub, config)
                 known_pairs.add((video, sub))
 
 
 class _SubtitleEventHandler(FileSystemEventHandler):
     def __init__(
         self,
-        args: argparse.Namespace,
-        model,
+        config,
         known_pairs: set[tuple[Path, Path]],
         lock: threading.Lock,
+        args: argparse.Namespace,
     ) -> None:
         super().__init__()
-        self.args = args
-        self.model = model
+        self.config = config
         self.known_pairs = known_pairs
         self.lock = lock
+        self.args = args
 
     def on_created(self, event) -> None:
         if event.is_directory:
@@ -104,20 +104,20 @@ class _SubtitleEventHandler(FileSystemEventHandler):
                 if (video, sub) in self.known_pairs:
                     continue
                 self.known_pairs.add((video, sub))
-            _score_and_print(video, sub, self.args, self.model)
+            _score_and_print(video, sub, self.config)
 
 
 def _native_watch(
-    args: argparse.Namespace,
+    config,
     directory: Path,
     known_pairs: set[tuple[Path, Path]],
-    model,
+    args: argparse.Namespace,
 ) -> None:
     from watchdog.observers import Observer
 
     recursive = not getattr(args, "no_recursive", False)
     lock = threading.Lock()
-    handler = _SubtitleEventHandler(args, model, known_pairs, lock)
+    handler = _SubtitleEventHandler(config, known_pairs, lock, args)
     observer = Observer()
     observer.schedule(handler, str(directory), recursive=recursive)
     observer.start()  # raises OSError on unsupported filesystem
@@ -130,21 +130,23 @@ def _native_watch(
 
 
 def run_watch(args: argparse.Namespace, directory: Path) -> int:
-    from submatch import cli, transcribe
+    from submatch import pipeline as _pipeline
+    from submatch.cli import _args_to_config
 
     print(f"Watching {directory} — press Ctrl+C to stop", file=sys.stderr)
-    device = cli._resolve_device(args.device)
+    device = _pipeline._resolve_device(args.device)
     print(f"Loading model ({args.model})...", file=sys.stderr, flush=True)
-    model = transcribe.load_model(args.model, device)
+    _pipeline._get_model(args.model, device)
 
-    known_pairs = _score_existing(args, directory, model)
+    config = _args_to_config(args)
+    known_pairs = _score_existing(args, directory, config)
 
     try:
         if getattr(args, "poll", False):
-            _poll_loop(args, directory, known_pairs, model, args.interval)
+            _poll_loop(config, directory, known_pairs, args, args.interval)
         else:
             try:
-                _native_watch(args, directory, known_pairs, model)
+                _native_watch(config, directory, known_pairs, args)
             except OSError as exc:
                 print(
                     f"Error: filesystem does not support native events ({exc}). Use --poll.",
