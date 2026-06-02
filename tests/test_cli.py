@@ -2283,3 +2283,77 @@ def test_check_dependencies_no_output_when_no_gpu_warning(capsys):
          patch.dict(sys.modules, {"whisper": MagicMock()}):
         cli.check_dependencies(skip_sync=True)
     assert "NVIDIA" not in capsys.readouterr().err
+
+
+# ── additional coverage tests ─────────────────────────────────────────────────
+
+def test_print_run_summary_empty_list(capsys):
+    # Covers line 62: early return when n == 0
+    cli._print_run_summary([])
+    assert capsys.readouterr().err == ""
+
+
+def test_write_reports_csv_and_html(tmp_path):
+    # Covers lines 84, 86: csv and html branches of _write_reports
+    import argparse
+    args = argparse.Namespace(json=None, csv=tmp_path / "out.csv", html=tmp_path / "out.html")
+    with patch("submatch.report.write_csv") as mock_csv, \
+         patch("submatch.report.write_html") as mock_html:
+        cli._write_reports([], args)
+    mock_csv.assert_called_once_with([], tmp_path / "out.csv")
+    mock_html.assert_called_once_with([], tmp_path / "out.html")
+
+
+def test_run_batch_import_error_returns_2(tmp_path, capsys):
+    # Covers lines 171-173: ImportError in _run_batch returns exit code 2
+    ctx = _make_batch_patches(tmp_path, ["--threshold", "0.01"])
+    [c.__enter__() for c in ctx]
+    try:
+        with patch("submatch.cli._pipeline.run_batch",
+                   side_effect=ImportError("sentence-transformers not installed")), \
+             pytest.raises(SystemExit) as exc:
+            cli.main()
+    finally:
+        for c in reversed(ctx):
+            c.__exit__(None, None, None)
+    assert exc.value.code == 2
+    assert "sentence-transformers not installed" in capsys.readouterr().err
+
+
+def test_main_clear_cache_exits_0(tmp_path, capsys):
+    # Covers lines 250-253: --clear-cache path in main()
+    with patch("sys.argv", ["submatch", "--clear-cache"]), \
+         patch("submatch.cli.telemetry.init"), \
+         patch("submatch.cli._scoring._cache_config",
+               return_value={"dir": tmp_path / "cache"}), \
+         patch("submatch.cli._cache_module.clear", return_value=5), \
+         pytest.raises(SystemExit) as exc:
+        cli.main()
+    assert exc.value.code == 0
+    assert "Cleared 5" in capsys.readouterr().out
+
+
+def test_main_no_inputs_exits_2(capsys):
+    # Covers lines 256-257: missing inputs error in main()
+    with patch("sys.argv", ["submatch"]), \
+         patch("submatch.cli.telemetry.init"), \
+         pytest.raises(SystemExit) as exc:
+        cli.main()
+    assert exc.value.code == 2
+    assert "required" in capsys.readouterr().err
+
+
+def test_main_single_import_error_exits_2(tmp_path, capsys):
+    # Covers lines 314-315: ImportError in single-pair run
+    _, _, ctx = _make_pipeline_patches(tmp_path, ["--threshold", "0.01"])
+    [c.__enter__() for c in ctx]
+    try:
+        with patch("submatch.cli._pipeline.run",
+                   side_effect=ImportError("sentence-transformers not installed")), \
+             pytest.raises(SystemExit) as exc:
+            cli.main()
+    finally:
+        for c in reversed(ctx):
+            c.__exit__(None, None, None)
+    assert exc.value.code == 2
+    assert "sentence-transformers not installed" in capsys.readouterr().err
