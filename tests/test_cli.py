@@ -405,6 +405,24 @@ def test_main_segment_transcription_failure_warns(tmp_path, capsys):
     assert "Warning" in err
 
 
+def test_main_segment_failure_calls_telemetry_capture(tmp_path):
+    _, _, ctx = _make_pipeline_patches(tmp_path, ["--no-sync"])
+    boom = RuntimeError("whisper exploded")
+    # Override the transcribe_segment mock to raise so capture() is triggered
+    ctx.append(patch("submatch.pipeline.transcribe.transcribe_segment", side_effect=boom))
+    with patch("submatch.cli.telemetry.init"), \
+         patch("submatch.cli.telemetry.set_mode"), \
+         patch("submatch.pipeline.telemetry.capture") as mock_capture:
+        [c.__enter__() for c in ctx]
+        try:
+            with pytest.raises(SystemExit):
+                cli.main()
+        finally:
+            for c in reversed(ctx):
+                c.__exit__(None, None, None)
+    mock_capture.assert_called_with(boom)
+
+
 def test_main_keep_synced_saves_file(tmp_path):
     """--keep-synced copies the synced SRT alongside the original (lines 159-162)."""
     from submatch.sync import SyncResult

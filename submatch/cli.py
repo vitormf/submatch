@@ -322,6 +322,7 @@ def _run_embedded(
             try:
                 tracks = _embedded.list_subtitle_tracks(video)
             except Exception as exc:
+                telemetry.capture(exc)
                 print(
                     f"Warning: could not list subtitle tracks for {video.name}: {exc}",
                     file=sys.stderr,
@@ -345,6 +346,7 @@ def _run_embedded(
                     _embedded.extract_subtitle_track(video, track["index"], dest)
                     pairs.append((video, dest))
                 except Exception as exc:
+                    telemetry.capture(exc)
                     print(
                         f"Warning: could not extract track {track['index']} "
                         f"from {video.name}: {exc}",
