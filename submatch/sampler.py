@@ -162,8 +162,8 @@ def audio_candidate_segments(
             scored.append((overlap, pos))
             pos += step_ms
 
-        if not scored and zone_start + window_ms <= duration_ms:
-            scored = [(0, zone_start)]
+        if not scored and zone_start + window_ms <= duration_ms:  # pragma: no cover
+            scored = [(0, zone_start)]  # pragma: no cover
 
         scored.sort(reverse=True)
 

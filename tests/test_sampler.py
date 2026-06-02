@@ -113,3 +113,14 @@ def test_audio_candidate_segments_candidates_within_video_bounds():
         for start in zone:
             assert start >= 0
             assert start + 30_000 <= duration_ms
+
+
+def test_audio_candidate_segments_fallback_to_zone_start_when_step_too_large():
+    # Covers line 148: step positions all overshoot but zone_start fits within window
+    # duration=60s, window=50s, n_zones=1 → step=18s, start@21s overshoots (71>60)
+    # fallback = [] → zone_start (~3000ms) used since 3000+50000=53000 <= 60000
+    duration_ms = 60_000
+    result = audio_candidate_segments([], duration_ms=duration_ms, n_zones=1, window_ms=50_000)
+    assert len(result) == 1
+    assert len(result[0]) == 1
+    assert result[0][0] + 50_000 <= duration_ms
