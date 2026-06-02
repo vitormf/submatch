@@ -1,4 +1,5 @@
 from __future__ import annotations
+import os
 import sys
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -13,6 +14,12 @@ def reset_telemetry():
     telemetry._enabled = False
     yield
     telemetry._enabled = False
+
+
+@pytest.fixture()
+def allow_telemetry(monkeypatch):
+    """Remove the test-suite opt-out so tests that verify telemetry enables can work."""
+    monkeypatch.delenv("SUBMATCH_NO_TELEMETRY", raising=False)
 
 
 def _args(**kwargs):
@@ -41,7 +48,7 @@ def test_config_false_disables_init():
     assert not telemetry._enabled
 
 
-def test_config_true_enables_init():
+def test_config_true_enables_init(allow_telemetry):
     mock_sdk = MagicMock()
     with patch.dict(sys.modules, {"sentry_sdk": mock_sdk}):
         telemetry.init(_args(telemetry=True))
@@ -49,7 +56,7 @@ def test_config_true_enables_init():
     assert telemetry._enabled
 
 
-def test_no_telemetry_attr_defaults_to_enabled():
+def test_no_telemetry_attr_defaults_to_enabled(allow_telemetry):
     args = SimpleNamespace(model="base", no_sync=False, device="auto",
                            workers=None, threshold=0.35)
     mock_sdk = MagicMock()
@@ -157,7 +164,7 @@ def test_capture_sends_when_enabled():
 
 # ── tags ──────────────────────────────────────────────────────────────────────
 
-def test_tags_set_from_args():
+def test_tags_set_from_args(allow_telemetry):
     mock_sdk = MagicMock()
     args = _args(model="small", no_sync=True, device="cuda", workers=2, threshold=0.5)
     with patch.dict(sys.modules, {"sentry_sdk": mock_sdk}):
@@ -186,3 +193,15 @@ def test_set_mode_sets_tag_when_enabled():
     with patch.dict(sys.modules, {"sentry_sdk": mock_sdk}):
         telemetry.set_mode("batch")
     mock_sdk.set_tag.assert_called_once_with("submatch.mode", "batch")
+
+
+# ── test-suite isolation ───────────────────────────────────────────────────────
+
+def test_submatch_no_telemetry_set_in_test_suite():
+    """SUBMATCH_NO_TELEMETRY must be set so tests never reach the real Sentry SDK."""
+    assert os.environ.get("SUBMATCH_NO_TELEMETRY"), (
+        "SUBMATCH_NO_TELEMETRY is not set. "
+        "Tests that call cli.main() without patching telemetry.init() will send "
+        "real events to the production Sentry project. "
+        "Add `os.environ['SUBMATCH_NO_TELEMETRY'] = '1'` to tests/conftest.py."
+    )
