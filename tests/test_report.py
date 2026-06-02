@@ -222,3 +222,15 @@ def test_write_html_bad_path_exits_2():
     with pytest.raises(SystemExit) as exc:
         report.write_html([], "/nonexistent/dir/out.html")
     assert exc.value.code == 2
+
+
+def test_path_encoder_converts_path_to_string():
+    from submatch.report import _PathEncoder
+    assert _PathEncoder().default(Path("/tmp/foo.txt")) == "/tmp/foo.txt"
+
+
+def test_path_encoder_fallback_raises_for_non_path():
+    from submatch.report import _PathEncoder
+    encoder = _PathEncoder()
+    with pytest.raises(TypeError):
+        encoder.default(object())

@@ -2378,3 +2378,15 @@ def test_main_single_import_error_exits_2(tmp_path, capsys):
             c.__exit__(None, None, None)
     assert exc.value.code == 2
     assert "sentence-transformers not installed" in capsys.readouterr().err
+
+
+def test_main_uses_static_ffmpeg_when_ffmpeg_missing(capsys):
+    # Covers lines 243-244: static_ffmpeg.add_paths() called when ffmpeg not on PATH
+    mock_sfmpeg = MagicMock()
+    with patch("submatch.cli.shutil.which", return_value=None), \
+         patch.dict(sys.modules, {"static_ffmpeg": mock_sfmpeg}), \
+         patch("sys.argv", ["submatch"]), \
+         patch("submatch.cli.telemetry.init"), \
+         pytest.raises(SystemExit):
+        cli.main()
+    mock_sfmpeg.add_paths.assert_called_once()
