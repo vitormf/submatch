@@ -9,6 +9,7 @@ from submatch import pipeline
 from submatch.language import LanguageResult
 from submatch.sampler import Segment
 from submatch.subtitle import Subtitle
+from submatch.types import MatchState
 from tests.conftest import SAMPLE_SRT
 
 
@@ -1599,7 +1600,7 @@ def test_batch_parallel_sync_cleans_up_synced_file(tmp_path):
 
 def _make_match_result(segments=None, passed=True, drift_detected=False, sync=None):
     """Helper to build a MatchResult for state-system tests."""
-    from submatch.output import MatchResult, SegmentResult
+    from submatch.types import MatchResult, SegmentResult
     from submatch.language import LanguageResult
     lang = LanguageResult(
         audio="en", subtitle_detected="en", subtitle_filename="en",
@@ -1638,22 +1639,22 @@ def test_fmt_eta_hours():
 
 def test_determine_state_pass():
     result = _make_match_result(passed=True, drift_detected=False)
-    assert pipeline._determine_state(result) == cli.output.MatchState.PASS
+    assert pipeline._determine_state(result) == MatchState.PASS
 
 
 def test_determine_state_drift():
     result = _make_match_result(passed=True, drift_detected=True)
-    assert pipeline._determine_state(result) == cli.output.MatchState.DRIFT
+    assert pipeline._determine_state(result) == MatchState.DRIFT
 
 
 def test_determine_state_fail():
     result = _make_match_result(passed=False, drift_detected=False)
-    assert pipeline._determine_state(result) == cli.output.MatchState.FAIL
+    assert pipeline._determine_state(result) == MatchState.FAIL
 
 
 def test_determine_state_unsure():
     result = _make_match_result(segments=[], passed=False)
-    assert pipeline._determine_state(result) == cli.output.MatchState.UNSURE
+    assert pipeline._determine_state(result) == MatchState.UNSURE
 
 
 def test_parse_args_resync_flag(tmp_path):
@@ -1673,28 +1674,28 @@ def test_parse_args_pass_unsure_flag(tmp_path):
 
 
 def test_should_fail_pass_result():
-    from submatch.output import MatchState
+    from submatch.types import MatchState
     result = _make_match_result(passed=True)
     result.state = MatchState.PASS
     assert cli._should_fail(result, False) is False
 
 
 def test_should_fail_unsure_with_pass_unsure():
-    from submatch.output import MatchState
+    from submatch.types import MatchState
     result = _make_match_result(segments=[], passed=False)
     result.state = MatchState.UNSURE
     assert cli._should_fail(result, True) is False
 
 
 def test_should_fail_unsure_without_pass_unsure():
-    from submatch.output import MatchState
+    from submatch.types import MatchState
     result = _make_match_result(segments=[], passed=False)
     result.state = MatchState.UNSURE
     assert cli._should_fail(result, False) is True
 
 
 def test_should_fail_fail_result_with_pass_unsure():
-    from submatch.output import MatchState
+    from submatch.types import MatchState
     result = _make_match_result(passed=False)
     result.state = MatchState.FAIL
     assert cli._should_fail(result, True) is True

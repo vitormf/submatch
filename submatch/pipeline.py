@@ -10,8 +10,9 @@ from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
 
-from submatch import audio, compare, embeddings, language, output, sampler, subtitle, sync, telemetry, transcribe
+from submatch import audio, compare, embeddings, language, sampler, subtitle, sync, telemetry, transcribe
 from submatch import cache as _cache_module
+from submatch.types import BatchPairResult, MatchResult, MatchState, SegmentResult
 
 
 @dataclasses.dataclass
@@ -33,7 +34,7 @@ class PipelineConfig:
     resync: bool = False
     verbose: bool = False
     on_segment: Callable[[int, int], None] | None = None
-    on_pair_complete: Callable[[output.BatchPairResult], None] | None = None
+    on_pair_complete: Callable[[BatchPairResult], None] | None = None
 
 
 def _resolve_device(requested: str) -> str:
@@ -82,14 +83,14 @@ def _is_cross_language(audio_lang: str | None, subtitle_lang: str | None) -> boo
     return audio_lang.split("-")[0].lower() != subtitle_lang.split("-")[0].lower()
 
 
-def _determine_state(result: output.MatchResult) -> output.MatchState:
+def _determine_state(result: MatchResult) -> MatchState:
     if len(result.segments) == 0:
-        return output.MatchState.UNSURE
+        return MatchState.UNSURE
     if not result.passed:
-        return output.MatchState.FAIL
+        return MatchState.FAIL
     if result.sync and result.sync.drift_detected:
-        return output.MatchState.DRIFT
-    return output.MatchState.PASS
+        return MatchState.DRIFT
+    return MatchState.PASS
 
 
 def _cache_config(config: PipelineConfig) -> dict:
@@ -181,7 +182,7 @@ def _score_pair(
     config: PipelineConfig,
     model,
     video_cache: _cache_module.VideoCache | None = None,
-) -> tuple[output.MatchResult, _cache_module.VideoCache]:
+) -> tuple[MatchResult, _cache_module.VideoCache]:
     subtitles = subtitle.parse(subtitle_path)
     subtitle_sample = " ".join(s.text for s in subtitles[:50])
     subtitle_lang = (language.detect_from_filename(subtitle_path) or
@@ -302,13 +303,13 @@ def _score_pair(
         cross_lang = _is_cross_language(audio_lang, subtitle_lang)
         embed_model = _get_embed_model() if cross_lang else None
 
-        segment_results: list[output.SegmentResult] = []
+        segment_results: list[SegmentResult] = []
         for idx, seg, trans_text in transcription_pairs:
             if cross_lang:
                 score = embeddings.cross_language_score(seg.subtitle_text, trans_text, embed_model)
             else:
                 score = compare.token_f1(seg.subtitle_text, trans_text)
-            segment_results.append(output.SegmentResult(
+            segment_results.append(SegmentResult(
                 index=idx,
                 start_ms=seg.start_ms,
                 score=score.f1,
@@ -341,7 +342,7 @@ def _score_pair(
             else config.threshold
         )
 
-        match_result = output.MatchResult(
+        match_result = MatchResult(
             confidence=confidence,
             passed=confidence >= effective_threshold,
             threshold=effective_threshold,
@@ -368,7 +369,7 @@ def _score_group_parallel(
     config: PipelineConfig,
     model_name: str,
     device: str,
-) -> list[output.BatchPairResult]:
+) -> list[BatchPairResult]:
     """Process all subtitles for one video in a single thread, sharing transcriptions."""
     model = _get_model(model_name, device)
     pair_config = dataclasses.replace(config, on_segment=None)
@@ -377,7 +378,7 @@ def _score_group_parallel(
     for sub in subs:
         try:
             result, new_cache = _score_pair(video, sub, pair_config, model, video_cache=cache)
-            if result.state == output.MatchState.DRIFT and result.sync and config.resync:
+            if result.state == MatchState.DRIFT and result.sync and config.resync:
                 synced_path = result.sync.synced_srt_path
                 try:
                     shutil.copy(synced_path, sub)
@@ -392,10 +393,10 @@ def _score_group_parallel(
                     result.sync.synced_srt_path.unlink(missing_ok=True)
             if cache is None:
                 cache = new_cache
-            pair_result = output.BatchPairResult(video=video, subtitle=sub, result=result, error=None)
+            pair_result = BatchPairResult(video=video, subtitle=sub, result=result, error=None)
         except Exception as exc:
             telemetry.capture(exc)
-            pair_result = output.BatchPairResult(video=video, subtitle=sub, result=None, error=str(exc))
+            pair_result = BatchPairResult(video=video, subtitle=sub, result=None, error=str(exc))
         results.append(pair_result)
         if config.on_pair_complete:
             config.on_pair_complete(pair_result)
@@ -406,13 +407,13 @@ def run(
     video: Path,
     subtitle: Path,
     config: PipelineConfig | None = None,
-) -> output.MatchResult:
+) -> MatchResult:
     if config is None:
         config = PipelineConfig()
     device = _resolve_device(config.device)
     model = _get_model(config.model, device)
     result, _ = _score_pair(video, subtitle, config, model)
-    if result.state == output.MatchState.DRIFT and result.sync and config.resync:
+    if result.state == MatchState.DRIFT and result.sync and config.resync:
         synced_path = result.sync.synced_srt_path
         try:
             shutil.copy(synced_path, subtitle)
@@ -428,13 +429,13 @@ def run(
 def run_batch(
     pairs: list[tuple[Path, Path]],
     config: PipelineConfig | None = None,
-) -> list[output.BatchPairResult]:
+) -> list[BatchPairResult]:
     if config is None:
         config = PipelineConfig()
     device = _resolve_device(config.device)
     workers = _resolve_workers(config.workers, device)
 
-    results: list[output.BatchPairResult] = []
+    results: list[BatchPairResult] = []
 
     if workers == 1:
         model = _get_model(config.model, device)
@@ -443,7 +444,7 @@ def run_batch(
             try:
                 cache = video_caches.get(video)
                 match_result, new_cache = _score_pair(video, sub, config, model, video_cache=cache)
-                if match_result.state == output.MatchState.DRIFT and match_result.sync and config.resync:
+                if match_result.state == MatchState.DRIFT and match_result.sync and config.resync:
                     synced_path = match_result.sync.synced_srt_path
                     try:
                         shutil.copy(synced_path, sub)
@@ -458,12 +459,12 @@ def run_batch(
                         match_result.sync.synced_srt_path.unlink(missing_ok=True)
                 if cache is None:
                     video_caches[video] = new_cache
-                pair_result = output.BatchPairResult(video=video, subtitle=sub,
-                                                     result=match_result, error=None)
+                pair_result = BatchPairResult(video=video, subtitle=sub,
+                                             result=match_result, error=None)
             except Exception as exc:
                 telemetry.capture(exc)
-                pair_result = output.BatchPairResult(video=video, subtitle=sub,
-                                                     result=None, error=str(exc))
+                pair_result = BatchPairResult(video=video, subtitle=sub,
+                                              result=None, error=str(exc))
             results.append(pair_result)
             if config.on_pair_complete:
                 config.on_pair_complete(pair_result)
@@ -491,8 +492,8 @@ def run_batch(
                 except Exception as exc:
                     telemetry.capture(exc)
                     for sub in video_groups[video]:
-                        pair_result = output.BatchPairResult(video=video, subtitle=sub,
-                                                             result=None, error=str(exc))
+                        pair_result = BatchPairResult(video=video, subtitle=sub,
+                                                     result=None, error=str(exc))
                         results.append(pair_result)
                         if config.on_pair_complete:
                             config.on_pair_complete(pair_result)

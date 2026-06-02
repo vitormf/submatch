@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from submatch.output import BatchPairResult, MatchResult, MatchState
+from submatch.types import BatchPairResult, MatchResult, MatchState
 from submatch.language import LanguageResult
 from submatch import report
 
@@ -18,7 +18,7 @@ def _make_lang() -> LanguageResult:
 
 
 def _make_result(*, passed: bool = True, confidence: float = 0.75) -> MatchResult:
-    from submatch.output import SegmentResult
+    from submatch.types import SegmentResult
     r = MatchResult(
         confidence=confidence,
         passed=passed,

@@ -10,6 +10,7 @@ from submatch import __version__
 from submatch import audio, gpu, output, telemetry
 from submatch import cache as _cache_module
 from submatch import pipeline as _pipeline
+from submatch.types import BatchPairResult, MatchState
 
 
 def _ensure_utf8_stdout() -> None:
@@ -146,9 +147,9 @@ def _fmt_eta(secs: int) -> str:
 
 
 def _should_fail(result: output.MatchResult, pass_unsure: bool) -> bool:
-    if result.state == output.MatchState.PASS:
+    if result.state == MatchState.PASS:
         return False
-    if result.state == output.MatchState.UNSURE and pass_unsure:
+    if result.state == MatchState.UNSURE and pass_unsure:
         return False
     return True
 
@@ -176,7 +177,7 @@ def _print_run_summary(pairs: list[tuple[Path, Path]]) -> None:
         )
 
 
-def _write_reports(results: list[output.BatchPairResult], args: argparse.Namespace) -> None:
+def _write_reports(results: list[BatchPairResult], args: argparse.Namespace) -> None:
     from submatch import report as _report
     if args.json:
         _report.write_json(results, args.json)
@@ -258,7 +259,7 @@ def _run_batch(
         print(f"{header} {sub_name}... {seg_idx}/{seg_total}", end="\r",
               file=sys.stderr, flush=True)
 
-    def _on_pair_complete(pair_result: output.BatchPairResult) -> None:
+    def _on_pair_complete(pair_result: BatchPairResult) -> None:
         took = time.monotonic() - _pair_start[0]
         if _tty:
             print("\r\033[K", end="", file=sys.stderr, flush=True)
@@ -292,7 +293,7 @@ def _run_batch(
 
     if args.delete_failures:
         for p in results:
-            if p.result is not None and p.result.state == output.MatchState.FAIL:
+            if p.result is not None and p.result.state == MatchState.FAIL:
                 p.subtitle.unlink(missing_ok=True)
                 print(f"Deleted: {p.subtitle}")
 
@@ -454,12 +455,12 @@ def main() -> None:
 
     output.print_human(result, verbose=args.verbose)
     _write_reports(
-        [output.BatchPairResult(video=args.video, subtitle=args.subtitle,
-                                result=result, error=None)],
+        [BatchPairResult(video=args.video, subtitle=args.subtitle,
+                         result=result, error=None)],
         args,
     )
 
-    if args.delete_failures and result.state == output.MatchState.FAIL:
+    if args.delete_failures and result.state == MatchState.FAIL:
         args.subtitle.unlink(missing_ok=True)
         print(f"Deleted: {args.subtitle}")
 
