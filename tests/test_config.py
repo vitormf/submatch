@@ -147,3 +147,19 @@ def test_load_config_unknown_key_warns_not_telemetry(tmp_path, capsys):
     captured = capsys.readouterr()
     assert "telemetry" not in captured.err
     assert result["telemetry"] is False
+
+
+def test_load_config_oserror_exits(tmp_path, capsys):
+    # Covers lines 38-40: OSError when opening config file
+    cfg = tmp_path / "config.toml"
+    cfg.write_text('model = "base"\n')
+    cfg.chmod(0o000)  # unreadable — open() raises PermissionError (OSError subclass)
+    try:
+        with patch.object(config, "_USER_CONFIG", cfg), \
+             patch.object(config, "_PROJECT_CONFIG", tmp_path / "no.toml"), \
+             pytest.raises(SystemExit) as exc:
+            config.load_config()
+        assert exc.value.code == 2
+        assert "cannot read config file" in capsys.readouterr().err
+    finally:
+        cfg.chmod(0o644)
