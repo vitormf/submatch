@@ -63,6 +63,9 @@ _ISO_1_TO_TESSERACT: dict[str, str] = {
     "vi": "vie", "id": "ind", "uk": "ukr", "hr": "hrv", "sk": "slk",
     "bg": "bul", "lt": "lit", "lv": "lav", "et": "est", "ca": "cat",
     "hi": "hin", "bn": "ben", "ta": "tam", "te": "tel", "fa": "fas",
+    "cy": "cym", "eu": "eus", "gl": "glg", "is": "isl", "la": "lat",
+    "mk": "mkd", "mr": "mar", "ms": "msa", "mt": "mlt", "sl": "slv",
+    "sr": "srp", "ur": "urd",
 }
 
 
