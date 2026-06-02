@@ -5,8 +5,8 @@ from typing import Any
 
 try:
     import tomllib
-except ImportError:
-    import tomli as tomllib  # type: ignore[no-redef]
+except ImportError:  # pragma: no cover
+    import tomli as tomllib  # type: ignore[no-redef]  # pragma: no cover
 
 _USER_CONFIG = Path.home() / ".config" / "submatch" / "config.toml"
 _PROJECT_CONFIG = Path("submatch.toml")
