@@ -36,3 +36,34 @@ def extract_subtitle_track(video: Path, index: int, dest: Path) -> None:
         raise
     if proc.returncode != 0:
         raise subprocess.CalledProcessError(proc.returncode, cmd)
+
+
+def extract_all_subtitle_tracks(
+    video: Path, tracks: list[dict], dest_dir: Path
+) -> dict[int, Path]:
+    """Extract all subtitle tracks in a single ffmpeg pass. Returns {index: path}."""
+    if not tracks:
+        return {}
+
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    paths: dict[int, Path] = {}
+    cmd = ["ffmpeg", "-y", "-i", str(video)]
+    for track in tracks:
+        idx = track["index"]
+        lang = track.get("lang") or "und"
+        dest = dest_dir / f"embedded_s{idx}_{lang}.srt"
+        paths[idx] = dest
+        cmd += ["-map", f"0:s:{idx}", "-c:s", "srt", str(dest)]
+
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, preexec_fn=os.setsid)
+    try:
+        proc.communicate()
+    except KeyboardInterrupt:
+        os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+        proc.wait()
+        raise
+    if proc.returncode != 0:
+        raise subprocess.CalledProcessError(proc.returncode, cmd)
+
+    return paths

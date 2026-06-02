@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 import pytest
 
-from submatch.embedded import list_subtitle_tracks, extract_subtitle_track
+from submatch.embedded import list_subtitle_tracks, extract_subtitle_track, extract_all_subtitle_tracks
 
 
 def _ffprobe_out(streams: list[dict]) -> str:
@@ -117,6 +117,79 @@ def test_extract_subtitle_track_keyboard_interrupt_kills_process_group(tmp_path)
         with pytest.raises(KeyboardInterrupt):
             extract_subtitle_track(Path("movie.mkv"), 0, dest)
 
+    mock_getpgid.assert_called_once_with(12345)
+    mock_killpg.assert_called_once_with(12345, signal.SIGTERM)
+    proc.wait.assert_called_once()
+
+
+# --- extract_all_subtitle_tracks ---
+
+def test_extract_all_subtitle_tracks_single_ffmpeg_call(tmp_path):
+    """All tracks must be extracted in a single ffmpeg invocation."""
+    tracks = [
+        {"index": 0, "lang": "eng", "title": None},
+        {"index": 1, "lang": "jpn", "title": None},
+        {"index": 2, "lang": "por", "title": None},
+    ]
+    with patch("submatch.embedded.subprocess.Popen", return_value=_mock_proc()) as mock_popen:
+        extract_all_subtitle_tracks(Path("movie.mkv"), tracks, tmp_path)
+    assert mock_popen.call_count == 1
+
+
+def test_extract_all_subtitle_tracks_maps_all_streams(tmp_path):
+    """Command must contain a -map 0:s:N for each track."""
+    tracks = [
+        {"index": 0, "lang": "eng", "title": None},
+        {"index": 1, "lang": "jpn", "title": None},
+    ]
+    with patch("submatch.embedded.subprocess.Popen", return_value=_mock_proc()) as mock_popen:
+        extract_all_subtitle_tracks(Path("movie.mkv"), tracks, tmp_path)
+    cmd = mock_popen.call_args[0][0]
+    maps = [cmd[i + 1] for i, arg in enumerate(cmd) if arg == "-map"]
+    assert "0:s:0" in maps
+    assert "0:s:1" in maps
+
+
+def test_extract_all_subtitle_tracks_returns_paths(tmp_path):
+    """Return value must map each track index to its output SRT path."""
+    tracks = [
+        {"index": 0, "lang": "eng", "title": None},
+        {"index": 1, "lang": "jpn", "title": None},
+    ]
+    with patch("submatch.embedded.subprocess.Popen", return_value=_mock_proc()):
+        result = extract_all_subtitle_tracks(Path("movie.mkv"), tracks, tmp_path)
+    assert set(result.keys()) == {0, 1}
+    for path in result.values():
+        assert str(path).endswith(".srt")
+        assert str(tmp_path) in str(path)
+
+
+def test_extract_all_subtitle_tracks_empty(tmp_path):
+    """Empty track list must return empty dict without calling ffmpeg."""
+    with patch("submatch.embedded.subprocess.Popen") as mock_popen:
+        result = extract_all_subtitle_tracks(Path("movie.mkv"), [], tmp_path)
+    assert result == {}
+    mock_popen.assert_not_called()
+
+
+def test_extract_all_subtitle_tracks_propagates_error(tmp_path):
+    tracks = [{"index": 0, "lang": "eng", "title": None}]
+    with patch("submatch.embedded.subprocess.Popen", return_value=_mock_proc(returncode=1)):
+        with pytest.raises(subprocess.CalledProcessError):
+            extract_all_subtitle_tracks(Path("movie.mkv"), tracks, tmp_path)
+
+
+def test_extract_all_subtitle_tracks_keyboard_interrupt_kills_process_group(tmp_path):
+    import signal
+    tracks = [{"index": 0, "lang": "eng", "title": None}]
+    proc = MagicMock()
+    proc.communicate.side_effect = KeyboardInterrupt
+    proc.pid = 12345
+    with patch("submatch.embedded.subprocess.Popen", return_value=proc), \
+         patch("submatch.embedded.os.getpgid", return_value=12345) as mock_getpgid, \
+         patch("submatch.embedded.os.killpg") as mock_killpg:
+        with pytest.raises(KeyboardInterrupt):
+            extract_all_subtitle_tracks(Path("movie.mkv"), tracks, tmp_path)
     mock_getpgid.assert_called_once_with(12345)
     mock_killpg.assert_called_once_with(12345, signal.SIGTERM)
     proc.wait.assert_called_once()
