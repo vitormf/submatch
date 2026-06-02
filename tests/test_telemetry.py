@@ -117,6 +117,26 @@ def test_scrub_windows_path():
     assert result["exception"]["values"][0]["value"] == "<path>"
 
 
+def test_scrub_frame_abs_path():
+    event = {
+        "exception": {
+            "values": [{
+                "stacktrace": {
+                    "frames": [{
+                        "abs_path": "/home/bob/.local/lib/python3.12/submatch/cli.py",
+                        "filename": "submatch/cli.py",
+                        "vars": {},
+                    }]
+                }
+            }]
+        }
+    }
+    result = telemetry._scrub_pii(event, {})
+    frame = result["exception"]["values"][0]["stacktrace"]["frames"][0]
+    assert frame["abs_path"] == "<path>"
+    assert frame["filename"] == "submatch/cli.py"  # relative path — no separator to scrub
+
+
 # ── capture ───────────────────────────────────────────────────────────────────
 
 def test_capture_noop_when_disabled():

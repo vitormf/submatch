@@ -21,6 +21,13 @@ def _scrub(value: Any) -> Any:
     return value
 
 
+def _scrub_path_field(value: Any) -> Any:
+    """Scrub a frame path field — only replaces absolute paths to avoid leaking usernames."""
+    if isinstance(value, str) and os.path.isabs(value):
+        return "<path>"
+    return value
+
+
 def _scrub_pii(event: dict, hint: dict) -> dict:
     if "exception" in event:
         for exc_val in event["exception"].get("values", []):
@@ -29,6 +36,9 @@ def _scrub_pii(event: dict, hint: dict) -> dict:
             for frame in exc_val.get("stacktrace", {}).get("frames", []):
                 if "vars" in frame:
                     frame["vars"] = _scrub(frame["vars"])
+                for key in ("abs_path", "filename"):
+                    if key in frame:
+                        frame[key] = _scrub_path_field(frame[key])
     if "extra" in event:
         event["extra"] = _scrub(event["extra"])
     return event
