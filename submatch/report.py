@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from submatch.output import BatchPairResult
+from submatch.types import BatchPairResult
 
 
 class _PathEncoder(json.JSONEncoder):

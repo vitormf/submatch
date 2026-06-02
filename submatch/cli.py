@@ -6,10 +6,11 @@ import sys
 import time
 from pathlib import Path
 
-from submatch import __version__
 from submatch import audio, gpu, output, telemetry
 from submatch import cache as _cache_module
 from submatch import pipeline as _pipeline
+from submatch.args import parse_args
+from submatch.types import BatchPairResult, MatchState
 
 
 def _ensure_utf8_stdout() -> None:
@@ -19,100 +20,6 @@ def _ensure_utf8_stdout() -> None:
             sys.stdout.reconfigure(encoding='utf-8', errors='replace')
         if hasattr(sys.stderr, 'reconfigure'):
             sys.stderr.reconfigure(encoding='utf-8', errors='replace')
-
-
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        prog="submatch",
-        description="Verify a subtitle file matches the audio content of a video.",
-    )
-    parser.add_argument("inputs", type=Path, nargs="*",
-                        help="video files, subtitle files, or directories to process")
-    parser.add_argument(
-        "--model", default="base",
-        choices=["tiny", "base", "small", "medium", "large"],
-        help="Whisper model size (default: base)",
-    )
-    parser.add_argument("--threshold", type=float, default=0.35,
-                        help="minimum confidence score to pass (default: 0.35)")
-    parser.add_argument("--segments", type=int, default=None,
-                        help="number of audio segments to sample (default: auto based on duration)")
-    parser.add_argument("--json", default=None, metavar="FILE",
-                        help="write JSON report to FILE")
-    parser.add_argument("--csv", default=None, metavar="FILE",
-                        help="write CSV report to FILE")
-    parser.add_argument("--html", default=None, metavar="FILE",
-                        help="write self-contained HTML report to FILE")
-    parser.add_argument("--compact", action="store_true",
-                        help="one-line-per-pair output in batch mode")
-    parser.add_argument("--verbose", action="store_true",
-                        help="show per-segment scores and transcriptions")
-    parser.add_argument("--language", default=None,
-                        help="expected subtitle language code (e.g. en, pt-BR)")
-    parser.add_argument("--no-sync", action="store_true",
-                        help="skip ffsubsync timing alignment")
-    parser.add_argument("--keep-synced", action="store_true",
-                        help="save the timing-corrected subtitle alongside the original")
-    parser.add_argument("--no-recursive", action="store_true", dest="no_recursive",
-                        help="do not recurse into subdirectories when expanding directories (default: recursive)")
-    parser.add_argument("--sub-lang", action="append", dest="sub_lang", metavar="CODE",
-                        help="only process subtitles matching this language prefix (repeatable, e.g. --sub-lang pt --sub-lang en)")
-    parser.add_argument("--filter", metavar="GLOB",
-                        help="only process subtitle files matching this glob pattern (e.g. '*.en.*')")
-    parser.add_argument(
-        "--device", choices=["cpu", "mps", "cuda", "auto"], default="auto",
-        help="Whisper inference device (default: auto — CUDA > CPU)",
-    )
-    parser.add_argument("--workers", type=int, default=None,
-                        help="parallel pairs in batch mode (default: auto — up to 4)")
-    parser.add_argument("--delete-failures", action="store_true", dest="delete_failures",
-                        help="delete subtitle files that fail the match check")
-    parser.add_argument(
-        "--cross-threshold", type=float, default=None, dest="cross_threshold",
-        help="pass/fail threshold for cross-language pairs (default: same as --threshold)",
-    )
-    parser.add_argument("--resync", action="store_true",
-                        help="if timing drift detected (DRIFT), resync subtitle in place and re-score")
-    parser.add_argument("--pass-unsure", action="store_true", dest="pass_unsure",
-                        help="exit 0 for UNSURE results (insufficient transcription data)")
-    parser.add_argument("--drift-threshold", type=float, default=2.0, dest="drift_threshold",
-                        help="seconds of timing offset before flagging as drift (default: 2.0)")
-    parser.add_argument("--timing", action="store_true",
-                        help="print per-phase timing breakdown (single-pair mode only)")
-    parser.add_argument(
-        "--audio-track", default=None, dest="audio_track",
-        help="audio track to use: integer index (0-based) or comma-separated language preference list (e.g. jp,en,pt)",
-    )
-    parser.add_argument("--embedded", action="store_true",
-                        help="score embedded subtitle tracks in the video container")
-    parser.add_argument("--watch", action="store_true",
-                        help="monitor a directory for new video/subtitle pairs and score them as they appear")
-    parser.add_argument("--poll", action="store_true",
-                        help="use polling instead of native filesystem events (for network mounts)")
-    parser.add_argument("--interval", type=int, default=10, metavar="N",
-                        help="seconds between polls in --poll mode (default: 10)")
-    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
-    parser.add_argument("--no-cache", action="store_true", dest="no_cache",
-                        help="disable transcription cache and use subtitle-driven segment selection")
-    parser.add_argument("--clear-cache", action="store_true", dest="clear_cache",
-                        help="delete all cached transcriptions and exit")
-
-    from submatch import config as _config
-    _cfg: dict = {}
-    if not any(a in sys.argv for a in ("--help", "-h", "--version")):
-        _cfg = _config.load_config()
-    _sub_lang_default = _cfg.pop("sub_lang", None)
-    parser.set_defaults(**_cfg)
-
-    args = parser.parse_args()
-
-    if args.sub_lang is None and _sub_lang_default is not None:
-        if isinstance(_sub_lang_default, str):
-            args.sub_lang = [_sub_lang_default]
-        else:
-            args.sub_lang = list(_sub_lang_default)
-
-    return args
 
 
 def check_dependencies(skip_sync: bool = False) -> None:
@@ -145,14 +52,6 @@ def _fmt_eta(secs: int) -> str:
     return f"~{secs // 3600}:{(secs % 3600) // 60:02d}:{secs % 60:02d}"
 
 
-def _should_fail(result: output.MatchResult, pass_unsure: bool) -> bool:
-    if result.state == output.MatchState.PASS:
-        return False
-    if result.state == output.MatchState.UNSURE and pass_unsure:
-        return False
-    return True
-
-
 _SUMMARY_THRESHOLD = 8
 
 
@@ -176,7 +75,7 @@ def _print_run_summary(pairs: list[tuple[Path, Path]]) -> None:
         )
 
 
-def _write_reports(results: list[output.BatchPairResult], args: argparse.Namespace) -> None:
+def _write_reports(results: list[BatchPairResult], args: argparse.Namespace) -> None:
     from submatch import report as _report
     if args.json:
         _report.write_json(results, args.json)
@@ -203,6 +102,9 @@ def _args_to_config(args: argparse.Namespace) -> _pipeline.PipelineConfig:
         cache_ttl_days=getattr(args, "cache_ttl_days", None),
         cache_max_mb=getattr(args, "cache_max_mb", None),
         resync=getattr(args, "resync", False),
+        pass_unsure=getattr(args, "pass_unsure", False),
+        keep_synced=getattr(args, "keep_synced", False),
+        delete_failures=getattr(args, "delete_failures", False),
         verbose=args.verbose,
     )
 
@@ -258,7 +160,7 @@ def _run_batch(
         print(f"{header} {sub_name}... {seg_idx}/{seg_total}", end="\r",
               file=sys.stderr, flush=True)
 
-    def _on_pair_complete(pair_result: output.BatchPairResult) -> None:
+    def _on_pair_complete(pair_result: BatchPairResult) -> None:
         took = time.monotonic() - _pair_start[0]
         if _tty:
             print("\r\033[K", end="", file=sys.stderr, flush=True)
@@ -271,6 +173,9 @@ def _run_batch(
         else:
             output.print_human(pair_result.result, verbose=args.verbose,
                                video=pair_result.video, subtitle=pair_result.subtitle)
+        if (config.delete_failures and pair_result.result and
+                pair_result.result.state == MatchState.FAIL):
+            print(f"Deleted: {pair_result.subtitle}")
         if _ema_pair_time[0] is None:
             _ema_pair_time[0] = took
         else:
@@ -290,18 +195,12 @@ def _run_batch(
         print(f"Error: {exc}", file=sys.stderr)
         return 2
 
-    if args.delete_failures:
-        for p in results:
-            if p.result is not None and p.result.state == output.MatchState.FAIL:
-                p.subtitle.unlink(missing_ok=True)
-                print(f"Deleted: {p.subtitle}")
-
     output.print_batch_summary(results)
     _write_reports(results, args)
 
     if any(p.error for p in results):
         return 2
-    if any(p.result and _should_fail(p.result, args.pass_unsure) for p in results):
+    if any(p.result and not p.result.passed for p in results):
         return 1
     return 0
 
@@ -441,26 +340,20 @@ def main() -> None:
     if result.resynced:
         print(f"Subtitle resynced: {args.subtitle}")
 
-    if args.keep_synced and result.sync and result.sync.synced_srt_path:
+    if config.keep_synced and result.sync:
         kept = args.subtitle.with_stem(args.subtitle.stem + ".synced")
-        shutil.copy(result.sync.synced_srt_path, kept)
         print(f"Synced subtitle saved to {kept}")
-
-    if result.sync and result.sync.synced_srt_path:
-        result.sync.synced_srt_path.unlink(missing_ok=True)
+    if config.delete_failures and result.state == MatchState.FAIL:
+        print(f"Deleted: {args.subtitle}")
 
     output.print_human(result, verbose=args.verbose)
     _write_reports(
-        [output.BatchPairResult(video=args.video, subtitle=args.subtitle,
-                                result=result, error=None)],
+        [BatchPairResult(video=args.video, subtitle=args.subtitle,
+                         result=result, error=None)],
         args,
     )
 
-    if args.delete_failures and result.state == output.MatchState.FAIL:
-        args.subtitle.unlink(missing_ok=True)
-        print(f"Deleted: {args.subtitle}")
-
-    sys.exit(0 if not _should_fail(result, args.pass_unsure) else 1)
+    sys.exit(0 if result.passed else 1)
 
 
 if __name__ == "__main__":
