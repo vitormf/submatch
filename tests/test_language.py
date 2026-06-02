@@ -208,3 +208,34 @@ def test_detect_from_video_exception_returns_none():
 def test_langdetect_delegates_to_langdetect_library():
     with patch("langdetect.detect", return_value="fr"):
         assert _langdetect("Bonjour le monde") == "fr"
+
+
+def test_to_tesseract_lang_english():
+    from submatch.language import to_tesseract_lang
+    assert to_tesseract_lang("en") == "eng"
+
+
+def test_to_tesseract_lang_portuguese():
+    from submatch.language import to_tesseract_lang
+    assert to_tesseract_lang("pt") == "por"
+
+
+def test_to_tesseract_lang_japanese():
+    from submatch.language import to_tesseract_lang
+    assert to_tesseract_lang("ja") == "jpn"
+
+
+def test_to_tesseract_lang_chinese():
+    from submatch.language import to_tesseract_lang
+    assert to_tesseract_lang("zh") == "chi_sim"
+
+
+def test_to_tesseract_lang_unknown_falls_back_to_eng():
+    from submatch.language import to_tesseract_lang
+    assert to_tesseract_lang("xx") == "eng"
+
+
+def test_to_tesseract_lang_three_letter_code():
+    from submatch.language import to_tesseract_lang
+    # Caller is expected to pass ISO 639-1; three-letter input is unknown → "eng"
+    assert to_tesseract_lang("eng") == "eng"

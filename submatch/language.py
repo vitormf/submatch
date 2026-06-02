@@ -54,6 +54,22 @@ _LANG_NAMES = {
     "vietnamese": "vi", "indonesian": "id",
 }
 
+_ISO_1_TO_TESSERACT: dict[str, str] = {
+    "en": "eng", "pt": "por", "es": "spa", "fr": "fra", "de": "deu",
+    "it": "ita", "nl": "nld", "ru": "rus", "ja": "jpn", "zh": "chi_sim",
+    "ko": "kor", "ar": "ara", "tr": "tur", "pl": "pol", "sv": "swe",
+    "da": "dan", "fi": "fin", "nb": "nor", "nn": "nor", "cs": "ces",
+    "ro": "ron", "hu": "hun", "el": "ell", "he": "heb", "th": "tha",
+    "vi": "vie", "id": "ind", "uk": "ukr", "hr": "hrv", "sk": "slk",
+    "bg": "bul", "lt": "lit", "lv": "lav", "et": "est", "ca": "cat",
+    "hi": "hin", "bn": "ben", "ta": "tam", "te": "tel", "fa": "fas",
+}
+
+
+def to_tesseract_lang(iso: str) -> str:
+    """Map an ISO 639-1 two-letter code to a Tesseract language code. Falls back to 'eng'."""
+    return _ISO_1_TO_TESSERACT.get(iso.lower(), "eng")
+
 
 def normalize_lang(code: str | None) -> str | None:
     """Return the ISO 639-1 two-letter code for *code*, or *code* lowercased if unknown."""
