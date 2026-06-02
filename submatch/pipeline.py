@@ -92,6 +92,28 @@ def _get_model(model_name: str, device: str):
     return _model_local.model
 
 
+def _maybe_resync(
+    result: MatchResult,
+    subtitle: Path,
+    video: Path,
+    config: PipelineConfig,
+    model,
+    video_cache: _cache_module.VideoCache | None = None,
+) -> MatchResult:
+    if result.state != MatchState.DRIFT or not result.sync or not config.resync:
+        return result
+    synced_path = result.sync.synced_srt_path
+    try:
+        shutil.copy(synced_path, subtitle)
+    finally:
+        synced_path.unlink(missing_ok=True)
+    resync_config = dataclasses.replace(config, sync=False)
+    result, _ = _scoring._score_pair(video, subtitle, resync_config, model, video_cache=video_cache)
+    result.state = _scoring._determine_state(result)
+    result.resynced = True
+    return result
+
+
 def _apply_postprocessing(
     result: MatchResult,
     subtitle: Path,
@@ -126,16 +148,7 @@ def _score_group_parallel(
     for sub in subs:
         try:
             result, new_cache = _scoring._score_pair(video, sub, pair_config, model, video_cache=cache)
-            if result.state == MatchState.DRIFT and result.sync and config.resync:
-                synced_path = result.sync.synced_srt_path
-                try:
-                    shutil.copy(synced_path, sub)
-                finally:
-                    synced_path.unlink(missing_ok=True)
-                resync_config = dataclasses.replace(pair_config, sync=False)
-                result, _ = _scoring._score_pair(video, sub, resync_config, model, video_cache=new_cache)
-                result.state = _scoring._determine_state(result)
-                result.resynced = True
+            result = _maybe_resync(result, sub, video, pair_config, model, video_cache=new_cache)
             result = _apply_postprocessing(result, sub, pair_config)
             if cache is None:
                 cache = new_cache
@@ -159,16 +172,7 @@ def run(
     device = _resolve_device(config.device)
     model = _get_model(config.model, device)
     result, _ = _scoring._score_pair(video, subtitle, config, model)
-    if result.state == MatchState.DRIFT and result.sync and config.resync:
-        synced_path = result.sync.synced_srt_path
-        try:
-            shutil.copy(synced_path, subtitle)
-        finally:
-            synced_path.unlink(missing_ok=True)
-        resync_config = dataclasses.replace(config, sync=False)
-        result, _ = _scoring._score_pair(video, subtitle, resync_config, model)
-        result.state = _scoring._determine_state(result)
-        result.resynced = True
+    result = _maybe_resync(result, subtitle, video, config, model)
     result = _apply_postprocessing(result, subtitle, config)
     return result
 
@@ -191,16 +195,7 @@ def run_batch(
             try:
                 cache = video_caches.get(video)
                 match_result, new_cache = _scoring._score_pair(video, sub, config, model, video_cache=cache)
-                if match_result.state == MatchState.DRIFT and match_result.sync and config.resync:
-                    synced_path = match_result.sync.synced_srt_path
-                    try:
-                        shutil.copy(synced_path, sub)
-                    finally:
-                        synced_path.unlink(missing_ok=True)
-                    resync_config = dataclasses.replace(config, sync=False)
-                    match_result, _ = _scoring._score_pair(video, sub, resync_config, model, video_cache=new_cache)
-                    match_result.state = _scoring._determine_state(match_result)
-                    match_result.resynced = True
+                match_result = _maybe_resync(match_result, sub, video, config, model, video_cache=new_cache)
                 match_result = _apply_postprocessing(match_result, sub, config)
                 if cache is None:
                     video_caches[video] = new_cache
