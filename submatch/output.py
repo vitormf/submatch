@@ -1,7 +1,7 @@
 from __future__ import annotations
 from pathlib import Path
 
-from submatch.types import MatchState, MatchResult, BatchPairResult
+from submatch.types import MatchState, SegmentResult, MatchResult, BatchPairResult  # noqa: F401
 
 _GREEN = "\033[32m"
 _YELLOW = "\033[33m"
