@@ -4,6 +4,14 @@ import platform
 import sys
 from typing import Any
 
+
+def _get_direct_url() -> str | None:
+    try:
+        from importlib.metadata import distribution
+        return distribution("submatch").read_text("direct_url.json")
+    except Exception:
+        return None
+
 _SENTRY_DSN = (
     "https://105e24adec63749ae27bed49f404f225"
     "@o4511495643660288.ingest.de.sentry.io/4511495658012752"
@@ -49,6 +57,9 @@ def init(args: Any) -> None:
     if os.environ.get("SUBMATCH_NO_TELEMETRY"):
         return
     if getattr(args, "telemetry", True) is False:
+        return
+    direct_url = _get_direct_url()
+    if direct_url and '"editable": true' in direct_url:
         return
     try:
         import sentry_sdk
