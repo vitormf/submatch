@@ -371,7 +371,7 @@ def test_score_pair_ocr_exception_on_one_segment_continues(tmp_path):
          patch("submatch.scoring.ocr.pytesseract", new=MagicMock()), \
          patch("submatch.scoring.ocr.ocr_window",
                side_effect=[RuntimeError("frame extraction failed"), "world text"]) as mock_ocr:
-        config = PipelineConfig(use_cache=False, sync=False)
+        config = PipelineConfig(use_cache=False, sync=False, verbose=True)
         _score_pair(video, sub, config, MagicMock(), video_cache=cached)
 
     # Both segments were attempted despite the first raising
@@ -411,7 +411,7 @@ def test_score_pair_warns_when_pytesseract_missing(tmp_path, capsys):
          patch("submatch.scoring.language.build_result", return_value=lang_result), \
          patch("submatch.scoring.ocr.pytesseract", new=None), \
          patch("submatch.scoring.ocr.ocr_window") as mock_ocr:
-        config = PipelineConfig(use_cache=False, sync=False, verbose=True)
+        config = PipelineConfig(use_cache=False, sync=False)  # verbose=False — warning fires unconditionally
         _score_pair(video, sub, config, MagicMock(), video_cache=cached)
 
     mock_ocr.assert_not_called()
