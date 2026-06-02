@@ -532,7 +532,7 @@ def test_build_match_result_cross_language_uses_default_threshold():
 
 def test_build_match_result_same_language_still_uses_threshold():
     """When same-language, threshold stays at config.threshold (0.35)."""
-    from unittest.mock import MagicMock, patch
+    from unittest.mock import patch
     from pathlib import Path
     from submatch.scoring import _build_match_result
     from submatch.pipeline import PipelineConfig
