@@ -9,6 +9,7 @@ from pathlib import Path
 from submatch import audio, gpu, output, telemetry
 from submatch import cache as _cache_module
 from submatch import pipeline as _pipeline
+from submatch import scoring as _scoring
 from submatch.args import _args_to_config, parse_args
 from submatch.types import BatchPairResult, MatchState
 
@@ -246,7 +247,7 @@ def main() -> None:
     telemetry.init(args)
 
     if getattr(args, 'clear_cache', False):
-        _cfg = _pipeline._cache_config(_args_to_config(args))
+        _cfg = _scoring._cache_config(_args_to_config(args))
         count = _cache_module.clear(_cfg["dir"])
         print(f"Cleared {count} cached transcription(s).")
         sys.exit(0)
