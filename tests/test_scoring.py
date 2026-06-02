@@ -483,6 +483,134 @@ def test_score_pair_does_not_call_ocr_for_text_subtitle(tmp_path):
     mock_ocr.assert_not_called()
 
 
+def test_default_cross_threshold_constant():
+    from submatch.scoring import _DEFAULT_CROSS_THRESHOLD
+    assert _DEFAULT_CROSS_THRESHOLD == 0.20
+
+
+def test_build_match_result_cross_language_uses_default_threshold():
+    """When cross_threshold is None and audio/subtitle differ, effective threshold is 0.20."""
+    from unittest.mock import MagicMock, patch
+    from pathlib import Path
+    from submatch.scoring import _build_match_result
+    from submatch.pipeline import PipelineConfig
+    from submatch.sampler import Segment
+    from submatch.language import LanguageResult
+    from submatch.compare import SegmentScore
+
+    lang = LanguageResult(
+        audio="ja", subtitle_detected="en", subtitle_filename="en",
+        video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
+    )
+    seg = Segment(60_000, 90_000, "hello world", 2)
+    # confidence=0.22 sits above 0.20 (new cross-language default) but below 0.35 (old fallback)
+    config = PipelineConfig(model="base", threshold=0.35, cross_threshold=None)
+
+    with patch("submatch.scoring.language.detect_from_text", return_value="en"), \
+         patch("submatch.scoring.language.detect_from_filename", return_value="en"), \
+         patch("submatch.scoring.language.detect_from_video", return_value=None), \
+         patch("submatch.scoring.language.build_result", return_value=lang), \
+         patch("submatch.scoring.compare.aggregate", return_value=0.22), \
+         patch("submatch.scoring.embeddings.cross_language_score",
+               return_value=SegmentScore(f1=0.22, wer=0.78, subtitle_tokens=2)), \
+         patch("submatch.scoring._get_embed_model", return_value=MagicMock()):
+        result = _build_match_result(
+            transcription_pairs=[(1, seg, "こんにちは 世界")],
+            subtitle_sample="hello world",
+            subtitle_lang="en",
+            audio_lang="ja",
+            subtitle_path=Path("movie.en.srt"),
+            video=Path("movie.mkv"),
+            config=config,
+            audio_track_index=0,
+            audio_track_lang=None,
+        )
+
+    assert result.threshold == 0.20
+    assert result.passed is True
+
+
+def test_build_match_result_same_language_still_uses_threshold():
+    """When same-language, threshold stays at config.threshold (0.35)."""
+    from unittest.mock import MagicMock, patch
+    from pathlib import Path
+    from submatch.scoring import _build_match_result
+    from submatch.pipeline import PipelineConfig
+    from submatch.sampler import Segment
+    from submatch.language import LanguageResult
+    from submatch.compare import SegmentScore
+
+    lang = LanguageResult(
+        audio="en", subtitle_detected="en", subtitle_filename="en",
+        video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
+    )
+    seg = Segment(60_000, 90_000, "hello world", 2)
+    config = PipelineConfig(model="base", threshold=0.35, cross_threshold=None)
+
+    with patch("submatch.scoring.language.detect_from_text", return_value="en"), \
+         patch("submatch.scoring.language.detect_from_filename", return_value="en"), \
+         patch("submatch.scoring.language.detect_from_video", return_value=None), \
+         patch("submatch.scoring.language.build_result", return_value=lang), \
+         patch("submatch.scoring.compare.aggregate", return_value=0.22), \
+         patch("submatch.scoring.compare.token_f1",
+               return_value=SegmentScore(f1=0.22, wer=0.78, subtitle_tokens=2)):
+        result = _build_match_result(
+            transcription_pairs=[(1, seg, "hello world")],
+            subtitle_sample="hello world",
+            subtitle_lang="en",
+            audio_lang="en",
+            subtitle_path=Path("movie.en.srt"),
+            video=Path("movie.mkv"),
+            config=config,
+            audio_track_index=0,
+            audio_track_lang=None,
+        )
+
+    assert result.threshold == 0.35
+    assert result.passed is False
+
+
+def test_build_match_result_explicit_cross_threshold_overrides_default():
+    """When cross_threshold is explicitly set, it overrides the 0.20 default."""
+    from unittest.mock import MagicMock, patch
+    from pathlib import Path
+    from submatch.scoring import _build_match_result
+    from submatch.pipeline import PipelineConfig
+    from submatch.sampler import Segment
+    from submatch.language import LanguageResult
+    from submatch.compare import SegmentScore
+
+    lang = LanguageResult(
+        audio="ja", subtitle_detected="en", subtitle_filename="en",
+        video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
+    )
+    seg = Segment(60_000, 90_000, "hello world", 2)
+    config = PipelineConfig(model="base", threshold=0.35, cross_threshold=0.30)
+
+    with patch("submatch.scoring.language.detect_from_text", return_value="en"), \
+         patch("submatch.scoring.language.detect_from_filename", return_value="en"), \
+         patch("submatch.scoring.language.detect_from_video", return_value=None), \
+         patch("submatch.scoring.language.build_result", return_value=lang), \
+         patch("submatch.scoring.compare.aggregate", return_value=0.22), \
+         patch("submatch.scoring.embeddings.cross_language_score",
+               return_value=SegmentScore(f1=0.22, wer=0.78, subtitle_tokens=2)), \
+         patch("submatch.scoring._get_embed_model", return_value=MagicMock()):
+        result = _build_match_result(
+            transcription_pairs=[(1, seg, "こんにちは 世界")],
+            subtitle_sample="hello world",
+            subtitle_lang="en",
+            audio_lang="ja",
+            subtitle_path=Path("movie.en.srt"),
+            video=Path("movie.mkv"),
+            config=config,
+            audio_track_index=0,
+            audio_track_lang=None,
+        )
+
+    assert result.threshold == 0.30
+    assert result.passed is False  # 0.22 < 0.30
+
+
 def test_gather_transcriptions_importable():
     from submatch.scoring import _gather_transcriptions
     assert callable(_gather_transcriptions)
