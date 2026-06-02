@@ -11,6 +11,7 @@ class TranscriptionResult:
     text: str
     language: str
     no_speech_prob: float = 0.0
+    avg_logprob: float = 0.0
 
 
 def load_model(model_name: str = "base", device: str | None = None) -> Any:
@@ -37,10 +38,13 @@ def transcribe_segment(model: Any, audio_path: Path) -> TranscriptionResult:
     segs = result.get("segments", [])
     if segs:
         no_speech_prob = sum(s.get("no_speech_prob", 0.0) for s in segs) / len(segs)
+        avg_logprob = sum(s.get("avg_logprob", 0.0) for s in segs) / len(segs)
     else:
         no_speech_prob = 1.0
+        avg_logprob = 0.0
     return TranscriptionResult(
         text=result["text"].strip(),
         language=result["language"],
         no_speech_prob=no_speech_prob,
+        avg_logprob=avg_logprob,
     )
