@@ -327,18 +327,25 @@ def _score_pair(
         new_cache = video_cache
 
     # OCR: populate subtitle_text for image-based subtitle tracks
-    if subtitle.is_image_based(subtitle_path):
-        try:
+    _is_image_sub = subtitle.is_image_based(subtitle_path)
+    if _is_image_sub:
+        if ocr.pytesseract is None:
+            if config.verbose:
+                print("Warning: pytesseract not installed — cannot OCR image-based subtitle",
+                      file=sys.stderr)
+        else:
             ocr_lang = _resolve_ocr_lang(subtitle_path, video)
             for _, seg, _ in transcription_pairs:
-                seg.subtitle_text = ocr.ocr_window(
-                    subtitle_path, seg.start_ms, 30_000, lang=ocr_lang
-                )
-                seg.word_count = len(seg.subtitle_text.split())
-        except Exception as exc:
-            telemetry.capture(exc)
-            if config.verbose:
-                print(f"Warning: OCR failed: {exc}", file=sys.stderr)
+                try:
+                    seg.subtitle_text = ocr.ocr_window(
+                        subtitle_path, seg.start_ms, 30_000, lang=ocr_lang
+                    )
+                    seg.word_count = len(seg.subtitle_text.split())
+                except Exception as exc:
+                    telemetry.capture(exc)
+                    if config.verbose:
+                        print(f"Warning: OCR failed for segment at {seg.start_ms}ms: {exc}",
+                              file=sys.stderr)
 
     _sync_args = dict(subtitle_sample=subtitle_sample, subtitle_lang=subtitle_lang,
                       audio_lang=audio_lang, subtitle_path=subtitle_path, video=video,
@@ -350,7 +357,7 @@ def _score_pair(
     # Lazy sync: only run ffs when the first pass fails.
     _sync_tmp: Path | None = None
     try:
-        if match_result.state == MatchState.FAIL and config.sync and not subtitle.is_image_based(subtitle_path):
+        if match_result.state == MatchState.FAIL and config.sync and not _is_image_sub:
             try:
                 tmp = tempfile.NamedTemporaryFile(suffix=".srt", delete=False)
                 _sync_tmp = Path(tmp.name)
