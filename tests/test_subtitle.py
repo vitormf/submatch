@@ -1,4 +1,5 @@
-from submatch.subtitle import Subtitle, parse
+from pathlib import Path
+from submatch.subtitle import Subtitle, parse, is_image_based
 from tests.conftest import SAMPLE_SRT, SAMPLE_VTT, SAMPLE_ASS
 
 
@@ -126,3 +127,30 @@ def test_empty_dialogue_lines_excluded(tmp_path):
     f.write_text(ass)
     texts = [s.text for s in parse(f)]
     assert "This is a test subtitle." not in texts
+
+
+# ── Image-based formats (VOBSUB, PGS) ─────────────────────────────────────────
+
+def test_is_image_based_sub():
+    assert is_image_based(Path("movie.sub")) is True
+
+
+def test_is_image_based_sup():
+    assert is_image_based(Path("movie.sup")) is True
+
+
+def test_is_image_based_srt_is_false():
+    assert is_image_based(Path("movie.srt")) is False
+
+
+def test_is_image_based_vtt_is_false():
+    assert is_image_based(Path("movie.vtt")) is False
+
+
+def test_is_image_based_ass_is_false():
+    assert is_image_based(Path("movie.ass")) is False
+
+
+def test_is_image_based_case_insensitive():
+    assert is_image_based(Path("movie.SUB")) is True
+    assert is_image_based(Path("movie.SUP")) is True

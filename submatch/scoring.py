@@ -7,7 +7,7 @@ from collections import Counter
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from submatch import audio, compare, embeddings, language, sampler, subtitle, sync, telemetry, transcribe
+from submatch import audio, compare, embeddings, language, ocr, sampler, subtitle, sync, telemetry, transcribe
 from submatch import cache as _cache_module
 from submatch.types import MatchResult, MatchState, SegmentResult
 
@@ -29,6 +29,17 @@ def _get_embed_model():
                 "Install with: pip install sentence-transformers"
             ) from exc
     return _embed_local.model
+
+
+def _resolve_ocr_lang(subtitle_path: Path, video: Path) -> str | None:
+    """Return a Tesseract language code for OCR, or None to trigger Tesseract OSD detection."""
+    iso = language.detect_from_filename(subtitle_path)
+    if iso:
+        return language.to_tesseract_lang(iso)
+    iso = language.detect_from_video(video)
+    if iso:
+        return language.to_tesseract_lang(iso)
+    return None
 
 
 def _is_cross_language(audio_lang: str | None, subtitle_lang: str | None) -> bool:
@@ -315,6 +326,26 @@ def _score_pair(
         ]
         new_cache = video_cache
 
+    # OCR: populate subtitle_text for image-based subtitle tracks
+    _is_image_sub = subtitle.is_image_based(subtitle_path)
+    if _is_image_sub:
+        if ocr.pytesseract is None:
+            print("Warning: pytesseract not installed — cannot OCR image-based subtitle",
+                  file=sys.stderr)
+        else:
+            ocr_lang = _resolve_ocr_lang(subtitle_path, video)
+            for _, seg, _ in transcription_pairs:
+                try:
+                    seg.subtitle_text = ocr.ocr_window(
+                        subtitle_path, seg.start_ms, 30_000, lang=ocr_lang
+                    )
+                    seg.word_count = len(seg.subtitle_text.split())
+                except Exception as exc:
+                    telemetry.capture(exc)
+                    if config.verbose:
+                        print(f"Warning: OCR failed for segment at {seg.start_ms}ms: {exc}",
+                              file=sys.stderr)
+
     _sync_args = dict(subtitle_sample=subtitle_sample, subtitle_lang=subtitle_lang,
                       audio_lang=audio_lang, subtitle_path=subtitle_path, video=video,
                       config=config, audio_track_index=audio_track_index,
@@ -325,7 +356,7 @@ def _score_pair(
     # Lazy sync: only run ffs when the first pass fails.
     _sync_tmp: Path | None = None
     try:
-        if match_result.state == MatchState.FAIL and config.sync:
+        if match_result.state == MatchState.FAIL and config.sync and not _is_image_sub:
             try:
                 tmp = tempfile.NamedTemporaryFile(suffix=".srt", delete=False)
                 _sync_tmp = Path(tmp.name)

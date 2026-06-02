@@ -7,6 +7,7 @@ from submatch.language import (
     detect_from_video,
     build_result,
     normalize_lang,
+    to_tesseract_lang,
     _langdetect,
 )
 
@@ -208,3 +209,32 @@ def test_detect_from_video_exception_returns_none():
 def test_langdetect_delegates_to_langdetect_library():
     with patch("langdetect.detect", return_value="fr"):
         assert _langdetect("Bonjour le monde") == "fr"
+
+
+def test_to_tesseract_lang_english():
+    assert to_tesseract_lang("en") == "eng"
+
+
+def test_to_tesseract_lang_portuguese():
+    assert to_tesseract_lang("pt") == "por"
+
+
+def test_to_tesseract_lang_japanese():
+    assert to_tesseract_lang("ja") == "jpn"
+
+
+def test_to_tesseract_lang_chinese():
+    assert to_tesseract_lang("zh") == "chi_sim"
+
+
+def test_to_tesseract_lang_unknown_falls_back_to_eng():
+    assert to_tesseract_lang("xx") == "eng"
+
+
+def test_to_tesseract_lang_three_letter_code():
+    # Caller is expected to pass ISO 639-1; three-letter input is unknown → "eng"
+    assert to_tesseract_lang("eng") == "eng"
+
+
+def test_to_tesseract_lang_uppercase():
+    assert to_tesseract_lang("EN") == "eng"

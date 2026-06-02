@@ -43,6 +43,7 @@ def _lang_result():
 
 def _apply_mocks(mock_sub, mock_lang, mock_audio, mock_sampler, mock_transcribe, mock_compare):
     mock_sub.parse.return_value = [Subtitle(index=1, start_ms=1000, end_ms=5000, text="Hello world")]
+    mock_sub.is_image_based.return_value = False
     mock_lang.detect_from_filename.return_value = "en"
     mock_lang.detect_from_text.return_value = "en"
     mock_lang.detect_from_video.return_value = None

@@ -27,7 +27,7 @@ def test_list_subtitle_tracks_single_with_lang():
     stream = {"tags": {"language": "eng", "title": "English"}}
     with patch("subprocess.run", return_value=_mock_run(_ffprobe_out([stream]))):
         result = list_subtitle_tracks(Path("movie.mkv"))
-    assert result == [{"index": 0, "lang": "eng", "title": "English"}]
+    assert result == [{"index": 0, "lang": "eng", "title": "English", "codec": None}]
 
 
 def test_list_subtitle_tracks_multiple():
@@ -39,9 +39,9 @@ def test_list_subtitle_tracks_multiple():
     with patch("subprocess.run", return_value=_mock_run(_ffprobe_out(streams))):
         result = list_subtitle_tracks(Path("movie.mkv"))
     assert result == [
-        {"index": 0, "lang": "eng", "title": None},
-        {"index": 1, "lang": "jpn", "title": "Japanese"},
-        {"index": 2, "lang": None, "title": None},
+        {"index": 0, "lang": "eng", "title": None, "codec": None},
+        {"index": 1, "lang": "jpn", "title": "Japanese", "codec": None},
+        {"index": 2, "lang": None, "title": None, "codec": None},
     ]
 
 
@@ -193,3 +193,95 @@ def test_extract_all_subtitle_tracks_keyboard_interrupt_kills_process_group(tmp_
     mock_getpgid.assert_called_once_with(12345)
     mock_killpg.assert_called_once_with(12345, signal.SIGTERM)
     proc.wait.assert_called_once()
+
+
+# --- codec detection and image track extraction ---
+
+def test_list_subtitle_tracks_includes_codec():
+    stream = {"codec_name": "dvd_subtitle", "tags": {"language": "eng"}}
+    with patch("subprocess.run", return_value=_mock_run(_ffprobe_out([stream]))):
+        result = list_subtitle_tracks(Path("movie.mkv"))
+    assert result[0]["codec"] == "dvd_subtitle"
+
+
+def test_list_subtitle_tracks_codec_none_when_absent():
+    stream = {"tags": {"language": "eng"}}
+    with patch("subprocess.run", return_value=_mock_run(_ffprobe_out([stream]))):
+        result = list_subtitle_tracks(Path("movie.mkv"))
+    assert result[0]["codec"] is None
+
+
+def test_extract_all_subtitle_tracks_image_track_produces_sub(tmp_path):
+    """dvd_subtitle tracks must be extracted to .sub, not .srt."""
+    tracks = [{"index": 0, "lang": "eng", "title": None, "codec": "dvd_subtitle"}]
+    with patch("submatch.embedded.subprocess.Popen", return_value=_mock_proc()) as mock_popen:
+        result = extract_all_subtitle_tracks(Path("movie.mkv"), tracks, tmp_path)
+    assert result[0].suffix == ".sub"
+    cmd = mock_popen.call_args[0][0]
+    assert "-c:s" in cmd
+    cs_idx = cmd.index("-c:s")
+    assert cmd[cs_idx + 1] == "copy"
+
+
+def test_extract_all_subtitle_tracks_image_track_propagates_error(tmp_path):
+    """ffmpeg error on an image track must raise CalledProcessError."""
+    tracks = [{"index": 0, "lang": "eng", "title": None, "codec": "dvd_subtitle"}]
+    with patch("submatch.embedded.subprocess.Popen", return_value=_mock_proc(returncode=1)):
+        with pytest.raises(subprocess.CalledProcessError):
+            extract_all_subtitle_tracks(Path("movie.mkv"), tracks, tmp_path)
+
+
+def test_extract_all_subtitle_tracks_image_track_keyboard_interrupt_kills_process_group(tmp_path):
+    """KeyboardInterrupt during image track extraction must kill the process group and re-raise."""
+    import signal
+    tracks = [{"index": 0, "lang": "eng", "title": None, "codec": "dvd_subtitle"}]
+    proc = MagicMock()
+    proc.communicate.side_effect = KeyboardInterrupt
+    proc.pid = 12345
+    with patch("submatch.embedded.subprocess.Popen", return_value=proc), \
+         patch("submatch.embedded.os.getpgid", return_value=12345) as mock_getpgid, \
+         patch("submatch.embedded.os.killpg") as mock_killpg:
+        with pytest.raises(KeyboardInterrupt):
+            extract_all_subtitle_tracks(Path("movie.mkv"), tracks, tmp_path)
+    mock_getpgid.assert_called_once_with(12345)
+    mock_killpg.assert_called_once_with(12345, signal.SIGTERM)
+    proc.wait.assert_called_once()
+
+
+def test_extract_all_subtitle_tracks_pgs_track_produces_sup(tmp_path):
+    """hdmv_pgs_subtitle tracks must be extracted to .sup."""
+    tracks = [{"index": 0, "lang": "eng", "title": None, "codec": "hdmv_pgs_subtitle"}]
+    with patch("submatch.embedded.subprocess.Popen", return_value=_mock_proc()):
+        result = extract_all_subtitle_tracks(Path("movie.mkv"), tracks, tmp_path)
+    assert result[0].suffix == ".sup"
+
+
+def test_extract_all_subtitle_tracks_image_uses_copy_codec(tmp_path):
+    """PGS extraction command must include -c:s copy."""
+    tracks = [{"index": 0, "lang": "eng", "title": None, "codec": "hdmv_pgs_subtitle"}]
+    with patch("submatch.embedded.subprocess.Popen", return_value=_mock_proc()) as mock_popen:
+        extract_all_subtitle_tracks(Path("movie.mkv"), tracks, tmp_path)
+    cmd = mock_popen.call_args[0][0]
+    assert "-c:s" in cmd
+    cs_idx = cmd.index("-c:s")
+    assert cmd[cs_idx + 1] == "copy"
+
+
+def test_extract_all_subtitle_tracks_mixed_text_and_image(tmp_path):
+    """Text and image tracks together: text → .srt, image → .sub."""
+    tracks = [
+        {"index": 0, "lang": "eng", "title": None, "codec": "subrip"},
+        {"index": 1, "lang": "eng", "title": None, "codec": "dvd_subtitle"},
+    ]
+    with patch("submatch.embedded.subprocess.Popen", return_value=_mock_proc()):
+        result = extract_all_subtitle_tracks(Path("movie.mkv"), tracks, tmp_path)
+    assert result[0].suffix == ".srt"
+    assert result[1].suffix == ".sub"
+
+
+def test_extract_all_subtitle_tracks_unknown_codec_treated_as_text(tmp_path):
+    """Tracks with unknown or missing codec fall back to SRT extraction."""
+    tracks = [{"index": 0, "lang": "eng", "title": None, "codec": None}]
+    with patch("submatch.embedded.subprocess.Popen", return_value=_mock_proc()):
+        result = extract_all_subtitle_tracks(Path("movie.mkv"), tracks, tmp_path)
+    assert result[0].suffix == ".srt"
