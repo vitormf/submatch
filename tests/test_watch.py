@@ -297,7 +297,7 @@ def test_run_watch_prints_startup_message(tmp_path, capsys):
 
     with patch("submatch.pipeline._resolve_device", return_value="cpu"), \
          patch("submatch.pipeline._get_model", return_value=MagicMock()), \
-         patch("submatch.cli._args_to_config", return_value=MagicMock()), \
+         patch("submatch.args._args_to_config", return_value=MagicMock()), \
          patch("submatch.watch._score_existing", return_value=set()), \
          patch("submatch.watch._poll_loop", side_effect=KeyboardInterrupt):
         watch.run_watch(args, tmp_path)
@@ -312,7 +312,7 @@ def test_run_watch_poll_calls_poll_loop(tmp_path):
 
     with patch("submatch.pipeline._resolve_device", return_value="cpu"), \
          patch("submatch.pipeline._get_model", return_value=MagicMock()), \
-         patch("submatch.cli._args_to_config", return_value=MagicMock()), \
+         patch("submatch.args._args_to_config", return_value=MagicMock()), \
          patch("submatch.watch._score_existing", return_value=set()), \
          patch("submatch.watch._poll_loop", side_effect=KeyboardInterrupt) as mock_poll:
         watch.run_watch(args, tmp_path)
@@ -325,7 +325,7 @@ def test_run_watch_default_calls_native_watch(tmp_path):
 
     with patch("submatch.pipeline._resolve_device", return_value="cpu"), \
          patch("submatch.pipeline._get_model", return_value=MagicMock()), \
-         patch("submatch.cli._args_to_config", return_value=MagicMock()), \
+         patch("submatch.args._args_to_config", return_value=MagicMock()), \
          patch("submatch.watch._score_existing", return_value=set()), \
          patch("submatch.watch._native_watch", side_effect=KeyboardInterrupt) as mock_native:
         watch.run_watch(args, tmp_path)
@@ -338,7 +338,7 @@ def test_run_watch_keyboard_interrupt_returns_0(tmp_path, capsys):
 
     with patch("submatch.pipeline._resolve_device", return_value="cpu"), \
          patch("submatch.pipeline._get_model", return_value=MagicMock()), \
-         patch("submatch.cli._args_to_config", return_value=MagicMock()), \
+         patch("submatch.args._args_to_config", return_value=MagicMock()), \
          patch("submatch.watch._score_existing", return_value=set()), \
          patch("submatch.watch._poll_loop", side_effect=KeyboardInterrupt):
         result = watch.run_watch(args, tmp_path)
@@ -352,7 +352,7 @@ def test_run_watch_watchdog_oserror_returns_2(tmp_path, capsys):
 
     with patch("submatch.pipeline._resolve_device", return_value="cpu"), \
          patch("submatch.pipeline._get_model", return_value=MagicMock()), \
-         patch("submatch.cli._args_to_config", return_value=MagicMock()), \
+         patch("submatch.args._args_to_config", return_value=MagicMock()), \
          patch("submatch.watch._score_existing", return_value=set()), \
          patch("submatch.watch._native_watch", side_effect=OSError("not supported")):
         result = watch.run_watch(args, tmp_path)

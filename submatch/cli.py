@@ -9,7 +9,7 @@ from pathlib import Path
 from submatch import audio, gpu, output, telemetry
 from submatch import cache as _cache_module
 from submatch import pipeline as _pipeline
-from submatch.args import parse_args
+from submatch.args import _args_to_config, parse_args
 from submatch.types import BatchPairResult, MatchState
 
 
@@ -83,30 +83,6 @@ def _write_reports(results: list[BatchPairResult], args: argparse.Namespace) -> 
         _report.write_csv(results, args.csv)
     if args.html:
         _report.write_html(results, args.html)
-
-
-def _args_to_config(args: argparse.Namespace) -> _pipeline.PipelineConfig:
-    return _pipeline.PipelineConfig(
-        model=args.model,
-        threshold=args.threshold,
-        cross_threshold=getattr(args, "cross_threshold", None),
-        segments=args.segments,
-        language=args.language,
-        sync=not args.no_sync,
-        drift_threshold=args.drift_threshold,
-        device=args.device,
-        audio_track=getattr(args, "audio_track", None),
-        workers=args.workers,
-        use_cache=not getattr(args, "no_cache", False),
-        cache_dir=Path(args.cache_dir).expanduser() if getattr(args, "cache_dir", None) else None,
-        cache_ttl_days=getattr(args, "cache_ttl_days", None),
-        cache_max_mb=getattr(args, "cache_max_mb", None),
-        resync=getattr(args, "resync", False),
-        pass_unsure=getattr(args, "pass_unsure", False),
-        keep_synced=getattr(args, "keep_synced", False),
-        delete_failures=getattr(args, "delete_failures", False),
-        verbose=args.verbose,
-    )
 
 
 def _run_batch(
