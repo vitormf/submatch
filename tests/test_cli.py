@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 from submatch import cli
+from submatch import pipeline
 from submatch.language import LanguageResult
 from submatch.sampler import Segment
 from submatch.subtitle import Subtitle
@@ -213,20 +214,20 @@ def _make_pipeline_patches(tmp_path, extra_argv=()):
         patch("sys.argv", argv),
         patch("submatch.cli.check_dependencies"),
         patch("submatch.cli.audio.has_audio_track", return_value=True),
-        patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000),
-        patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"),
-        patch("submatch.cli.audio.detect_speech_regions", return_value=[]),
-        patch("submatch.cli.subtitle.parse", return_value=subs),
-        patch("submatch.cli.sampler.select_segments", return_value=segs),
-        patch("submatch.cli.sampler.audio_candidate_segments",
+        patch("submatch.pipeline.audio.get_duration_ms", return_value=90 * 60 * 1_000),
+        patch("submatch.pipeline.audio.extract_segment", return_value=tmp_path / "seg.wav"),
+        patch("submatch.pipeline.audio.detect_speech_regions", return_value=[]),
+        patch("submatch.pipeline.subtitle.parse", return_value=subs),
+        patch("submatch.pipeline.sampler.select_segments", return_value=segs),
+        patch("submatch.pipeline.sampler.audio_candidate_segments",
               return_value=[[60_000]]),
-        patch("submatch.cli.sampler.segments_from_starts", return_value=segs),
-        patch("submatch.cli.transcribe.load_model", return_value=MagicMock()),
-        patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans),
-        patch("submatch.cli.language.detect_from_text", return_value="en"),
-        patch("submatch.cli.language.detect_from_filename", return_value="en"),
-        patch("submatch.cli.language.detect_from_video", return_value=None),
-        patch("submatch.cli.language.build_result", return_value=lang),
+        patch("submatch.pipeline.sampler.segments_from_starts", return_value=segs),
+        patch("submatch.pipeline.transcribe.load_model", return_value=MagicMock()),
+        patch("submatch.pipeline.transcribe.transcribe_segment", return_value=mock_trans),
+        patch("submatch.pipeline.language.detect_from_text", return_value="en"),
+        patch("submatch.pipeline.language.detect_from_filename", return_value="en"),
+        patch("submatch.pipeline.language.detect_from_video", return_value=None),
+        patch("submatch.pipeline.language.build_result", return_value=lang),
     ]
     return video, subtitle, ctx
 
@@ -335,20 +336,20 @@ def test_main_sync_success_reparses_srt(tmp_path):
     with patch("sys.argv", ["submatch", str(video), str(subtitle), "--threshold", "0.01"]), \
          patch("submatch.cli.check_dependencies"), \
          patch("submatch.cli.audio.has_audio_track", return_value=True), \
-         patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
-         patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
-         patch("submatch.cli.audio.detect_speech_regions", return_value=[]), \
-         patch("submatch.cli.sampler.select_segments", return_value=segs), \
-         patch("submatch.cli.sampler.audio_candidate_segments", return_value=[[60_000]]), \
-         patch("submatch.cli.sampler.segments_from_starts", return_value=segs), \
-         patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
-         patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
-         patch("submatch.cli.language.detect_from_text", return_value="en"), \
-         patch("submatch.cli.language.detect_from_filename", return_value="en"), \
-         patch("submatch.cli.language.detect_from_video", return_value=None), \
-         patch("submatch.cli.language.build_result", return_value=lang), \
-         patch("submatch.cli.sync.sync_subtitle", return_value=sync_result), \
-         patch("submatch.cli.subtitle.parse", return_value=subs) as mock_parse:
+         patch("submatch.pipeline.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
+         patch("submatch.pipeline.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
+         patch("submatch.pipeline.audio.detect_speech_regions", return_value=[]), \
+         patch("submatch.pipeline.sampler.select_segments", return_value=segs), \
+         patch("submatch.pipeline.sampler.audio_candidate_segments", return_value=[[60_000]]), \
+         patch("submatch.pipeline.sampler.segments_from_starts", return_value=segs), \
+         patch("submatch.pipeline.transcribe.load_model", return_value=MagicMock()), \
+         patch("submatch.pipeline.transcribe.transcribe_segment", return_value=mock_trans), \
+         patch("submatch.pipeline.language.detect_from_text", return_value="en"), \
+         patch("submatch.pipeline.language.detect_from_filename", return_value="en"), \
+         patch("submatch.pipeline.language.detect_from_video", return_value=None), \
+         patch("submatch.pipeline.language.build_result", return_value=lang), \
+         patch("submatch.pipeline.sync.sync_subtitle", return_value=sync_result), \
+         patch("submatch.pipeline.subtitle.parse", return_value=subs) as mock_parse:
         with pytest.raises(SystemExit) as exc:
             cli.main()
 
@@ -358,10 +359,10 @@ def test_main_sync_success_reparses_srt(tmp_path):
 
 
 def test_main_segment_transcription_failure_warns(tmp_path, capsys):
-    """Transcription failure prints a warning and skips the segment (lines 121-122)."""
-    _, _, ctx = _make_pipeline_patches(tmp_path, ["--threshold", "0.01"])
+    """Transcription failure prints a warning in verbose mode and skips the segment."""
+    _, _, ctx = _make_pipeline_patches(tmp_path, ["--threshold", "0.01", "--verbose"])
     # Override transcribe_segment to raise
-    ctx.append(patch("submatch.cli.transcribe.transcribe_segment",
+    ctx.append(patch("submatch.pipeline.transcribe.transcribe_segment",
                      side_effect=RuntimeError("GPU exploded")))
     [c.__enter__() for c in ctx]
     try:
@@ -400,20 +401,20 @@ def test_main_keep_synced_saves_file(tmp_path):
     ]), \
          patch("submatch.cli.check_dependencies"), \
          patch("submatch.cli.audio.has_audio_track", return_value=True), \
-         patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
-         patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
-         patch("submatch.cli.audio.detect_speech_regions", return_value=[]), \
-         patch("submatch.cli.subtitle.parse", return_value=subs), \
-         patch("submatch.cli.sampler.select_segments", return_value=segs), \
-         patch("submatch.cli.sampler.audio_candidate_segments", return_value=[[60_000]]), \
-         patch("submatch.cli.sampler.segments_from_starts", return_value=segs), \
-         patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
-         patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
-         patch("submatch.cli.language.detect_from_text", return_value="en"), \
-         patch("submatch.cli.language.detect_from_filename", return_value="en"), \
-         patch("submatch.cli.language.detect_from_video", return_value=None), \
-         patch("submatch.cli.language.build_result", return_value=lang), \
-         patch("submatch.cli.sync.sync_subtitle", return_value=sync_result):
+         patch("submatch.pipeline.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
+         patch("submatch.pipeline.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
+         patch("submatch.pipeline.audio.detect_speech_regions", return_value=[]), \
+         patch("submatch.pipeline.subtitle.parse", return_value=subs), \
+         patch("submatch.pipeline.sampler.select_segments", return_value=segs), \
+         patch("submatch.pipeline.sampler.audio_candidate_segments", return_value=[[60_000]]), \
+         patch("submatch.pipeline.sampler.segments_from_starts", return_value=segs), \
+         patch("submatch.pipeline.transcribe.load_model", return_value=MagicMock()), \
+         patch("submatch.pipeline.transcribe.transcribe_segment", return_value=mock_trans), \
+         patch("submatch.pipeline.language.detect_from_text", return_value="en"), \
+         patch("submatch.pipeline.language.detect_from_filename", return_value="en"), \
+         patch("submatch.pipeline.language.detect_from_video", return_value=None), \
+         patch("submatch.pipeline.language.build_result", return_value=lang), \
+         patch("submatch.pipeline.sync.sync_subtitle", return_value=sync_result):
         with pytest.raises(SystemExit) as exc:
             cli.main()
 
@@ -438,20 +439,20 @@ def test_main_sync_failure_continues(tmp_path):
     with patch("sys.argv", ["submatch", str(video), str(subtitle), "--threshold", "0.01"]), \
          patch("submatch.cli.check_dependencies"), \
          patch("submatch.cli.audio.has_audio_track", return_value=True), \
-         patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
-         patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
-         patch("submatch.cli.audio.detect_speech_regions", return_value=[]), \
-         patch("submatch.cli.subtitle.parse", return_value=subs), \
-         patch("submatch.cli.sampler.select_segments", return_value=segs), \
-         patch("submatch.cli.sampler.audio_candidate_segments", return_value=[[60_000]]), \
-         patch("submatch.cli.sampler.segments_from_starts", return_value=segs), \
-         patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
-         patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
-         patch("submatch.cli.language.detect_from_text", return_value="en"), \
-         patch("submatch.cli.language.detect_from_filename", return_value="en"), \
-         patch("submatch.cli.language.detect_from_video", return_value=None), \
-         patch("submatch.cli.language.build_result", return_value=lang), \
-         patch("submatch.cli.sync.sync_subtitle", side_effect=RuntimeError("ffs down")):
+         patch("submatch.pipeline.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
+         patch("submatch.pipeline.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
+         patch("submatch.pipeline.audio.detect_speech_regions", return_value=[]), \
+         patch("submatch.pipeline.subtitle.parse", return_value=subs), \
+         patch("submatch.pipeline.sampler.select_segments", return_value=segs), \
+         patch("submatch.pipeline.sampler.audio_candidate_segments", return_value=[[60_000]]), \
+         patch("submatch.pipeline.sampler.segments_from_starts", return_value=segs), \
+         patch("submatch.pipeline.transcribe.load_model", return_value=MagicMock()), \
+         patch("submatch.pipeline.transcribe.transcribe_segment", return_value=mock_trans), \
+         patch("submatch.pipeline.language.detect_from_text", return_value="en"), \
+         patch("submatch.pipeline.language.detect_from_filename", return_value="en"), \
+         patch("submatch.pipeline.language.detect_from_video", return_value=None), \
+         patch("submatch.pipeline.language.build_result", return_value=lang), \
+         patch("submatch.pipeline.sync.sync_subtitle", side_effect=RuntimeError("ffs down")):
         with pytest.raises(SystemExit) as exc:
             cli.main()
     assert exc.value.code == 0
@@ -478,20 +479,20 @@ def _make_batch_patches(tmp_path, extra_argv=()):
     ctx = [
         patch("sys.argv", argv),
         patch("submatch.cli.check_dependencies"),
-        patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000),
-        patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"),
-        patch("submatch.cli.audio.detect_speech_regions", return_value=[]),
-        patch("submatch.cli.subtitle.parse", return_value=subs),
-        patch("submatch.cli.sampler.select_segments", return_value=segs),
-        patch("submatch.cli.sampler.audio_candidate_segments",
+        patch("submatch.pipeline.audio.get_duration_ms", return_value=90 * 60 * 1_000),
+        patch("submatch.pipeline.audio.extract_segment", return_value=tmp_path / "seg.wav"),
+        patch("submatch.pipeline.audio.detect_speech_regions", return_value=[]),
+        patch("submatch.pipeline.subtitle.parse", return_value=subs),
+        patch("submatch.pipeline.sampler.select_segments", return_value=segs),
+        patch("submatch.pipeline.sampler.audio_candidate_segments",
               return_value=[[60_000]]),
-        patch("submatch.cli.sampler.segments_from_starts", return_value=segs),
-        patch("submatch.cli.transcribe.load_model", return_value=MagicMock()),
-        patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans),
-        patch("submatch.cli.language.detect_from_text", return_value="en"),
-        patch("submatch.cli.language.detect_from_filename", return_value="en"),
-        patch("submatch.cli.language.detect_from_video", return_value=None),
-        patch("submatch.cli.language.build_result", return_value=lang),
+        patch("submatch.pipeline.sampler.segments_from_starts", return_value=segs),
+        patch("submatch.pipeline.transcribe.load_model", return_value=MagicMock()),
+        patch("submatch.pipeline.transcribe.transcribe_segment", return_value=mock_trans),
+        patch("submatch.pipeline.language.detect_from_text", return_value="en"),
+        patch("submatch.pipeline.language.detect_from_filename", return_value="en"),
+        patch("submatch.pipeline.language.detect_from_video", return_value=None),
+        patch("submatch.pipeline.language.build_result", return_value=lang),
     ]
     return ctx
 
@@ -549,19 +550,19 @@ def test_batch_candidates_mode(tmp_path):
                             "--no-sync", "--threshold", "0.01"]), \
          patch("submatch.cli.check_dependencies"), \
          patch("submatch.cli.audio.has_audio_track", return_value=True), \
-         patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
-         patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
-         patch("submatch.cli.audio.detect_speech_regions", return_value=[]), \
-         patch("submatch.cli.subtitle.parse", return_value=subs_parsed), \
-         patch("submatch.cli.sampler.select_segments", return_value=segs), \
-         patch("submatch.cli.sampler.audio_candidate_segments", return_value=[[60_000]]), \
-         patch("submatch.cli.sampler.segments_from_starts", return_value=segs), \
-         patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
-         patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
-         patch("submatch.cli.language.detect_from_text", return_value="en"), \
-         patch("submatch.cli.language.detect_from_filename", return_value="en"), \
-         patch("submatch.cli.language.detect_from_video", return_value=None), \
-         patch("submatch.cli.language.build_result", return_value=lang):
+         patch("submatch.pipeline.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
+         patch("submatch.pipeline.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
+         patch("submatch.pipeline.audio.detect_speech_regions", return_value=[]), \
+         patch("submatch.pipeline.subtitle.parse", return_value=subs_parsed), \
+         patch("submatch.pipeline.sampler.select_segments", return_value=segs), \
+         patch("submatch.pipeline.sampler.audio_candidate_segments", return_value=[[60_000]]), \
+         patch("submatch.pipeline.sampler.segments_from_starts", return_value=segs), \
+         patch("submatch.pipeline.transcribe.load_model", return_value=MagicMock()), \
+         patch("submatch.pipeline.transcribe.transcribe_segment", return_value=mock_trans), \
+         patch("submatch.pipeline.language.detect_from_text", return_value="en"), \
+         patch("submatch.pipeline.language.detect_from_filename", return_value="en"), \
+         patch("submatch.pipeline.language.detect_from_video", return_value=None), \
+         patch("submatch.pipeline.language.build_result", return_value=lang):
         with pytest.raises(SystemExit) as exc:
             cli.main()
     assert exc.value.code == 0
@@ -616,20 +617,20 @@ def _make_two_pair_patches(tmp_path, extra_argv=()):
     return [
         patch("sys.argv", argv),
         patch("submatch.cli.check_dependencies"),
-        patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000),
-        patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"),
-        patch("submatch.cli.audio.detect_speech_regions", return_value=[]),
-        patch("submatch.cli.subtitle.parse", return_value=subs),
-        patch("submatch.cli.sampler.select_segments", return_value=segs),
-        patch("submatch.cli.sampler.audio_candidate_segments",
+        patch("submatch.pipeline.audio.get_duration_ms", return_value=90 * 60 * 1_000),
+        patch("submatch.pipeline.audio.extract_segment", return_value=tmp_path / "seg.wav"),
+        patch("submatch.pipeline.audio.detect_speech_regions", return_value=[]),
+        patch("submatch.pipeline.subtitle.parse", return_value=subs),
+        patch("submatch.pipeline.sampler.select_segments", return_value=segs),
+        patch("submatch.pipeline.sampler.audio_candidate_segments",
               return_value=[[60_000]]),
-        patch("submatch.cli.sampler.segments_from_starts", return_value=segs),
-        patch("submatch.cli.transcribe.load_model", return_value=MagicMock()),
-        patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans),
-        patch("submatch.cli.language.detect_from_text", return_value="en"),
-        patch("submatch.cli.language.detect_from_filename", return_value="en"),
-        patch("submatch.cli.language.detect_from_video", return_value=None),
-        patch("submatch.cli.language.build_result", return_value=lang),
+        patch("submatch.pipeline.sampler.segments_from_starts", return_value=segs),
+        patch("submatch.pipeline.transcribe.load_model", return_value=MagicMock()),
+        patch("submatch.pipeline.transcribe.transcribe_segment", return_value=mock_trans),
+        patch("submatch.pipeline.language.detect_from_text", return_value="en"),
+        patch("submatch.pipeline.language.detect_from_filename", return_value="en"),
+        patch("submatch.pipeline.language.detect_from_video", return_value=None),
+        patch("submatch.pipeline.language.build_result", return_value=lang),
     ]
 
 
@@ -690,7 +691,7 @@ def test_batch_compact_inline_parallel(tmp_path, capsys):
 def test_batch_verbose_printed_after_each_score_sequential(tmp_path, capsys):
     """Sequential: print_human is called right after each _score_pair, not deferred."""
     events = []
-    original_score_pair = cli._score_pair
+    original_score_pair = pipeline._score_pair
 
     def tracked_score(video, sub, *args, **kwargs):
         result = original_score_pair(video, sub, *args, **kwargs)
@@ -706,7 +707,7 @@ def test_batch_verbose_printed_after_each_score_sequential(tmp_path, capsys):
 
     ctx = _make_two_pair_patches(tmp_path, ["--threshold", "0.01", "--workers", "1"])
     ctx += [
-        patch("submatch.cli._score_pair", side_effect=tracked_score),
+        patch("submatch.pipeline._score_pair", side_effect=tracked_score),
         patch("submatch.output.print_human", side_effect=tracked_print),
     ]
     _run_patches(ctx)
@@ -717,7 +718,7 @@ def test_batch_verbose_printed_after_each_score_sequential(tmp_path, capsys):
 def test_batch_compact_printed_after_each_score_sequential(tmp_path, capsys):
     """Sequential compact: print_batch_compact is called right after each _score_pair."""
     events = []
-    original_score_pair = cli._score_pair
+    original_score_pair = pipeline._score_pair
 
     def tracked_score(video, sub, *args, **kwargs):
         result = original_score_pair(video, sub, *args, **kwargs)
@@ -733,7 +734,7 @@ def test_batch_compact_printed_after_each_score_sequential(tmp_path, capsys):
 
     ctx = _make_two_pair_patches(tmp_path, ["--compact", "--threshold", "0.01", "--workers", "1"])
     ctx += [
-        patch("submatch.cli._score_pair", side_effect=tracked_score),
+        patch("submatch.pipeline._score_pair", side_effect=tracked_score),
         patch("submatch.output.print_batch_compact", side_effect=tracked_print),
     ]
     _run_patches(ctx)
@@ -801,7 +802,7 @@ def test_batch_compact_printed_inside_as_completed_parallel(tmp_path, capsys):
 
 def test_batch_error_in_one_pair_exits_2(tmp_path):
     ctx = _make_batch_patches(tmp_path, ["--threshold", "0.01"])
-    ctx.append(patch("submatch.cli.audio.get_duration_ms",
+    ctx.append(patch("submatch.pipeline.audio.get_duration_ms",
                      side_effect=RuntimeError("ffprobe failed")))
     [c.__enter__() for c in ctx]
     try:
@@ -836,19 +837,19 @@ def test_batch_recursive_dir_mode(tmp_path):
                             "--threshold", "0.01"]), \
          patch("submatch.cli.check_dependencies"), \
          patch("submatch.cli.audio.has_audio_track", return_value=True), \
-         patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
-         patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
-         patch("submatch.cli.audio.detect_speech_regions", return_value=[]), \
-         patch("submatch.cli.subtitle.parse", return_value=subs_parsed), \
-         patch("submatch.cli.sampler.select_segments", return_value=segs), \
-         patch("submatch.cli.sampler.audio_candidate_segments", return_value=[[60_000]]), \
-         patch("submatch.cli.sampler.segments_from_starts", return_value=segs), \
-         patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
-         patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
-         patch("submatch.cli.language.detect_from_text", return_value="en"), \
-         patch("submatch.cli.language.detect_from_filename", return_value="en"), \
-         patch("submatch.cli.language.detect_from_video", return_value=None), \
-         patch("submatch.cli.language.build_result", return_value=lang):
+         patch("submatch.pipeline.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
+         patch("submatch.pipeline.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
+         patch("submatch.pipeline.audio.detect_speech_regions", return_value=[]), \
+         patch("submatch.pipeline.subtitle.parse", return_value=subs_parsed), \
+         patch("submatch.pipeline.sampler.select_segments", return_value=segs), \
+         patch("submatch.pipeline.sampler.audio_candidate_segments", return_value=[[60_000]]), \
+         patch("submatch.pipeline.sampler.segments_from_starts", return_value=segs), \
+         patch("submatch.pipeline.transcribe.load_model", return_value=MagicMock()), \
+         patch("submatch.pipeline.transcribe.transcribe_segment", return_value=mock_trans), \
+         patch("submatch.pipeline.language.detect_from_text", return_value="en"), \
+         patch("submatch.pipeline.language.detect_from_filename", return_value="en"), \
+         patch("submatch.pipeline.language.detect_from_video", return_value=None), \
+         patch("submatch.pipeline.language.build_result", return_value=lang):
         with pytest.raises(SystemExit) as exc:
             cli.main()
     assert exc.value.code == 0
@@ -889,19 +890,19 @@ def test_main_video_only_auto_discovers_subtitle(tmp_path):
     with patch("sys.argv", ["submatch", str(video), "--no-sync", "--threshold", "0.01"]), \
          patch("submatch.cli.check_dependencies"), \
          patch("submatch.cli.audio.has_audio_track", return_value=True), \
-         patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
-         patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
-         patch("submatch.cli.audio.detect_speech_regions", return_value=[]), \
-         patch("submatch.cli.subtitle.parse", return_value=subs_parsed), \
-         patch("submatch.cli.sampler.select_segments", return_value=segs), \
-         patch("submatch.cli.sampler.audio_candidate_segments", return_value=[[60_000]]), \
-         patch("submatch.cli.sampler.segments_from_starts", return_value=segs), \
-         patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
-         patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
-         patch("submatch.cli.language.detect_from_text", return_value="en"), \
-         patch("submatch.cli.language.detect_from_filename", return_value="en"), \
-         patch("submatch.cli.language.detect_from_video", return_value=None), \
-         patch("submatch.cli.language.build_result", return_value=lang):
+         patch("submatch.pipeline.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
+         patch("submatch.pipeline.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
+         patch("submatch.pipeline.audio.detect_speech_regions", return_value=[]), \
+         patch("submatch.pipeline.subtitle.parse", return_value=subs_parsed), \
+         patch("submatch.pipeline.sampler.select_segments", return_value=segs), \
+         patch("submatch.pipeline.sampler.audio_candidate_segments", return_value=[[60_000]]), \
+         patch("submatch.pipeline.sampler.segments_from_starts", return_value=segs), \
+         patch("submatch.pipeline.transcribe.load_model", return_value=MagicMock()), \
+         patch("submatch.pipeline.transcribe.transcribe_segment", return_value=mock_trans), \
+         patch("submatch.pipeline.language.detect_from_text", return_value="en"), \
+         patch("submatch.pipeline.language.detect_from_filename", return_value="en"), \
+         patch("submatch.pipeline.language.detect_from_video", return_value=None), \
+         patch("submatch.pipeline.language.build_result", return_value=lang):
         with pytest.raises(SystemExit) as exc:
             cli.main()
     assert exc.value.code == 0
@@ -925,19 +926,19 @@ def test_main_subtitle_only_finds_video(tmp_path):
     with patch("sys.argv", ["submatch", str(sub), "--no-sync", "--threshold", "0.01"]), \
          patch("submatch.cli.check_dependencies"), \
          patch("submatch.cli.audio.has_audio_track", return_value=True), \
-         patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
-         patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
-         patch("submatch.cli.audio.detect_speech_regions", return_value=[]), \
-         patch("submatch.cli.subtitle.parse", return_value=subs_parsed), \
-         patch("submatch.cli.sampler.select_segments", return_value=segs), \
-         patch("submatch.cli.sampler.audio_candidate_segments", return_value=[[60_000]]), \
-         patch("submatch.cli.sampler.segments_from_starts", return_value=segs), \
-         patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
-         patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
-         patch("submatch.cli.language.detect_from_text", return_value="en"), \
-         patch("submatch.cli.language.detect_from_filename", return_value="en"), \
-         patch("submatch.cli.language.detect_from_video", return_value=None), \
-         patch("submatch.cli.language.build_result", return_value=lang):
+         patch("submatch.pipeline.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
+         patch("submatch.pipeline.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
+         patch("submatch.pipeline.audio.detect_speech_regions", return_value=[]), \
+         patch("submatch.pipeline.subtitle.parse", return_value=subs_parsed), \
+         patch("submatch.pipeline.sampler.select_segments", return_value=segs), \
+         patch("submatch.pipeline.sampler.audio_candidate_segments", return_value=[[60_000]]), \
+         patch("submatch.pipeline.sampler.segments_from_starts", return_value=segs), \
+         patch("submatch.pipeline.transcribe.load_model", return_value=MagicMock()), \
+         patch("submatch.pipeline.transcribe.transcribe_segment", return_value=mock_trans), \
+         patch("submatch.pipeline.language.detect_from_text", return_value="en"), \
+         patch("submatch.pipeline.language.detect_from_filename", return_value="en"), \
+         patch("submatch.pipeline.language.detect_from_video", return_value=None), \
+         patch("submatch.pipeline.language.build_result", return_value=lang):
         with pytest.raises(SystemExit) as exc:
             cli.main()
     assert exc.value.code == 0
@@ -975,19 +976,19 @@ def test_batch_recursive_candidates_mode(tmp_path):
                             "--no-sync", "--threshold", "0.01"]), \
          patch("submatch.cli.check_dependencies"), \
          patch("submatch.cli.audio.has_audio_track", return_value=True), \
-         patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
-         patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
-         patch("submatch.cli.audio.detect_speech_regions", return_value=[]), \
-         patch("submatch.cli.subtitle.parse", return_value=subs_parsed), \
-         patch("submatch.cli.sampler.select_segments", return_value=segs), \
-         patch("submatch.cli.sampler.audio_candidate_segments", return_value=[[60_000]]), \
-         patch("submatch.cli.sampler.segments_from_starts", return_value=segs), \
-         patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
-         patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
-         patch("submatch.cli.language.detect_from_text", return_value="en"), \
-         patch("submatch.cli.language.detect_from_filename", return_value="en"), \
-         patch("submatch.cli.language.detect_from_video", return_value=None), \
-         patch("submatch.cli.language.build_result", return_value=lang):
+         patch("submatch.pipeline.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
+         patch("submatch.pipeline.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
+         patch("submatch.pipeline.audio.detect_speech_regions", return_value=[]), \
+         patch("submatch.pipeline.subtitle.parse", return_value=subs_parsed), \
+         patch("submatch.pipeline.sampler.select_segments", return_value=segs), \
+         patch("submatch.pipeline.sampler.audio_candidate_segments", return_value=[[60_000]]), \
+         patch("submatch.pipeline.sampler.segments_from_starts", return_value=segs), \
+         patch("submatch.pipeline.transcribe.load_model", return_value=MagicMock()), \
+         patch("submatch.pipeline.transcribe.transcribe_segment", return_value=mock_trans), \
+         patch("submatch.pipeline.language.detect_from_text", return_value="en"), \
+         patch("submatch.pipeline.language.detect_from_filename", return_value="en"), \
+         patch("submatch.pipeline.language.detect_from_video", return_value=None), \
+         patch("submatch.pipeline.language.build_result", return_value=lang):
         with pytest.raises(SystemExit) as exc:
             cli.main()
     assert exc.value.code == 0
@@ -1063,11 +1064,11 @@ def test_batch_sub_lang_filters_all_pairs(tmp_path):
 
 
 def test_resolve_device_explicit_cpu():
-    assert cli._resolve_device("cpu") == "cpu"
+    assert pipeline._resolve_device("cpu") == "cpu"
 
 
 def test_resolve_device_explicit_mps():
-    assert cli._resolve_device("mps") == "mps"
+    assert pipeline._resolve_device("mps") == "mps"
 
 
 def test_resolve_device_auto_no_gpu():
@@ -1075,7 +1076,7 @@ def test_resolve_device_auto_no_gpu():
     mock_torch.cuda.is_available.return_value = False
     mock_torch.backends.mps.is_available.return_value = False
     with patch.dict(sys.modules, {"torch": mock_torch}):
-        assert cli._resolve_device("auto") == "cpu"
+        assert pipeline._resolve_device("auto") == "cpu"
 
 
 def test_resolve_device_auto_mps_falls_back_to_cpu():
@@ -1083,27 +1084,27 @@ def test_resolve_device_auto_mps_falls_back_to_cpu():
     mock_torch.cuda.is_available.return_value = False
     mock_torch.backends.mps.is_available.return_value = True
     with patch.dict(sys.modules, {"torch": mock_torch}):
-        assert cli._resolve_device("auto") == "cpu"
+        assert pipeline._resolve_device("auto") == "cpu"
 
 
 def test_resolve_workers_auto_cuda_is_single():
-    assert cli._resolve_workers(None, "cuda") == 1
+    assert pipeline._resolve_workers(None, "cuda") == 1
 
 
 def test_resolve_workers_auto_mps_uses_multi():
     import os
-    assert cli._resolve_workers(None, "mps") == min(4, os.cpu_count() or 1)
+    assert pipeline._resolve_workers(None, "mps") == min(4, os.cpu_count() or 1)
 
 
 def test_resolve_workers_auto_cpu():
     import os
-    result = cli._resolve_workers(None, "cpu")
+    result = pipeline._resolve_workers(None, "cpu")
     assert 1 <= result <= min(4, os.cpu_count() or 1)
 
 
 def test_resolve_workers_explicit_overrides():
-    assert cli._resolve_workers(3, "mps") == 3
-    assert cli._resolve_workers(1, "cpu") == 1
+    assert pipeline._resolve_workers(3, "mps") == 3
+    assert pipeline._resolve_workers(1, "cpu") == 1
 
 
 def test_batch_no_warn_multi_worker_gpu(tmp_path, capsys):
@@ -1138,7 +1139,7 @@ def test_batch_parallel_error_in_one_pair_exits_2(tmp_path):
     """In parallel mode, an exception from one pair produces BatchPairResult.error and exit 2."""
     ctx = _make_batch_patches(tmp_path, ["--workers", "2", "--device", "cpu",
                                           "--threshold", "0.01"])
-    ctx.append(patch("submatch.cli.audio.get_duration_ms",
+    ctx.append(patch("submatch.pipeline.audio.get_duration_ms",
                      side_effect=RuntimeError("ffprobe failed")))
     [c.__enter__() for c in ctx]
     try:
@@ -1153,28 +1154,28 @@ def test_batch_parallel_error_in_one_pair_exits_2(tmp_path):
 # ── cross-language detection ──────────────────────────────────────────────────
 
 def test_is_cross_language_different():
-    assert cli._is_cross_language("en", "pt") is True
+    assert pipeline._is_cross_language("en", "pt") is True
 
 
 def test_is_cross_language_same():
-    assert cli._is_cross_language("en", "en") is False
+    assert pipeline._is_cross_language("en", "en") is False
 
 
 def test_is_cross_language_prefix_match():
-    assert cli._is_cross_language("pt", "pt-BR") is False
-    assert cli._is_cross_language("pt-BR", "pt") is False
+    assert pipeline._is_cross_language("pt", "pt-BR") is False
+    assert pipeline._is_cross_language("pt-BR", "pt") is False
 
 
 def test_is_cross_language_none_audio():
-    assert cli._is_cross_language(None, "pt") is False
+    assert pipeline._is_cross_language(None, "pt") is False
 
 
 def test_is_cross_language_none_subtitle():
-    assert cli._is_cross_language("en", None) is False
+    assert pipeline._is_cross_language("en", None) is False
 
 
 def test_is_cross_language_both_none():
-    assert cli._is_cross_language(None, None) is False
+    assert pipeline._is_cross_language(None, None) is False
 
 
 def test_parse_args_cross_threshold_default(tmp_path):
@@ -1193,17 +1194,15 @@ def test_parse_args_cross_threshold_explicit(tmp_path):
     assert args.cross_threshold == pytest.approx(0.5)
 
 
-def test_get_embed_model_missing_import(capsys):
-    """_get_embed_model exits with code 2 when sentence_transformers not installed."""
-    if hasattr(cli._embed_local, "model"):
-        del cli._embed_local.model
+def test_get_embed_model_missing_import():
+    """pipeline._get_embed_model raises ImportError when sentence_transformers not installed."""
+    if hasattr(pipeline._embed_local, "model"):
+        del pipeline._embed_local.model
     with patch.dict(sys.modules, {"sentence_transformers": None}), \
          patch("submatch.embeddings.load_embedding_model",
                side_effect=ImportError("No module named 'sentence_transformers'")), \
-         pytest.raises(SystemExit) as exc:
-        cli._get_embed_model()
-    assert exc.value.code == 2
-    assert "sentence-transformers" in capsys.readouterr().err
+         pytest.raises(ImportError, match="sentence-transformers"):
+        pipeline._get_embed_model()
 
 
 def test_score_pair_cross_language_uses_embeddings(tmp_path):
@@ -1228,20 +1227,20 @@ def test_score_pair_cross_language_uses_embeddings(tmp_path):
                             "--no-sync", "--threshold", "0.5"]), \
          patch("submatch.cli.check_dependencies"), \
          patch("submatch.cli.audio.has_audio_track", return_value=True), \
-         patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
-         patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
-         patch("submatch.cli.audio.detect_speech_regions", return_value=[]), \
-         patch("submatch.cli.subtitle.parse", return_value=subs_parsed), \
-         patch("submatch.cli.sampler.select_segments", return_value=segs), \
-         patch("submatch.cli.sampler.audio_candidate_segments", return_value=[[60_000]]), \
-         patch("submatch.cli.sampler.segments_from_starts", return_value=segs), \
-         patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
-         patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
-         patch("submatch.cli.language.detect_from_text", return_value="pt"), \
-         patch("submatch.cli.language.detect_from_filename", return_value="pt"), \
-         patch("submatch.cli.language.detect_from_video", return_value=None), \
-         patch("submatch.cli.language.build_result", return_value=lang), \
-         patch("submatch.cli._get_embed_model", return_value=MagicMock()), \
+         patch("submatch.pipeline.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
+         patch("submatch.pipeline.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
+         patch("submatch.pipeline.audio.detect_speech_regions", return_value=[]), \
+         patch("submatch.pipeline.subtitle.parse", return_value=subs_parsed), \
+         patch("submatch.pipeline.sampler.select_segments", return_value=segs), \
+         patch("submatch.pipeline.sampler.audio_candidate_segments", return_value=[[60_000]]), \
+         patch("submatch.pipeline.sampler.segments_from_starts", return_value=segs), \
+         patch("submatch.pipeline.transcribe.load_model", return_value=MagicMock()), \
+         patch("submatch.pipeline.transcribe.transcribe_segment", return_value=mock_trans), \
+         patch("submatch.pipeline.language.detect_from_text", return_value="pt"), \
+         patch("submatch.pipeline.language.detect_from_filename", return_value="pt"), \
+         patch("submatch.pipeline.language.detect_from_video", return_value=None), \
+         patch("submatch.pipeline.language.build_result", return_value=lang), \
+         patch("submatch.pipeline._get_embed_model", return_value=MagicMock()), \
          patch("submatch.embeddings.cross_language_score", mock_cross_fn), \
          pytest.raises(SystemExit):
         cli.main()
@@ -1254,7 +1253,7 @@ def test_score_pair_same_language_skips_embeddings(tmp_path):
     _, _, ctx = _make_pipeline_patches(tmp_path, ["--threshold", "0.01"])
     mock_get_embed = MagicMock()
 
-    with patch("submatch.cli._get_embed_model", mock_get_embed):
+    with patch("submatch.pipeline._get_embed_model", mock_get_embed):
         [c.__enter__() for c in ctx]
         try:
             with pytest.raises(SystemExit):
@@ -1288,20 +1287,20 @@ def test_cross_threshold_used_for_cross_language_pair(tmp_path):
                             "--cross-threshold", "0.9"]), \
          patch("submatch.cli.check_dependencies"), \
          patch("submatch.cli.audio.has_audio_track", return_value=True), \
-         patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
-         patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
-         patch("submatch.cli.audio.detect_speech_regions", return_value=[]), \
-         patch("submatch.cli.subtitle.parse", return_value=subs_parsed), \
-         patch("submatch.cli.sampler.select_segments", return_value=segs), \
-         patch("submatch.cli.sampler.audio_candidate_segments", return_value=[[60_000]]), \
-         patch("submatch.cli.sampler.segments_from_starts", return_value=segs), \
-         patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
-         patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
-         patch("submatch.cli.language.detect_from_text", return_value="pt"), \
-         patch("submatch.cli.language.detect_from_filename", return_value="pt"), \
-         patch("submatch.cli.language.detect_from_video", return_value=None), \
-         patch("submatch.cli.language.build_result", return_value=lang), \
-         patch("submatch.cli._get_embed_model", return_value=MagicMock()), \
+         patch("submatch.pipeline.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
+         patch("submatch.pipeline.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
+         patch("submatch.pipeline.audio.detect_speech_regions", return_value=[]), \
+         patch("submatch.pipeline.subtitle.parse", return_value=subs_parsed), \
+         patch("submatch.pipeline.sampler.select_segments", return_value=segs), \
+         patch("submatch.pipeline.sampler.audio_candidate_segments", return_value=[[60_000]]), \
+         patch("submatch.pipeline.sampler.segments_from_starts", return_value=segs), \
+         patch("submatch.pipeline.transcribe.load_model", return_value=MagicMock()), \
+         patch("submatch.pipeline.transcribe.transcribe_segment", return_value=mock_trans), \
+         patch("submatch.pipeline.language.detect_from_text", return_value="pt"), \
+         patch("submatch.pipeline.language.detect_from_filename", return_value="pt"), \
+         patch("submatch.pipeline.language.detect_from_video", return_value=None), \
+         patch("submatch.pipeline.language.build_result", return_value=lang), \
+         patch("submatch.pipeline._get_embed_model", return_value=MagicMock()), \
          patch("submatch.embeddings.cross_language_score",
                return_value=mock_embed_score), \
          pytest.raises(SystemExit) as exc:
@@ -1315,21 +1314,21 @@ def test_resolve_device_auto_cuda():
     mock_torch.cuda.is_available.return_value = True
     mock_torch.backends.mps.is_available.return_value = False
     with patch.dict(sys.modules, {"torch": mock_torch}):
-        assert cli._resolve_device("auto") == "cuda"
+        assert pipeline._resolve_device("auto") == "cuda"
 
 
 def test_get_embed_model_returns_cached():
     """Second call to _get_embed_model returns the cached model without reloading."""
-    if hasattr(cli._embed_local, "model"):
-        del cli._embed_local.model
+    if hasattr(pipeline._embed_local, "model"):
+        del pipeline._embed_local.model
     mock_model = MagicMock()
     with patch("submatch.embeddings.load_embedding_model", return_value=mock_model) as mock_load:
-        first = cli._get_embed_model()
-        second = cli._get_embed_model()
+        first = pipeline._get_embed_model()
+        second = pipeline._get_embed_model()
     assert first is mock_model
     assert second is mock_model
     mock_load.assert_called_once()
-    del cli._embed_local.model
+    del pipeline._embed_local.model
 
 
 def test_batch_sync_bar_description(tmp_path):
@@ -1353,20 +1352,20 @@ def test_batch_sync_bar_description(tmp_path):
 
     with patch("sys.argv", ["submatch", str(tmp_path), "--threshold", "0.01"]), \
          patch("submatch.cli.check_dependencies"), \
-         patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
-         patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
-         patch("submatch.cli.audio.detect_speech_regions", return_value=[]), \
-         patch("submatch.cli.subtitle.parse", return_value=subs_parsed), \
-         patch("submatch.cli.sampler.select_segments", return_value=segs), \
-         patch("submatch.cli.sampler.audio_candidate_segments", return_value=[[60_000]]), \
-         patch("submatch.cli.sampler.segments_from_starts", return_value=segs), \
-         patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
-         patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
-         patch("submatch.cli.language.detect_from_text", return_value="en"), \
-         patch("submatch.cli.language.detect_from_filename", return_value="en"), \
-         patch("submatch.cli.language.detect_from_video", return_value=None), \
-         patch("submatch.cli.language.build_result", return_value=lang), \
-         patch("submatch.cli.sync.sync_subtitle", return_value=sync_result):
+         patch("submatch.pipeline.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
+         patch("submatch.pipeline.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
+         patch("submatch.pipeline.audio.detect_speech_regions", return_value=[]), \
+         patch("submatch.pipeline.subtitle.parse", return_value=subs_parsed), \
+         patch("submatch.pipeline.sampler.select_segments", return_value=segs), \
+         patch("submatch.pipeline.sampler.audio_candidate_segments", return_value=[[60_000]]), \
+         patch("submatch.pipeline.sampler.segments_from_starts", return_value=segs), \
+         patch("submatch.pipeline.transcribe.load_model", return_value=MagicMock()), \
+         patch("submatch.pipeline.transcribe.transcribe_segment", return_value=mock_trans), \
+         patch("submatch.pipeline.language.detect_from_text", return_value="en"), \
+         patch("submatch.pipeline.language.detect_from_filename", return_value="en"), \
+         patch("submatch.pipeline.language.detect_from_video", return_value=None), \
+         patch("submatch.pipeline.language.build_result", return_value=lang), \
+         patch("submatch.pipeline.sync.sync_subtitle", return_value=sync_result):
         with pytest.raises(SystemExit) as exc:
             cli.main()
     assert exc.value.code == 0
@@ -1398,7 +1397,7 @@ def test_run_batch_accepts_prebuilt_pairs(tmp_path):
 
     with patch("submatch.cli.check_dependencies"), \
          patch("submatch.batch.resolve_pairs") as mock_resolve, \
-         patch("submatch.cli._score_pair", side_effect=Exception("stop")):
+         patch("submatch.pipeline._score_pair", side_effect=Exception("stop")):
         cli._run_batch(args, [], [], pairs=[(video, sub)])
 
     mock_resolve.assert_not_called()
@@ -1439,19 +1438,19 @@ def test_batch_reuses_transcription_cache_for_same_video(tmp_path):
 
     with patch("sys.argv", ["submatch", str(tmp_path), "--no-sync", "--threshold", "0.01"]), \
          patch("submatch.cli.check_dependencies"), \
-         patch("submatch.cli.audio.get_duration_ms", mock_get_duration), \
-         patch("submatch.cli.audio.extract_segment", mock_extract), \
-         patch("submatch.cli.audio.detect_speech_regions", return_value=[]), \
-         patch("submatch.cli.subtitle.parse", return_value=subs_parsed), \
-         patch("submatch.cli.sampler.select_segments", return_value=segs), \
-         patch("submatch.cli.sampler.audio_candidate_segments", return_value=[[60_000]]), \
-         patch("submatch.cli.sampler.segments_from_starts", return_value=segs), \
-         patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
-         patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
-         patch("submatch.cli.language.detect_from_text", return_value="en"), \
-         patch("submatch.cli.language.detect_from_filename", return_value="en"), \
-         patch("submatch.cli.language.detect_from_video", return_value=None), \
-         patch("submatch.cli.language.build_result", return_value=lang):
+         patch("submatch.pipeline.audio.get_duration_ms", mock_get_duration), \
+         patch("submatch.pipeline.audio.extract_segment", mock_extract), \
+         patch("submatch.pipeline.audio.detect_speech_regions", return_value=[]), \
+         patch("submatch.pipeline.subtitle.parse", return_value=subs_parsed), \
+         patch("submatch.pipeline.sampler.select_segments", return_value=segs), \
+         patch("submatch.pipeline.sampler.audio_candidate_segments", return_value=[[60_000]]), \
+         patch("submatch.pipeline.sampler.segments_from_starts", return_value=segs), \
+         patch("submatch.pipeline.transcribe.load_model", return_value=MagicMock()), \
+         patch("submatch.pipeline.transcribe.transcribe_segment", return_value=mock_trans), \
+         patch("submatch.pipeline.language.detect_from_text", return_value="en"), \
+         patch("submatch.pipeline.language.detect_from_filename", return_value="en"), \
+         patch("submatch.pipeline.language.detect_from_video", return_value=None), \
+         patch("submatch.pipeline.language.build_result", return_value=lang):
         with pytest.raises(SystemExit) as exc:
             cli.main()
 
@@ -1478,7 +1477,6 @@ def test_main_delete_failures_single(tmp_path):
 
 def test_score_pair_exception_propagates_after_sync(tmp_path):
     """When _score_pair raises after sync runs, exception propagates and temp file is cleaned."""
-    import argparse
     from submatch.sync import SyncResult
     video = tmp_path / "video.mp4"
     video.touch()
@@ -1486,10 +1484,10 @@ def test_score_pair_exception_propagates_after_sync(tmp_path):
     subtitle.write_text(SAMPLE_SRT)
 
     subs = [Subtitle(1, 1_000, 3_500, "Hello world")]
-    args = argparse.Namespace(
-        no_sync=False, segments=None, model="base", language=None,
-        cross_threshold=None, threshold=0.35, json=None, resync=False,
-        pass_unsure=False, drift_threshold=2.0,
+    config = pipeline.PipelineConfig(
+        sync=True, segments=None, model="base", language=None,
+        cross_threshold=None, threshold=0.35, resync=False, drift_threshold=2.0,
+        device="cpu", use_cache=False,
     )
 
     created_tmp: list[Path] = []
@@ -1499,11 +1497,11 @@ def test_score_pair_exception_propagates_after_sync(tmp_path):
         out_path.write_text(SAMPLE_SRT)
         return SyncResult(synced_srt_path=out_path, offset_seconds=0.0, drift_detected=False)
 
-    with patch("submatch.cli.sync.sync_subtitle", side_effect=fake_sync), \
-         patch("submatch.cli.subtitle.parse", return_value=subs), \
-         patch("submatch.cli.audio.get_duration_ms", side_effect=RuntimeError("ffprobe error")):
+    with patch("submatch.pipeline.sync.sync_subtitle", side_effect=fake_sync), \
+         patch("submatch.pipeline.subtitle.parse", return_value=subs), \
+         patch("submatch.pipeline.audio.get_duration_ms", side_effect=RuntimeError("ffprobe error")):
         with pytest.raises(RuntimeError, match="ffprobe error"):
-            cli._score_pair(video, subtitle, args, MagicMock())
+            pipeline._score_pair(video, subtitle, config, MagicMock())
 
     # The temp sync file created by _score_pair should have been cleaned up
     assert created_tmp, "sync was called"
@@ -1532,20 +1530,20 @@ def test_batch_parallel_sync_cleans_up_synced_file(tmp_path):
     with patch("sys.argv", ["submatch", str(tmp_path), "--threshold", "0.01",
                             "--workers", "2", "--device", "cpu"]), \
          patch("submatch.cli.check_dependencies"), \
-         patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
-         patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
-         patch("submatch.cli.audio.detect_speech_regions", return_value=[]), \
-         patch("submatch.cli.subtitle.parse", return_value=subs_parsed), \
-         patch("submatch.cli.sampler.select_segments", return_value=segs), \
-         patch("submatch.cli.sampler.audio_candidate_segments", return_value=[[60_000]]), \
-         patch("submatch.cli.sampler.segments_from_starts", return_value=segs), \
-         patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
-         patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
-         patch("submatch.cli.language.detect_from_text", return_value="en"), \
-         patch("submatch.cli.language.detect_from_filename", return_value="en"), \
-         patch("submatch.cli.language.detect_from_video", return_value=None), \
-         patch("submatch.cli.language.build_result", return_value=lang), \
-         patch("submatch.cli.sync.sync_subtitle", return_value=sync_result):
+         patch("submatch.pipeline.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
+         patch("submatch.pipeline.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
+         patch("submatch.pipeline.audio.detect_speech_regions", return_value=[]), \
+         patch("submatch.pipeline.subtitle.parse", return_value=subs_parsed), \
+         patch("submatch.pipeline.sampler.select_segments", return_value=segs), \
+         patch("submatch.pipeline.sampler.audio_candidate_segments", return_value=[[60_000]]), \
+         patch("submatch.pipeline.sampler.segments_from_starts", return_value=segs), \
+         patch("submatch.pipeline.transcribe.load_model", return_value=MagicMock()), \
+         patch("submatch.pipeline.transcribe.transcribe_segment", return_value=mock_trans), \
+         patch("submatch.pipeline.language.detect_from_text", return_value="en"), \
+         patch("submatch.pipeline.language.detect_from_filename", return_value="en"), \
+         patch("submatch.pipeline.language.detect_from_video", return_value=None), \
+         patch("submatch.pipeline.language.build_result", return_value=lang), \
+         patch("submatch.pipeline.sync.sync_subtitle", return_value=sync_result):
         with pytest.raises(SystemExit) as exc:
             cli.main()
     assert exc.value.code == 0
@@ -1594,22 +1592,22 @@ def test_fmt_eta_hours():
 
 def test_determine_state_pass():
     result = _make_match_result(passed=True, drift_detected=False)
-    assert cli._determine_state(result) == cli.output.MatchState.PASS
+    assert pipeline._determine_state(result) == cli.output.MatchState.PASS
 
 
 def test_determine_state_drift():
     result = _make_match_result(passed=True, drift_detected=True)
-    assert cli._determine_state(result) == cli.output.MatchState.DRIFT
+    assert pipeline._determine_state(result) == cli.output.MatchState.DRIFT
 
 
 def test_determine_state_fail():
     result = _make_match_result(passed=False, drift_detected=False)
-    assert cli._determine_state(result) == cli.output.MatchState.FAIL
+    assert pipeline._determine_state(result) == cli.output.MatchState.FAIL
 
 
 def test_determine_state_unsure():
     result = _make_match_result(segments=[], passed=False)
-    assert cli._determine_state(result) == cli.output.MatchState.UNSURE
+    assert pipeline._determine_state(result) == cli.output.MatchState.UNSURE
 
 
 def test_parse_args_resync_flag(tmp_path):
@@ -1659,7 +1657,7 @@ def test_should_fail_fail_result_with_pass_unsure():
 def test_main_unsure_exits_1(tmp_path):
     """0 segments scored (all transcriptions fail) → UNSURE → exit 1."""
     _, _, ctx = _make_pipeline_patches(tmp_path, ["--threshold", "0.01"])
-    ctx.append(patch("submatch.cli.transcribe.transcribe_segment",
+    ctx.append(patch("submatch.pipeline.transcribe.transcribe_segment",
                      side_effect=RuntimeError("GPU exploded")))
     [c.__enter__() for c in ctx]
     try:
@@ -1674,7 +1672,7 @@ def test_main_unsure_exits_1(tmp_path):
 def test_main_unsure_pass_unsure_exits_0(tmp_path):
     """0 segments scored → UNSURE, but --pass-unsure → exit 0."""
     _, _, ctx = _make_pipeline_patches(tmp_path, ["--threshold", "0.01", "--pass-unsure"])
-    ctx.append(patch("submatch.cli.transcribe.transcribe_segment",
+    ctx.append(patch("submatch.pipeline.transcribe.transcribe_segment",
                      side_effect=RuntimeError("GPU exploded")))
     [c.__enter__() for c in ctx]
     try:
@@ -1708,17 +1706,17 @@ def test_main_drift_exits_1(tmp_path):
     with patch("sys.argv", ["submatch", str(video), str(subtitle), "--threshold", "0.01"]), \
          patch("submatch.cli.check_dependencies"), \
          patch("submatch.cli.audio.has_audio_track", return_value=True), \
-         patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
-         patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
-         patch("submatch.cli.subtitle.parse", return_value=subs), \
-         patch("submatch.cli.sampler.select_segments", return_value=segs), \
-         patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
-         patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
-         patch("submatch.cli.language.detect_from_text", return_value="en"), \
-         patch("submatch.cli.language.detect_from_filename", return_value="en"), \
-         patch("submatch.cli.language.detect_from_video", return_value=None), \
-         patch("submatch.cli.language.build_result", return_value=lang), \
-         patch("submatch.cli.sync.sync_subtitle", return_value=sync_result):
+         patch("submatch.pipeline.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
+         patch("submatch.pipeline.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
+         patch("submatch.pipeline.subtitle.parse", return_value=subs), \
+         patch("submatch.pipeline.sampler.select_segments", return_value=segs), \
+         patch("submatch.pipeline.transcribe.load_model", return_value=MagicMock()), \
+         patch("submatch.pipeline.transcribe.transcribe_segment", return_value=mock_trans), \
+         patch("submatch.pipeline.language.detect_from_text", return_value="en"), \
+         patch("submatch.pipeline.language.detect_from_filename", return_value="en"), \
+         patch("submatch.pipeline.language.detect_from_video", return_value=None), \
+         patch("submatch.pipeline.language.build_result", return_value=lang), \
+         patch("submatch.pipeline.sync.sync_subtitle", return_value=sync_result):
         with pytest.raises(SystemExit) as exc:
             cli.main()
 
@@ -1748,20 +1746,20 @@ def test_main_resync_replaces_subtitle(tmp_path):
                             "--threshold", "0.01", "--resync"]), \
          patch("submatch.cli.check_dependencies"), \
          patch("submatch.cli.audio.has_audio_track", return_value=True), \
-         patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
-         patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
-         patch("submatch.cli.audio.detect_speech_regions", return_value=[]), \
-         patch("submatch.cli.subtitle.parse", return_value=subs), \
-         patch("submatch.cli.sampler.select_segments", return_value=segs), \
-         patch("submatch.cli.sampler.audio_candidate_segments", return_value=[[60_000]]), \
-         patch("submatch.cli.sampler.segments_from_starts", return_value=segs), \
-         patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
-         patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
-         patch("submatch.cli.language.detect_from_text", return_value="en"), \
-         patch("submatch.cli.language.detect_from_filename", return_value="en"), \
-         patch("submatch.cli.language.detect_from_video", return_value=None), \
-         patch("submatch.cli.language.build_result", return_value=lang), \
-         patch("submatch.cli.sync.sync_subtitle", return_value=sync_result):
+         patch("submatch.pipeline.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
+         patch("submatch.pipeline.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
+         patch("submatch.pipeline.audio.detect_speech_regions", return_value=[]), \
+         patch("submatch.pipeline.subtitle.parse", return_value=subs), \
+         patch("submatch.pipeline.sampler.select_segments", return_value=segs), \
+         patch("submatch.pipeline.sampler.audio_candidate_segments", return_value=[[60_000]]), \
+         patch("submatch.pipeline.sampler.segments_from_starts", return_value=segs), \
+         patch("submatch.pipeline.transcribe.load_model", return_value=MagicMock()), \
+         patch("submatch.pipeline.transcribe.transcribe_segment", return_value=mock_trans), \
+         patch("submatch.pipeline.language.detect_from_text", return_value="en"), \
+         patch("submatch.pipeline.language.detect_from_filename", return_value="en"), \
+         patch("submatch.pipeline.language.detect_from_video", return_value=None), \
+         patch("submatch.pipeline.language.build_result", return_value=lang), \
+         patch("submatch.pipeline.sync.sync_subtitle", return_value=sync_result):
         with pytest.raises(SystemExit) as exc:
             cli.main()
 
@@ -1790,18 +1788,18 @@ def test_batch_sequential_resync(tmp_path):
     with patch("sys.argv", ["submatch", str(tmp_path),
                             "--threshold", "0.01", "--resync"]), \
          patch("submatch.cli.check_dependencies"), \
-         patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
-         patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
-         patch("submatch.cli.subtitle.parse", return_value=subs), \
-         patch("submatch.cli.sampler.select_segments", return_value=segs), \
-         patch("submatch.cli.sampler.segments_from_starts", return_value=segs), \
-         patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
-         patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
-         patch("submatch.cli.language.detect_from_text", return_value="en"), \
-         patch("submatch.cli.language.detect_from_filename", return_value="en"), \
-         patch("submatch.cli.language.detect_from_video", return_value=None), \
-         patch("submatch.cli.language.build_result", return_value=lang), \
-         patch("submatch.cli.sync.sync_subtitle", return_value=sync_result):
+         patch("submatch.pipeline.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
+         patch("submatch.pipeline.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
+         patch("submatch.pipeline.subtitle.parse", return_value=subs), \
+         patch("submatch.pipeline.sampler.select_segments", return_value=segs), \
+         patch("submatch.pipeline.sampler.segments_from_starts", return_value=segs), \
+         patch("submatch.pipeline.transcribe.load_model", return_value=MagicMock()), \
+         patch("submatch.pipeline.transcribe.transcribe_segment", return_value=mock_trans), \
+         patch("submatch.pipeline.language.detect_from_text", return_value="en"), \
+         patch("submatch.pipeline.language.detect_from_filename", return_value="en"), \
+         patch("submatch.pipeline.language.detect_from_video", return_value=None), \
+         patch("submatch.pipeline.language.build_result", return_value=lang), \
+         patch("submatch.pipeline.sync.sync_subtitle", return_value=sync_result):
         with pytest.raises(SystemExit) as exc:
             cli.main()
 
@@ -1831,18 +1829,18 @@ def test_batch_parallel_resync(tmp_path):
                             "--threshold", "0.01", "--resync", "--workers", "2",
                             "--device", "cpu"]), \
          patch("submatch.cli.check_dependencies"), \
-         patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
-         patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
-         patch("submatch.cli.subtitle.parse", return_value=subs), \
-         patch("submatch.cli.sampler.select_segments", return_value=segs), \
-         patch("submatch.cli.sampler.segments_from_starts", return_value=segs), \
-         patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
-         patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
-         patch("submatch.cli.language.detect_from_text", return_value="en"), \
-         patch("submatch.cli.language.detect_from_filename", return_value="en"), \
-         patch("submatch.cli.language.detect_from_video", return_value=None), \
-         patch("submatch.cli.language.build_result", return_value=lang), \
-         patch("submatch.cli.sync.sync_subtitle", return_value=sync_result):
+         patch("submatch.pipeline.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
+         patch("submatch.pipeline.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
+         patch("submatch.pipeline.subtitle.parse", return_value=subs), \
+         patch("submatch.pipeline.sampler.select_segments", return_value=segs), \
+         patch("submatch.pipeline.sampler.segments_from_starts", return_value=segs), \
+         patch("submatch.pipeline.transcribe.load_model", return_value=MagicMock()), \
+         patch("submatch.pipeline.transcribe.transcribe_segment", return_value=mock_trans), \
+         patch("submatch.pipeline.language.detect_from_text", return_value="en"), \
+         patch("submatch.pipeline.language.detect_from_filename", return_value="en"), \
+         patch("submatch.pipeline.language.detect_from_video", return_value=None), \
+         patch("submatch.pipeline.language.build_result", return_value=lang), \
+         patch("submatch.pipeline.sync.sync_subtitle", return_value=sync_result):
         with pytest.raises(SystemExit) as exc:
             cli.main()
 
@@ -2013,18 +2011,18 @@ def test_score_pair_resolve_audio_track_called_once_per_video(tmp_path):
     with patch("sys.argv", ["submatch", str(tmp_path),
                              "--no-sync", "--compact", "--audio-track", "1"]), \
          patch("submatch.cli.check_dependencies"), \
-         patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
-         patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
-         patch("submatch.cli.audio.resolve_audio_track", return_value=(1, "jpn")) as mock_resolve, \
-         patch("submatch.cli.subtitle.parse", return_value=subs), \
-         patch("submatch.cli.sampler.select_segments", return_value=segs), \
-         patch("submatch.cli.sampler.segments_from_starts", return_value=segs), \
-         patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
-         patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
-         patch("submatch.cli.language.detect_from_text", return_value="en"), \
-         patch("submatch.cli.language.detect_from_filename", return_value="en"), \
-         patch("submatch.cli.language.detect_from_video", return_value=None), \
-         patch("submatch.cli.language.build_result", return_value=lang):
+         patch("submatch.pipeline.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
+         patch("submatch.pipeline.audio.extract_segment", return_value=tmp_path / "seg.wav"), \
+         patch("submatch.pipeline.audio.resolve_audio_track", return_value=(1, "jpn")) as mock_resolve, \
+         patch("submatch.pipeline.subtitle.parse", return_value=subs), \
+         patch("submatch.pipeline.sampler.select_segments", return_value=segs), \
+         patch("submatch.pipeline.sampler.segments_from_starts", return_value=segs), \
+         patch("submatch.pipeline.transcribe.load_model", return_value=MagicMock()), \
+         patch("submatch.pipeline.transcribe.transcribe_segment", return_value=mock_trans), \
+         patch("submatch.pipeline.language.detect_from_text", return_value="en"), \
+         patch("submatch.pipeline.language.detect_from_filename", return_value="en"), \
+         patch("submatch.pipeline.language.detect_from_video", return_value=None), \
+         patch("submatch.pipeline.language.build_result", return_value=lang):
         with pytest.raises(SystemExit):
             cli.main()
 
@@ -2049,17 +2047,17 @@ def test_score_pair_passes_audio_track_to_extract_segment(tmp_path):
     with patch("sys.argv", ["submatch", str(video), str(sub), "--no-sync", "--audio-track", "1"]), \
          patch("submatch.cli.check_dependencies"), \
          patch("submatch.cli.audio.has_audio_track", return_value=True), \
-         patch("submatch.cli.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
-         patch("submatch.cli.audio.extract_segment", return_value=tmp_path / "seg.wav") as mock_extract, \
-         patch("submatch.cli.audio.resolve_audio_track", return_value=(1, "jpn")), \
-         patch("submatch.cli.subtitle.parse", return_value=subs), \
-         patch("submatch.cli.sampler.select_segments", return_value=segs), \
-         patch("submatch.cli.transcribe.load_model", return_value=MagicMock()), \
-         patch("submatch.cli.transcribe.transcribe_segment", return_value=mock_trans), \
-         patch("submatch.cli.language.detect_from_text", return_value="en"), \
-         patch("submatch.cli.language.detect_from_filename", return_value="en"), \
-         patch("submatch.cli.language.detect_from_video", return_value=None), \
-         patch("submatch.cli.language.build_result", return_value=lang):
+         patch("submatch.pipeline.audio.get_duration_ms", return_value=90 * 60 * 1_000), \
+         patch("submatch.pipeline.audio.extract_segment", return_value=tmp_path / "seg.wav") as mock_extract, \
+         patch("submatch.pipeline.audio.resolve_audio_track", return_value=(1, "jpn")), \
+         patch("submatch.pipeline.subtitle.parse", return_value=subs), \
+         patch("submatch.pipeline.sampler.select_segments", return_value=segs), \
+         patch("submatch.pipeline.transcribe.load_model", return_value=MagicMock()), \
+         patch("submatch.pipeline.transcribe.transcribe_segment", return_value=mock_trans), \
+         patch("submatch.pipeline.language.detect_from_text", return_value="en"), \
+         patch("submatch.pipeline.language.detect_from_filename", return_value="en"), \
+         patch("submatch.pipeline.language.detect_from_video", return_value=None), \
+         patch("submatch.pipeline.language.build_result", return_value=lang):
         with pytest.raises(SystemExit):
             cli.main()
 
@@ -2302,7 +2300,7 @@ def test_poll_without_watch_warns(tmp_path, capsys):
          patch("submatch.config.load_config", return_value={}), \
          patch("submatch.cli.check_dependencies"), \
          patch("submatch.cli.audio.has_audio_track", return_value=True), \
-         patch("submatch.cli._score_pair", side_effect=SystemExit(0)):
+         patch("submatch.pipeline._score_pair", side_effect=SystemExit(0)):
         with pytest.raises(SystemExit):
             cli.main()
     assert "warning" in capsys.readouterr().err.lower()
@@ -2312,7 +2310,7 @@ def test_poll_without_watch_warns(tmp_path, capsys):
 
 def test_audio_driven_transcribe_retries_on_bad_no_speech_prob(tmp_path):
     """Quality gate rejects high no_speech_prob and retries with next candidate."""
-    from submatch.cli import _audio_driven_transcribe
+    from submatch.pipeline import _audio_driven_transcribe, PipelineConfig
     from submatch.transcribe import TranscriptionResult
 
     bad = TranscriptionResult(text="uh", language="en", no_speech_prob=0.9)
@@ -2322,17 +2320,18 @@ def test_audio_driven_transcribe_retries_on_bad_no_speech_prob(tmp_path):
     mock_wav = MagicMock()
     mock_wav.unlink = MagicMock()
 
-    with patch("submatch.cli.audio.extract_segment", return_value=mock_wav), \
-         patch("submatch.cli.transcribe.transcribe_segment", side_effect=responses), \
-         patch("submatch.cli.audio.detect_speech_regions", return_value=[]), \
-         patch("submatch.cli.audio.get_duration_ms", return_value=3_600_000), \
-         patch("submatch.cli.sampler.audio_candidate_segments",
+    with patch("submatch.pipeline.audio.extract_segment", return_value=mock_wav), \
+         patch("submatch.pipeline.transcribe.transcribe_segment", side_effect=responses), \
+         patch("submatch.pipeline.audio.detect_speech_regions", return_value=[]), \
+         patch("submatch.pipeline.audio.get_duration_ms", return_value=3_600_000), \
+         patch("submatch.pipeline.sampler.audio_candidate_segments",
                return_value=[[100_000, 200_000]]):
         starts, texts, lang = _audio_driven_transcribe(
             video=Path("fake.mkv"),
             audio_track_index=0,
             n_seg=1,
             model=MagicMock(),
+            config=PipelineConfig(),
         )
 
     assert len(starts) == 1
@@ -2341,7 +2340,7 @@ def test_audio_driven_transcribe_retries_on_bad_no_speech_prob(tmp_path):
 
 def test_audio_driven_transcribe_fallback_uses_most_words(tmp_path):
     """When all candidates fail quality gate, uses the one with most words."""
-    from submatch.cli import _audio_driven_transcribe
+    from submatch.pipeline import _audio_driven_transcribe, PipelineConfig
     from submatch.transcribe import TranscriptionResult
 
     short = TranscriptionResult(text="uh", language="en", no_speech_prob=0.95)
@@ -2351,17 +2350,18 @@ def test_audio_driven_transcribe_fallback_uses_most_words(tmp_path):
     mock_wav = MagicMock()
     mock_wav.unlink = MagicMock()
 
-    with patch("submatch.cli.audio.extract_segment", return_value=mock_wav), \
-         patch("submatch.cli.transcribe.transcribe_segment", side_effect=responses), \
-         patch("submatch.cli.audio.detect_speech_regions", return_value=[]), \
-         patch("submatch.cli.audio.get_duration_ms", return_value=3_600_000), \
-         patch("submatch.cli.sampler.audio_candidate_segments",
+    with patch("submatch.pipeline.audio.extract_segment", return_value=mock_wav), \
+         patch("submatch.pipeline.transcribe.transcribe_segment", side_effect=responses), \
+         patch("submatch.pipeline.audio.detect_speech_regions", return_value=[]), \
+         patch("submatch.pipeline.audio.get_duration_ms", return_value=3_600_000), \
+         patch("submatch.pipeline.sampler.audio_candidate_segments",
                return_value=[[100_000, 200_000]]):
         starts, texts, lang = _audio_driven_transcribe(
             video=Path("fake.mkv"),
             audio_track_index=0,
             n_seg=1,
             model=MagicMock(),
+            config=PipelineConfig(),
         )
 
     assert len(starts) == 1
@@ -2370,7 +2370,7 @@ def test_audio_driven_transcribe_fallback_uses_most_words(tmp_path):
 
 def test_audio_driven_transcribe_tied_lang_votes_returns_none():
     """A 1:1 tie between zone language votes must not produce a false cross_language."""
-    from submatch.cli import _audio_driven_transcribe
+    from submatch.pipeline import _audio_driven_transcribe, PipelineConfig
     from submatch.transcribe import TranscriptionResult
 
     zone1 = TranscriptionResult(text="hello world foo bar", language="ko", no_speech_prob=0.1)
@@ -2380,17 +2380,18 @@ def test_audio_driven_transcribe_tied_lang_votes_returns_none():
     mock_wav = MagicMock()
     mock_wav.unlink = MagicMock()
 
-    with patch("submatch.cli.audio.extract_segment", return_value=mock_wav), \
-         patch("submatch.cli.transcribe.transcribe_segment", side_effect=responses), \
-         patch("submatch.cli.audio.detect_speech_regions", return_value=[]), \
-         patch("submatch.cli.audio.get_duration_ms", return_value=3_600_000), \
-         patch("submatch.cli.sampler.audio_candidate_segments",
+    with patch("submatch.pipeline.audio.extract_segment", return_value=mock_wav), \
+         patch("submatch.pipeline.transcribe.transcribe_segment", side_effect=responses), \
+         patch("submatch.pipeline.audio.detect_speech_regions", return_value=[]), \
+         patch("submatch.pipeline.audio.get_duration_ms", return_value=3_600_000), \
+         patch("submatch.pipeline.sampler.audio_candidate_segments",
                return_value=[[100_000], [200_000]]):
         _, _, lang = _audio_driven_transcribe(
             video=Path("fake.mkv"),
             audio_track_index=0,
             n_seg=2,
             model=MagicMock(),
+            config=PipelineConfig(),
         )
 
     assert lang is None
@@ -2400,26 +2401,24 @@ def test_audio_driven_transcribe_tied_lang_votes_returns_none():
 
 def test_no_cache_flag_bypasses_disk_cache():
     """--no-cache must not call cache.load or cache.store."""
-    import argparse
-    from submatch.cli import _score_pair
+    from submatch.pipeline import _score_pair, PipelineConfig
 
-    args = argparse.Namespace(
-        model="base", threshold=0.35, segments=None, no_sync=True,
-        language=None, verbose=False, timing=False, audio_track=None,
-        cross_threshold=None, resync=False, pass_unsure=False,
-        drift_threshold=2.0, no_cache=True, cache_ttl_days=30,
-        cache_max_mb=200, cache_dir=None,
+    config = PipelineConfig(
+        model="base", threshold=0.35, segments=None, sync=False,
+        language=None, verbose=False, audio_track=None,
+        cross_threshold=None, resync=False,
+        drift_threshold=2.0, use_cache=False,
     )
     model = MagicMock()
 
     with patch("submatch.cache.load") as mock_load, \
          patch("submatch.cache.store") as mock_store, \
-         patch("submatch.cli.audio.get_duration_ms", return_value=3_600_000), \
-         patch("submatch.cli.sampler.select_segments", return_value=[]), \
-         patch("submatch.cli.subtitle.parse", return_value=[]), \
-         patch("submatch.cli.sync.sync_subtitle", side_effect=RuntimeError("skip")):
+         patch("submatch.pipeline.audio.get_duration_ms", return_value=3_600_000), \
+         patch("submatch.pipeline.sampler.select_segments", return_value=[]), \
+         patch("submatch.pipeline.subtitle.parse", return_value=[]), \
+         patch("submatch.pipeline.sync.sync_subtitle", side_effect=RuntimeError("skip")):
         try:
-            _score_pair(Path("fake.mkv"), Path("fake.srt"), args, model)
+            _score_pair(Path("fake.mkv"), Path("fake.srt"), config, model)
         except Exception:
             pass
         mock_load.assert_not_called()
@@ -2428,16 +2427,15 @@ def test_no_cache_flag_bypasses_disk_cache():
 
 def test_cache_hit_skips_transcription(tmp_path):
     """On a disk cache hit, transcribe_segment must not be called."""
-    import argparse
-    from submatch.cli import _score_pair
+    from submatch.pipeline import _score_pair, PipelineConfig
     from submatch.cache import VideoCache
 
-    args = argparse.Namespace(
-        model="base", threshold=0.35, segments=None, no_sync=True,
-        language=None, verbose=False, timing=False, audio_track=None,
-        cross_threshold=None, resync=False, pass_unsure=False,
-        drift_threshold=2.0, no_cache=False, cache_ttl_days=30,
-        cache_max_mb=200, cache_dir=str(tmp_path),
+    config = PipelineConfig(
+        model="base", threshold=0.35, segments=None, sync=False,
+        language=None, verbose=False, audio_track=None,
+        cross_threshold=None, resync=False,
+        drift_threshold=2.0, use_cache=True,
+        cache_ttl_days=30, cache_max_mb=200, cache_dir=tmp_path,
     )
     model = MagicMock()
 
@@ -2450,12 +2448,12 @@ def test_cache_hit_skips_transcription(tmp_path):
     )
 
     with patch("submatch.cache.load", return_value=cached), \
-         patch("submatch.cli.transcribe.transcribe_segment") as mock_transcribe, \
-         patch("submatch.cli.audio.get_duration_ms", return_value=3_600_000), \
-         patch("submatch.cli.subtitle.parse", return_value=[]), \
-         patch("submatch.cli.sync.sync_subtitle", side_effect=RuntimeError("skip")):
+         patch("submatch.pipeline.transcribe.transcribe_segment") as mock_transcribe, \
+         patch("submatch.pipeline.audio.get_duration_ms", return_value=3_600_000), \
+         patch("submatch.pipeline.subtitle.parse", return_value=[]), \
+         patch("submatch.pipeline.sync.sync_subtitle", side_effect=RuntimeError("skip")):
         try:
-            _score_pair(Path("fake.mkv"), Path("fake.srt"), args, model)
+            _score_pair(Path("fake.mkv"), Path("fake.srt"), config, model)
         except Exception:
             pass
         mock_transcribe.assert_not_called()
