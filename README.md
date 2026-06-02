@@ -95,44 +95,69 @@ The model is downloaded on first use (~90 MB) and cached by sentence-transformer
 
 SRT, WebVTT, ASS/SSA (and any other format supported by [pysubs2](https://github.com/tkarabela/pysubs2)).
 
+**Image-based subtitles (VOBSUB `.sub` / PGS `.sup`)** are supported via OCR. Install [Tesseract](https://github.com/tesseract-ocr/tesseract) and the `pytesseract` Python binding:
+
+```bash
+# macOS
+brew install tesseract
+pip install "submatch[ocr]"
+```
+
+Language is detected automatically from the filename or video metadata; Tesseract's OSD is used as a fallback. Only the time windows that Whisper transcribes are OCR'd — not the full subtitle stream.
+
 ## Language support
 
 ✓ = confirmed by integration tests · ~ = supported by underlying tools, not yet integration-tested
 
 | Language | Audio | Subtitle |
 |---|---|---|
-| Arabic | ~ | ✓ |
+| Arabic | ✓ | ✓ |
+| Basque | ~ | ~ |
+| Bulgarian | ✓ | ✓ |
+| Catalan | ✓ | ✓ |
 | Chinese (Simplified) | ✓ | ✓ |
-| Czech | ~ | ✓ |
-| Danish | ~ | ✓ |
-| Dutch | ~ | ✓ |
+| Croatian | ✓ | ✓ |
+| Czech | ✓ | ✓ |
+| Danish | ✓ | ✓ |
+| Dutch | ✓ | ✓ |
 | English | ✓ | ✓ |
-| Finnish | ~ | ✓ |
+| Estonian | ✓ | ✓ |
+| Filipino | ~ | ~ |
+| Finnish | ✓ | ✓ |
 | French | ✓ | ✓ |
+| Galician | ✓ | ✓ |
 | German | ✓ | ✓ |
-| Greek | ~ | ✓ |
-| Hebrew | ~ | ✓ |
+| Greek | ✓ | ✓ |
+| Hebrew | ✓ | ✓ |
 | Hindi | ✓ | ✓ |
-| Hungarian | ~ | ✓ |
-| Indonesian | ~ | ✓ |
+| Hungarian | ✓ | ✓ |
+| Indonesian | ✓ | ✓ |
 | Italian | ✓ | ✓ |
-| Japanese | ~ | ✓ |
-| Korean | ~ | ~ |
+| Japanese | ✓ | ✓ |
+| Korean | ✓ | ✓ |
+| Latvian | ✓ | ✓ |
+| Lithuanian | ✓ | ✓ |
+| Malay | ✓ | ✓ |
 | Malayalam | ~ | ✓ |
 | Neapolitan | ✓ | ✓ |
-| Polish | ~ | ✓ |
+| Norwegian | ✓ | ✓ |
+| Polish | ✓ | ✓ |
 | Portuguese | ✓ | ✓ |
 | Portuguese (Brazil) | ✓ | ✓ |
-| Romanian | ~ | ✓ |
-| Russian | ~ | ✓ |
+| Romanian | ✓ | ✓ |
+| Russian | ✓ | ✓ |
+| Slovak | ✓ | ✓ |
+| Slovenian | ✓ | ✓ |
 | Spanish | ✓ | ✓ |
-| Swedish | ~ | ✓ |
-| Thai | ~ | ✓ |
+| Swedish | ✓ | ✓ |
+| Tamil | ~ | ~ |
+| Telugu | ~ | ~ |
+| Thai | ✓ | ✓ |
 | Turkish | ✓ | ✓ |
-| Ukrainian | ~ | ✓ |
-| Vietnamese | ~ | ✓ |
+| Ukrainian | ✓ | ✓ |
+| Vietnamese | ✓ | ✓ |
 
-**Audio** — Whisper can transcribe the spoken language. Chinese (Simplified) is tested via Shanghainese and Guiyangese speakers; standard Mandarin is expected to work. Thai audio is supported by Whisper but our integration tests use the tiny model which does not reliably transcribe Thai. **Subtitle** — submatch can score a subtitle in that language using token F1 (same-language) or multilingual sentence embeddings (cross-language, via [`paraphrase-multilingual-MiniLM-L12-v2`](https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2)). Korean subtitle scoring is supported but no test fixture is available.
+**Audio** — Whisper can transcribe the spoken language. Chinese (Simplified) is tested via Shanghainese and Guiyangese speakers; standard Mandarin is expected to work. Basque, Filipino, Tamil, and Telugu are supported by Whisper but cross-language subtitle scoring falls well below threshold with the `base` model; use `--model small` or larger for these languages. **Subtitle** — submatch can score a subtitle in that language using token F1 (same-language) or multilingual sentence embeddings (cross-language, via [`paraphrase-multilingual-MiniLM-L12-v2`](https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2)).
 
 ## Options
 
