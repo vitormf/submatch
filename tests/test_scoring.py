@@ -10,6 +10,7 @@ def test_scoring_functions_importable():
         _is_cross_language,
         _cache_config,
         _audio_driven_transcribe,
+        _audio_lang_from_votes,
     )
     assert callable(_score_pair)
     assert callable(_determine_state)
@@ -17,6 +18,31 @@ def test_scoring_functions_importable():
     assert callable(_is_cross_language)
     assert callable(_cache_config)
     assert callable(_audio_driven_transcribe)
+    assert callable(_audio_lang_from_votes)
+
+
+def test_audio_lang_from_votes_exact_majority():
+    # 6/12 votes for 'ja' — exactly 50% — should still win (plurality ≥ 50%).
+    # Previously failed because the check was `top_count * 2 > total` (strict).
+    from submatch.scoring import _audio_lang_from_votes
+    votes = ["ja"] * 6 + ["en"] * 3 + ["ko"] * 1 + ["zh"] * 1 + ["en"] * 1
+    assert _audio_lang_from_votes(votes) == "ja"
+
+
+def test_audio_lang_from_votes_clear_majority():
+    from submatch.scoring import _audio_lang_from_votes
+    assert _audio_lang_from_votes(["ja"] * 7 + ["en"] * 3) == "ja"
+
+
+def test_audio_lang_from_votes_no_majority():
+    # Genuine tie: neither language has ≥ 50% without also tying → return None.
+    from submatch.scoring import _audio_lang_from_votes
+    assert _audio_lang_from_votes(["ja"] * 5 + ["en"] * 5) is None
+
+
+def test_audio_lang_from_votes_empty():
+    from submatch.scoring import _audio_lang_from_votes
+    assert _audio_lang_from_votes([]) is None
 
 
 def test_determine_state_no_segments():
