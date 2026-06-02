@@ -17,6 +17,13 @@ if TYPE_CHECKING:
 
 _embed_local = threading.local()
 
+# Cross-language subtitle matching is inherently harder than same-language:
+# Whisper transcription quality varies by language, and semantic similarity
+# across language pairs is lower even for correct matches. Empirical data from
+# Japanese audio + English subtitles shows true positives scoring 0.24–0.49
+# while false positives (wrong subtitle) peak at 0.18, so 0.20 separates them.
+_DEFAULT_CROSS_THRESHOLD = 0.20
+
 
 def _get_embed_model() -> Any:
     if not hasattr(_embed_local, "model"):
@@ -213,7 +220,7 @@ def _build_match_result(
     effective_threshold = (
         config.cross_threshold
         if (cross_lang and config.cross_threshold is not None)
-        else config.threshold
+        else (_DEFAULT_CROSS_THRESHOLD if cross_lang else config.threshold)
     )
 
     match_result = MatchResult(
