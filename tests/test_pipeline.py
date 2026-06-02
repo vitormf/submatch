@@ -788,3 +788,84 @@ def test_fail_state_when_sync_does_not_rescue(
     config = PipelineConfig(use_cache=False, sync=True, device="cpu")
     result = run(VIDEO, SUB, config)
     assert result.state == MatchState.FAIL
+
+
+# ── resync branch in run() ───────────────────────────────────────────────────
+
+def test_run_resync_on_drift(tmp_path):
+    # Covers pipeline.py lines 163-171: resync when run() sees DRIFT + resync=True
+    from submatch.language import LanguageResult
+    from submatch.sync import SyncResult
+
+    video = tmp_path / "v.mkv"
+    video.touch()
+    sub = tmp_path / "s.srt"
+    sub.write_text("1\n00:00:01,000 --> 00:00:02,000\nHello\n")
+    sync_tmp = tmp_path / "sync.srt"
+    sync_tmp.write_text("[synced]")
+
+    lang = LanguageResult(audio="en", subtitle_detected="en", subtitle_filename="en",
+                          video_metadata=None, expected=None, mismatch=False, mismatch_details=[])
+    sync_r = SyncResult(synced_srt_path=sync_tmp, offset_seconds=2.0, drift_detected=True)
+    drift_result = MatchResult(confidence=0.9, passed=True, threshold=0.35,
+                               language=lang, sync=sync_r, segments=[MagicMock()],
+                               model="base", state=MatchState.DRIFT)
+    pass_result = MatchResult(confidence=0.9, passed=True, threshold=0.35,
+                              language=lang, sync=None, segments=[MagicMock()],
+                              model="base", state=MatchState.PASS)
+
+    call_count = [0]
+
+    def fake_score_pair(*args, **kwargs):
+        call_count[0] += 1
+        return (drift_result, MagicMock()) if call_count[0] == 1 else (pass_result, MagicMock())
+
+    config = PipelineConfig(resync=True)
+    with patch("submatch.scoring._score_pair", side_effect=fake_score_pair), \
+         patch("submatch.pipeline._get_model", return_value=MagicMock()), \
+         patch("submatch.pipeline._resolve_device", return_value="cpu"):
+        result = run(video, sub, config)
+
+    assert result.resynced is True
+    assert call_count[0] == 2
+
+
+# ── resync in parallel worker path (_process_video_subs) ─────────────────────
+
+def test_process_video_subs_resync_on_drift(tmp_path):
+    # Covers pipeline.py lines 130-138: resync in _process_video_subs (workers > 1)
+    from submatch.language import LanguageResult
+    from submatch.sync import SyncResult
+
+    video = tmp_path / "v.mkv"
+    video.touch()
+    sub = tmp_path / "s.srt"
+    sub.write_text("1\n00:00:01,000 --> 00:00:02,000\nHello\n")
+    sync_tmp = tmp_path / "sync.srt"
+    sync_tmp.write_text("[synced]")
+
+    lang = LanguageResult(audio="en", subtitle_detected="en", subtitle_filename="en",
+                          video_metadata=None, expected=None, mismatch=False, mismatch_details=[])
+    sync_r = SyncResult(synced_srt_path=sync_tmp, offset_seconds=2.0, drift_detected=True)
+    drift_result = MatchResult(confidence=0.9, passed=True, threshold=0.35,
+                               language=lang, sync=sync_r, segments=[MagicMock()],
+                               model="base", state=MatchState.DRIFT)
+    pass_result = MatchResult(confidence=0.9, passed=True, threshold=0.35,
+                              language=lang, sync=None, segments=[MagicMock()],
+                              model="base", state=MatchState.PASS)
+
+    call_count = [0]
+
+    def fake_score_pair(*args, **kwargs):
+        call_count[0] += 1
+        return (drift_result, MagicMock()) if call_count[0] == 1 else (pass_result, MagicMock())
+
+    config = PipelineConfig(resync=True, workers=2)
+    with patch("submatch.scoring._score_pair", side_effect=fake_score_pair), \
+         patch("submatch.pipeline._get_model", return_value=MagicMock()), \
+         patch("submatch.pipeline._resolve_device", return_value="cpu"):
+        results = run_batch([(video, sub)], config)
+
+    assert len(results) == 1
+    assert results[0].result.resynced is True
+    assert call_count[0] == 2

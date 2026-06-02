@@ -315,3 +315,12 @@ def test_print_human_shows_track_line_when_lang_known_but_index_zero(capsys):
     assert "track" in out
     assert "a:0" in out
     assert "eng" in out
+
+
+def test_print_human_shows_resynced_in_meta(capsys):
+    """resynced=True should add 'resynced' to the meta line."""
+    result = _make_result()
+    result.resynced = True
+    print_human(result)
+    out = capsys.readouterr().out
+    assert "resynced" in out
