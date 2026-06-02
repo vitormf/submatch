@@ -196,6 +196,24 @@ workers = 2
 >
 > **Warning:** `delete_failures = true` will silently delete subtitle files on every run. Use with care.
 
+## Telemetry
+
+submatch reports crashes and unexpected pipeline errors to Sentry to help improve
+reliability. No file paths or personal data are transmitted — all path strings are
+replaced with `<path>` before sending.
+
+To opt out, set an environment variable:
+
+```
+export SUBMATCH_NO_TELEMETRY=1
+```
+
+Or add to `~/.config/submatch/config.toml` or `./submatch.toml`:
+
+```toml
+telemetry = false
+```
+
 ## How it works
 
 1. **Sync** — runs `ffs` (ffsubsync) to correct timing drift; flags offsets > 2 s
