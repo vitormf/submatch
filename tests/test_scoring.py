@@ -197,10 +197,12 @@ def test_score_pair_verbose_sync_error_prints_warning(
     mock_compare, mock_transcribe, mock_sampler, mock_audio, mock_lang, mock_sub, mock_sync,
     tmp_path, capsys
 ):
-    # Covers line 171: verbose warning when sync.sync_subtitle raises RuntimeError
+    # Covers scoring.py: verbose warning when lazy sync triggers (FAIL result) and ffs raises
     from submatch.scoring import _score_pair
     from submatch.pipeline import PipelineConfig
     _mock_base(mock_sub, mock_lang, mock_audio, mock_sampler, mock_transcribe, mock_compare)
+    # Lazy sync only triggers on FAIL; force aggregate to 0.0 so the first pass fails
+    mock_compare.aggregate.return_value = 0.0
     mock_sync.sync_subtitle.side_effect = RuntimeError("ffsubsync crashed")
 
     video = tmp_path / "v.mkv"

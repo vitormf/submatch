@@ -2390,3 +2390,28 @@ def test_main_uses_static_ffmpeg_when_ffmpeg_missing(capsys):
          pytest.raises(SystemExit):
         cli.main()
     mock_sfmpeg.add_paths.assert_called_once()
+
+
+def test_main_prints_subtitle_resynced_message(tmp_path, capsys):
+    """result.resynced=True triggers 'Subtitle resynced' in main() single-pair path."""
+    video = tmp_path / "video.mp4"
+    video.touch()
+    subtitle = tmp_path / "sub.srt"
+    subtitle.write_text(SAMPLE_SRT)
+
+    mock_result = MagicMock()
+    mock_result.resynced = True
+    mock_result.passed = True
+    mock_result.state = MatchState.PASS
+    mock_result.sync = None
+
+    with patch("sys.argv", ["submatch", str(video), str(subtitle), "--no-sync"]), \
+         patch("submatch.cli.check_dependencies"), \
+         patch("submatch.cli.audio.has_audio_track", return_value=True), \
+         patch("submatch.cli._pipeline.run", return_value=mock_result), \
+         patch("submatch.cli.output.print_human"), \
+         patch("submatch.config.load_config", return_value={}), \
+         pytest.raises(SystemExit):
+        cli.main()
+    out = capsys.readouterr().out
+    assert "Subtitle resynced" in out
