@@ -39,6 +39,34 @@ class PipelineConfig:
     on_segment: Callable[[int, int], None] | None = None
     on_pair_complete: Callable[[BatchPairResult], None] | None = None
 
+    @classmethod
+    def from_toml(cls) -> "PipelineConfig":
+        from submatch import config as _config
+        cfg = _config.load_config()
+        return cls(
+            model=cfg.get("model", "base"),
+            threshold=cfg.get("threshold", 0.35),
+            cross_threshold=cfg.get("cross_threshold"),
+            segments=cfg.get("segments"),
+            language=cfg.get("language"),
+            sync=not cfg.get("no_sync", False),
+            drift_threshold=cfg.get("drift_threshold", 2.0),
+            device=cfg.get("device", "auto"),
+            audio_track=cfg.get("audio_track"),
+            workers=cfg.get("workers"),
+            use_cache=not cfg.get("no_cache", False),
+            cache_dir=(
+                Path(cfg["cache_dir"]).expanduser()
+                if cfg.get("cache_dir") else None
+            ),
+            cache_ttl_days=cfg.get("cache_ttl_days"),
+            cache_max_mb=cfg.get("cache_max_mb"),
+            resync=cfg.get("resync", False),
+            pass_unsure=cfg.get("pass_unsure", False),
+            keep_synced=cfg.get("keep_synced", False),
+            delete_failures=cfg.get("delete_failures", False),
+        )
+
 
 def _resolve_device(requested: str) -> str:
     if requested != "auto":

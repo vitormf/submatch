@@ -410,3 +410,62 @@ def test_delete_failures_false_keeps_subtitle_on_fail(tmp_path):
         run(video, sub, config)
 
     assert sub.exists()
+
+
+# ── PipelineConfig.from_toml ───────────────────────────────────────────────────
+
+def test_from_toml_maps_model_and_threshold():
+    with patch("submatch.config.load_config", return_value={"model": "tiny", "threshold": 0.5}):
+        config = PipelineConfig.from_toml()
+    assert config.model == "tiny"
+    assert config.threshold == 0.5
+
+
+def test_from_toml_uses_defaults_when_config_empty():
+    with patch("submatch.config.load_config", return_value={}):
+        config = PipelineConfig.from_toml()
+    assert config.model == "base"
+    assert config.threshold == 0.35
+    assert config.sync is True
+    assert config.pass_unsure is False
+    assert config.keep_synced is False
+    assert config.delete_failures is False
+
+
+def test_from_toml_maps_new_fields():
+    with patch("submatch.config.load_config", return_value={
+        "pass_unsure": True,
+        "keep_synced": True,
+        "delete_failures": True,
+    }):
+        config = PipelineConfig.from_toml()
+    assert config.pass_unsure is True
+    assert config.keep_synced is True
+    assert config.delete_failures is True
+
+
+def test_from_toml_no_sync_maps_to_sync_false():
+    with patch("submatch.config.load_config", return_value={"no_sync": True}):
+        config = PipelineConfig.from_toml()
+    assert config.sync is False
+
+
+def test_from_toml_cache_dir_expands_tilde():
+    with patch("submatch.config.load_config", return_value={"cache_dir": "~/.cache/sm"}):
+        config = PipelineConfig.from_toml()
+    assert config.cache_dir is not None
+    assert not str(config.cache_dir).startswith("~")
+    assert str(config.cache_dir) == str(Path("~/.cache/sm").expanduser())
+
+
+def test_from_toml_cli_only_keys_are_ignored():
+    """Keys like no_recursive and sub_lang have no PipelineConfig field — silently ignored."""
+    with patch("submatch.config.load_config", return_value={
+        "no_recursive": True,
+        "sub_lang": ["en"],
+        "filter": "*.en.*",
+        "model": "small",
+    }):
+        config = PipelineConfig.from_toml()
+    assert config.model == "small"
+    assert not hasattr(config, "no_recursive")
