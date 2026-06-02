@@ -5,10 +5,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-try:
-    import pytesseract
-except ImportError:
-    pytesseract = None  # type: ignore[assignment]
+import pytesseract
 
 
 _SCRIPT_TO_TESSERACT: dict[str, str] = {
@@ -23,6 +20,15 @@ _SCRIPT_TO_TESSERACT: dict[str, str] = {
     "hebrew": "heb",
     "thai": "tha",
 }
+
+
+def is_tesseract_available() -> bool:
+    """Return True if the tesseract binary is installed and accessible."""
+    try:
+        pytesseract.get_tesseract_version()
+        return True
+    except pytesseract.TesseractNotFoundError:
+        return False
 
 
 def _frames_in_dir(directory: Path) -> list[Path]:
@@ -52,9 +58,6 @@ def ocr_window(
     *source* is a .sub (VOBSUB) or .sup (PGS) file.
     Returns concatenated text from all frames, or "" on any failure.
     """
-    if pytesseract is None:
-        return ""
-
     start_s = start_ms / 1000.0
     duration_s = duration_ms / 1000.0
 
