@@ -131,14 +131,25 @@ def _audio_driven_transcribe(
         if chosen_lang is not None:
             lang_votes.append(chosen_lang)
 
-    audio_lang: str | None = None
-    if lang_votes:
-        counts = Counter(lang_votes)
-        top_lang, top_count = counts.most_common(1)[0]
-        if top_count * 2 > len(lang_votes):
-            audio_lang = top_lang
+    return accepted_starts, accepted_texts, _audio_lang_from_votes(lang_votes)
 
-    return accepted_starts, accepted_texts, audio_lang
+
+def _audio_lang_from_votes(votes: list[str]) -> str | None:
+    if not votes:
+        return None
+    counts = Counter(votes)
+    most_common = counts.most_common(2)
+    top_lang, top_count = most_common[0]
+    # Reject a genuine tie at the top (two languages with equal counts).
+    if len(most_common) > 1 and most_common[1][1] == top_count:
+        return None
+    # Accept the leader if it holds ≥ 50% of all votes. The original check
+    # used strict `>`, which rejected the exactly-50% case (e.g. 6/12 votes
+    # for Japanese when battle scenes confuse Whisper into tagging some
+    # segments as English or Korean).
+    if top_count * 2 >= len(votes):
+        return top_lang
+    return None
 
 
 def _build_match_result(
