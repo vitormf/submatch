@@ -67,12 +67,10 @@ def test_is_cross_language_none():
 
 def test_score_pair_cache_hit_uses_cached_transcriptions(tmp_path):
     """When _disk_hit is not None, transcription_pairs come from the cache (lines 281-287)."""
-    from pathlib import Path
     from unittest.mock import patch, MagicMock
     from submatch.scoring import _score_pair
     from submatch.pipeline import PipelineConfig
     from submatch.cache import VideoCache
-    from submatch.sampler import Segment
     from submatch.language import LanguageResult
 
     video = tmp_path / "movie.mkv"
@@ -116,7 +114,6 @@ def test_score_pair_cache_hit_uses_cached_transcriptions(tmp_path):
 
 def test_score_pair_sync_runtime_error_keeps_fail(tmp_path):
     """When lazy sync triggers but ffs raises RuntimeError, keep the FAIL result (lines 348-350)."""
-    from pathlib import Path
     from unittest.mock import patch, MagicMock
     from submatch.scoring import _score_pair
     from submatch.pipeline import PipelineConfig
