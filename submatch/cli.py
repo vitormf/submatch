@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 
 from submatch import __version__
-from submatch import audio, gpu, output
+from submatch import audio, gpu, output, telemetry
 from submatch import cache as _cache_module
 from submatch import pipeline as _pipeline
 
@@ -322,6 +322,7 @@ def _run_embedded(
             try:
                 tracks = _embedded.list_subtitle_tracks(video)
             except Exception as exc:
+                telemetry.capture(exc)
                 print(
                     f"Warning: could not list subtitle tracks for {video.name}: {exc}",
                     file=sys.stderr,
@@ -345,6 +346,7 @@ def _run_embedded(
                     _embedded.extract_subtitle_track(video, track["index"], dest)
                     pairs.append((video, dest))
                 except Exception as exc:
+                    telemetry.capture(exc)
                     print(
                         f"Warning: could not extract track {track['index']} "
                         f"from {video.name}: {exc}",
@@ -369,6 +371,7 @@ def main() -> None:
         static_ffmpeg.add_paths()
 
     args = parse_args()
+    telemetry.init(args)
 
     if getattr(args, 'clear_cache', False):
         _cfg = _pipeline._cache_config(_args_to_config(args))
@@ -399,6 +402,7 @@ def main() -> None:
 
     if args.embedded:
         check_dependencies(skip_sync=args.no_sync)
+        telemetry.set_mode("embedded")
         sys.exit(_run_embedded(args, videos))
 
     if args.poll and not args.watch:
@@ -410,12 +414,15 @@ def main() -> None:
             sys.exit(2)
         check_dependencies(skip_sync=args.no_sync)
         from submatch import watch as _watch
+        telemetry.set_mode("watch")
         sys.exit(_watch.run_watch(args, args.inputs[0]))
 
     if not had_dirs and len(videos) == 1 and len(subtitles) == 1:
         args.video = videos[0]
         args.subtitle = subtitles[0]
+        telemetry.set_mode("single")
     else:
+        telemetry.set_mode("batch")
         sys.exit(_run_batch(args, videos, subtitles, warn_missing=not had_dirs))
 
     print(f"Checking: {args.video.name} → {args.subtitle.name}", file=sys.stderr)

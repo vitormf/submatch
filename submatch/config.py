@@ -18,6 +18,7 @@ _CONFIGURABLE_KEYS = frozenset({
     "cross_threshold", "resync", "pass_unsure",
     "drift_threshold", "audio_track",
     "cache_ttl_days", "cache_max_mb", "cache_dir",
+    "telemetry",
 })
 
 _CHOICES: dict[str, frozenset[str]] = {

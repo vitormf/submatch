@@ -10,7 +10,7 @@ from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
 
-from submatch import audio, compare, embeddings, language, output, sampler, subtitle, sync, transcribe
+from submatch import audio, compare, embeddings, language, output, sampler, subtitle, sync, telemetry, transcribe
 from submatch import cache as _cache_module
 
 
@@ -153,6 +153,7 @@ def _audio_driven_transcribe(
                     accepted_lang = trans.language
                     break
             except Exception as exc:
+                telemetry.capture(exc)
                 if config.verbose:
                     print(f"Warning: candidate at {start_ms}ms failed: {exc}", file=sys.stderr)
 
@@ -210,6 +211,7 @@ def _score_pair(
                 )
                 subtitles = subtitle.parse(sync_result.synced_srt_path)
             except RuntimeError as exc:
+                telemetry.capture(exc)
                 if config.verbose:
                     print(f"Warning: ffsubsync failed ({exc}), proceeding without sync",
                           file=sys.stderr)
@@ -241,6 +243,7 @@ def _score_pair(
                         finally:
                             wav_path.unlink(missing_ok=True)
                     except Exception as exc:
+                        telemetry.capture(exc)
                         if config.verbose:
                             print(f"Warning: segment {i + 1} failed: {exc}", file=sys.stderr)
                 if config.verbose:
@@ -391,6 +394,7 @@ def _score_group_parallel(
                 cache = new_cache
             pair_result = output.BatchPairResult(video=video, subtitle=sub, result=result, error=None)
         except Exception as exc:
+            telemetry.capture(exc)
             pair_result = output.BatchPairResult(video=video, subtitle=sub, result=None, error=str(exc))
         results.append(pair_result)
         if config.on_pair_complete:
@@ -457,6 +461,7 @@ def run_batch(
                 pair_result = output.BatchPairResult(video=video, subtitle=sub,
                                                      result=match_result, error=None)
             except Exception as exc:
+                telemetry.capture(exc)
                 pair_result = output.BatchPairResult(video=video, subtitle=sub,
                                                      result=None, error=str(exc))
             results.append(pair_result)
@@ -484,6 +489,7 @@ def run_batch(
                     group = future.result()
                     results.extend(group)
                 except Exception as exc:
+                    telemetry.capture(exc)
                     for sub in video_groups[video]:
                         pair_result = output.BatchPairResult(video=video, subtitle=sub,
                                                              result=None, error=str(exc))
