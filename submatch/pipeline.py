@@ -6,6 +6,7 @@ import shutil
 import sys
 import tempfile
 import threading
+from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
 
@@ -165,7 +166,6 @@ def _audio_driven_transcribe(
 
     audio_lang: str | None = None
     if lang_votes:
-        from collections import Counter
         counts = Counter(lang_votes)
         top_lang, top_count = counts.most_common(1)[0]
         if top_count * 2 > len(lang_votes):
@@ -374,10 +374,12 @@ def _score_group_parallel(
     for sub in subs:
         try:
             result, new_cache = _score_pair(video, sub, pair_config, model, video_cache=cache)
-            if result.state == output.MatchState.DRIFT and config.resync:
+            if result.state == output.MatchState.DRIFT and result.sync and config.resync:
                 synced_path = result.sync.synced_srt_path
-                shutil.copy(synced_path, sub)
-                synced_path.unlink(missing_ok=True)
+                try:
+                    shutil.copy(synced_path, sub)
+                finally:
+                    synced_path.unlink(missing_ok=True)
                 resync_config = dataclasses.replace(pair_config, sync=False)
                 result, _ = _score_pair(video, sub, resync_config, model, video_cache=new_cache)
                 result.state = _determine_state(result)
@@ -406,10 +408,12 @@ def run(
     device = _resolve_device(config.device)
     model = _get_model(config.model, device)
     result, _ = _score_pair(video, subtitle, config, model)
-    if result.state == output.MatchState.DRIFT and config.resync:
+    if result.state == output.MatchState.DRIFT and result.sync and config.resync:
         synced_path = result.sync.synced_srt_path
-        shutil.copy(synced_path, subtitle)
-        synced_path.unlink(missing_ok=True)
+        try:
+            shutil.copy(synced_path, subtitle)
+        finally:
+            synced_path.unlink(missing_ok=True)
         resync_config = dataclasses.replace(config, sync=False)
         result, _ = _score_pair(video, subtitle, resync_config, model)
         result.state = _determine_state(result)
@@ -435,10 +439,12 @@ def run_batch(
             try:
                 cache = video_caches.get(video)
                 match_result, new_cache = _score_pair(video, sub, config, model, video_cache=cache)
-                if match_result.state == output.MatchState.DRIFT and config.resync:
+                if match_result.state == output.MatchState.DRIFT and match_result.sync and config.resync:
                     synced_path = match_result.sync.synced_srt_path
-                    shutil.copy(synced_path, sub)
-                    synced_path.unlink(missing_ok=True)
+                    try:
+                        shutil.copy(synced_path, sub)
+                    finally:
+                        synced_path.unlink(missing_ok=True)
                     resync_config = dataclasses.replace(config, sync=False)
                     match_result, _ = _score_pair(video, sub, resync_config, model, video_cache=new_cache)
                     match_result.state = _determine_state(match_result)
