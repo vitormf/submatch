@@ -250,3 +250,163 @@ def test_run_batch_uses_parallel_when_workers_gt_1(mock_rw, mock_rd, mock_sgp):
     results = run_batch([(VIDEO, SUB)], config)
     assert mock_sgp.called
     assert len(results) == 1
+
+
+# ── pass_unsure ────────────────────────────────────────────────────────────────
+
+def _make_unsure_result():
+    from submatch.language import LanguageResult
+    lang = LanguageResult(audio=None, subtitle_detected=None, subtitle_filename=None,
+                          video_metadata=None, expected=None, mismatch=False,
+                          mismatch_details=[])
+    return MatchResult(confidence=0.0, passed=False, threshold=0.35,
+                       language=lang, sync=None, segments=[], model="base",
+                       state=MatchState.UNSURE)
+
+
+def test_pass_unsure_sets_passed_true_on_unsure(tmp_path):
+    video = tmp_path / "v.mkv"
+    sub = tmp_path / "s.srt"
+    config = PipelineConfig(pass_unsure=True)
+    result = _make_unsure_result()
+
+    with patch("submatch.pipeline._score_pair", return_value=(result, MagicMock())), \
+         patch("submatch.pipeline._get_model", return_value=MagicMock()), \
+         patch("submatch.pipeline._resolve_device", return_value="cpu"):
+        final = run(video, sub, config)
+
+    assert final.passed is True
+
+
+def test_pass_unsure_false_leaves_passed_false(tmp_path):
+    video = tmp_path / "v.mkv"
+    sub = tmp_path / "s.srt"
+    config = PipelineConfig(pass_unsure=False)
+    result = _make_unsure_result()
+
+    with patch("submatch.pipeline._score_pair", return_value=(result, MagicMock())), \
+         patch("submatch.pipeline._get_model", return_value=MagicMock()), \
+         patch("submatch.pipeline._resolve_device", return_value="cpu"):
+        final = run(video, sub, config)
+
+    assert final.passed is False
+
+
+def test_drift_result_always_fails(tmp_path):
+    """DRIFT result → passed=False regardless of confidence."""
+    from submatch.language import LanguageResult
+    from submatch.sync import SyncResult
+    video = tmp_path / "v.mkv"
+    sub = tmp_path / "s.srt"
+    lang = LanguageResult(audio="en", subtitle_detected="en", subtitle_filename="en",
+                          video_metadata=None, expected=None, mismatch=False,
+                          mismatch_details=[])
+    sync_tmp = tmp_path / "sync.srt"
+    sync_tmp.touch()
+    sync_r = SyncResult(synced_srt_path=sync_tmp, offset_seconds=3.0, drift_detected=True)
+    result = MatchResult(confidence=0.9, passed=True, threshold=0.35,
+                         language=lang, sync=sync_r, segments=[MagicMock()],
+                         model="base", state=MatchState.DRIFT)
+    config = PipelineConfig()
+
+    with patch("submatch.pipeline._score_pair", return_value=(result, MagicMock())), \
+         patch("submatch.pipeline._get_model", return_value=MagicMock()), \
+         patch("submatch.pipeline._resolve_device", return_value="cpu"):
+        final = run(video, sub, config)
+
+    assert final.passed is False
+
+
+# ── keep_synced ────────────────────────────────────────────────────────────────
+
+def _make_pass_result_with_sync(sync_tmp):
+    from submatch.language import LanguageResult
+    from submatch.sync import SyncResult
+    lang = LanguageResult(audio="en", subtitle_detected="en", subtitle_filename="en",
+                          video_metadata=None, expected=None, mismatch=False,
+                          mismatch_details=[])
+    sync_r = SyncResult(synced_srt_path=sync_tmp, offset_seconds=0.5, drift_detected=False)
+    return MatchResult(confidence=0.9, passed=True, threshold=0.35,
+                       language=lang, sync=sync_r, segments=[MagicMock()],
+                       model="base", state=MatchState.PASS)
+
+
+def test_keep_synced_copies_and_deletes_tmp(tmp_path):
+    video = tmp_path / "v.mkv"
+    sub = tmp_path / "s.srt"
+    sub.write_text("1\n00:00:01,000 --> 00:00:02,000\nHello\n")
+    sync_tmp = tmp_path / "sync.srt"
+    sync_tmp.write_text("[synced]")
+    config = PipelineConfig(keep_synced=True)
+    result = _make_pass_result_with_sync(sync_tmp)
+
+    with patch("submatch.pipeline._score_pair", return_value=(result, MagicMock())), \
+         patch("submatch.pipeline._get_model", return_value=MagicMock()), \
+         patch("submatch.pipeline._resolve_device", return_value="cpu"):
+        run(video, sub, config)
+
+    kept = sub.with_stem(sub.stem + ".synced")
+    assert kept.exists()
+    assert kept.read_text() == "[synced]"
+    assert not sync_tmp.exists()
+
+
+def test_keep_synced_false_deletes_tmp_only(tmp_path):
+    video = tmp_path / "v.mkv"
+    sub = tmp_path / "s.srt"
+    sub.write_text("1\n00:00:01,000 --> 00:00:02,000\nHello\n")
+    sync_tmp = tmp_path / "sync.srt"
+    sync_tmp.write_text("[synced]")
+    config = PipelineConfig(keep_synced=False)
+    result = _make_pass_result_with_sync(sync_tmp)
+
+    with patch("submatch.pipeline._score_pair", return_value=(result, MagicMock())), \
+         patch("submatch.pipeline._get_model", return_value=MagicMock()), \
+         patch("submatch.pipeline._resolve_device", return_value="cpu"):
+        run(video, sub, config)
+
+    kept = sub.with_stem(sub.stem + ".synced")
+    assert not kept.exists()
+    assert not sync_tmp.exists()
+
+
+# ── delete_failures ────────────────────────────────────────────────────────────
+
+def _make_fail_result():
+    from submatch.language import LanguageResult
+    lang = LanguageResult(audio="en", subtitle_detected="en", subtitle_filename="en",
+                          video_metadata=None, expected=None, mismatch=False,
+                          mismatch_details=[])
+    return MatchResult(confidence=0.1, passed=False, threshold=0.35,
+                       language=lang, sync=None, segments=[MagicMock()],
+                       model="base", state=MatchState.FAIL)
+
+
+def test_delete_failures_unlinks_subtitle_on_fail(tmp_path):
+    video = tmp_path / "v.mkv"
+    sub = tmp_path / "s.srt"
+    sub.write_text("1\n00:00:01,000 --> 00:00:02,000\nHello\n")
+    config = PipelineConfig(delete_failures=True)
+    result = _make_fail_result()
+
+    with patch("submatch.pipeline._score_pair", return_value=(result, MagicMock())), \
+         patch("submatch.pipeline._get_model", return_value=MagicMock()), \
+         patch("submatch.pipeline._resolve_device", return_value="cpu"):
+        run(video, sub, config)
+
+    assert not sub.exists()
+
+
+def test_delete_failures_false_keeps_subtitle_on_fail(tmp_path):
+    video = tmp_path / "v.mkv"
+    sub = tmp_path / "s.srt"
+    sub.write_text("1\n00:00:01,000 --> 00:00:02,000\nHello\n")
+    config = PipelineConfig(delete_failures=False)
+    result = _make_fail_result()
+
+    with patch("submatch.pipeline._score_pair", return_value=(result, MagicMock())), \
+         patch("submatch.pipeline._get_model", return_value=MagicMock()), \
+         patch("submatch.pipeline._resolve_device", return_value="cpu"):
+        run(video, sub, config)
+
+    assert sub.exists()

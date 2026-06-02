@@ -1673,34 +1673,6 @@ def test_parse_args_pass_unsure_flag(tmp_path):
     assert args.pass_unsure is True
 
 
-def test_should_fail_pass_result():
-    from submatch.types import MatchState
-    result = _make_match_result(passed=True)
-    result.state = MatchState.PASS
-    assert cli._should_fail(result, False) is False
-
-
-def test_should_fail_unsure_with_pass_unsure():
-    from submatch.types import MatchState
-    result = _make_match_result(segments=[], passed=False)
-    result.state = MatchState.UNSURE
-    assert cli._should_fail(result, True) is False
-
-
-def test_should_fail_unsure_without_pass_unsure():
-    from submatch.types import MatchState
-    result = _make_match_result(segments=[], passed=False)
-    result.state = MatchState.UNSURE
-    assert cli._should_fail(result, False) is True
-
-
-def test_should_fail_fail_result_with_pass_unsure():
-    from submatch.types import MatchState
-    result = _make_match_result(passed=False)
-    result.state = MatchState.FAIL
-    assert cli._should_fail(result, True) is True
-
-
 def test_main_unsure_exits_1(tmp_path):
     """0 segments scored (all transcriptions fail) → UNSURE → exit 1."""
     _, _, ctx = _make_pipeline_patches(tmp_path, ["--threshold", "0.01"])
