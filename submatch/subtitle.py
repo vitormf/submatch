@@ -13,6 +13,9 @@ class Subtitle:
     text: str
 
 
+_IMAGE_EXTENSIONS = frozenset({".sub", ".sup"})
+
+
 def parse(path: Path) -> list[Subtitle]:
     """Parse a subtitle file into a list of Subtitle objects.
 
@@ -39,3 +42,8 @@ def parse(path: Path) -> list[Subtitle]:
             text=text,
         ))
     return result
+
+
+def is_image_based(path: Path) -> bool:
+    """Return True if *path* is an image-based subtitle format (VOBSUB or PGS)."""
+    return path.suffix.lower() in _IMAGE_EXTENSIONS
