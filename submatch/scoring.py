@@ -7,7 +7,7 @@ from collections import Counter
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from submatch import audio, compare, embeddings, language, sampler, subtitle, sync, telemetry, transcribe
+from submatch import audio, compare, embeddings, language, ocr, sampler, subtitle, sync, telemetry, transcribe
 from submatch import cache as _cache_module
 from submatch.types import MatchResult, MatchState, SegmentResult
 
@@ -29,6 +29,17 @@ def _get_embed_model() -> Any:
                 "Install with: pip install sentence-transformers"
             ) from exc
     return _embed_local.model
+
+
+def _resolve_ocr_lang(subtitle_path: Path, video: Path) -> str | None:
+    """Return a Tesseract language code for OCR, or None to trigger Tesseract OSD detection."""
+    iso = language.detect_from_filename(subtitle_path)
+    if iso:
+        return language.to_tesseract_lang(iso)
+    iso = language.detect_from_video(video)
+    if iso:
+        return language.to_tesseract_lang(iso)
+    return None
 
 
 def _is_cross_language(audio_lang: str | None, subtitle_lang: str | None) -> bool:
@@ -120,14 +131,25 @@ def _audio_driven_transcribe(
         if chosen_lang is not None:
             lang_votes.append(chosen_lang)
 
-    audio_lang: str | None = None
-    if lang_votes:
-        counts = Counter(lang_votes)
-        top_lang, top_count = counts.most_common(1)[0]
-        if top_count * 2 > len(lang_votes):
-            audio_lang = top_lang
+    return accepted_starts, accepted_texts, _audio_lang_from_votes(lang_votes)
 
-    return accepted_starts, accepted_texts, audio_lang
+
+def _audio_lang_from_votes(votes: list[str]) -> str | None:
+    if not votes:
+        return None
+    counts = Counter(votes)
+    most_common = counts.most_common(2)
+    top_lang, top_count = most_common[0]
+    # Reject a genuine tie at the top (two languages with equal counts).
+    if len(most_common) > 1 and most_common[1][1] == top_count:
+        return None
+    # Accept the leader if it holds ≥ 50% of all votes. The original check
+    # used strict `>`, which rejected the exactly-50% case (e.g. 6/12 votes
+    # for Japanese when battle scenes confuse Whisper into tagging some
+    # segments as English or Korean).
+    if top_count * 2 >= len(votes):
+        return top_lang
+    return None
 
 
 def _build_match_result(
@@ -330,6 +352,26 @@ def _score_pair(
         video, subtitles, audio_track_index, audio_track_lang, config, model, video_cache
     )
 
+    # OCR: populate subtitle_text for image-based subtitle tracks
+    _is_image_sub = subtitle.is_image_based(subtitle_path)
+    if _is_image_sub:
+        if ocr.pytesseract is None:
+            print("Warning: pytesseract not installed — cannot OCR image-based subtitle",
+                  file=sys.stderr)
+        else:
+            ocr_lang = _resolve_ocr_lang(subtitle_path, video)
+            for _, seg, _ in transcription_pairs:
+                try:
+                    seg.subtitle_text = ocr.ocr_window(
+                        subtitle_path, seg.start_ms, 30_000, lang=ocr_lang
+                    )
+                    seg.word_count = len(seg.subtitle_text.split())
+                except Exception as exc:
+                    telemetry.capture(exc)
+                    if config.verbose:
+                        print(f"Warning: OCR failed for segment at {seg.start_ms}ms: {exc}",
+                              file=sys.stderr)
+
     _sync_args = dict(subtitle_sample=subtitle_sample, subtitle_lang=subtitle_lang,
                       audio_lang=audio_lang, subtitle_path=subtitle_path, video=video,
                       config=config, audio_track_index=audio_track_index,
@@ -340,7 +382,7 @@ def _score_pair(
     # Lazy sync: only run ffs when the first pass fails.
     _sync_tmp: Path | None = None
     try:
-        if match_result.state == MatchState.FAIL and config.sync:
+        if match_result.state == MatchState.FAIL and config.sync and not _is_image_sub:
             try:
                 tmp = tempfile.NamedTemporaryFile(suffix=".srt", delete=False)
                 _sync_tmp = Path(tmp.name)
