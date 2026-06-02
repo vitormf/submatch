@@ -372,26 +372,6 @@ def _score_pair(
                         print(f"Warning: OCR failed for segment at {seg.start_ms}ms: {exc}",
                               file=sys.stderr)
 
-    # OCR: populate subtitle_text for image-based subtitle tracks
-    _is_image_sub = subtitle.is_image_based(subtitle_path)
-    if _is_image_sub:
-        if ocr.pytesseract is None:
-            print("Warning: pytesseract not installed — cannot OCR image-based subtitle",
-                  file=sys.stderr)
-        else:
-            ocr_lang = _resolve_ocr_lang(subtitle_path, video)
-            for _, seg, _ in transcription_pairs:
-                try:
-                    seg.subtitle_text = ocr.ocr_window(
-                        subtitle_path, seg.start_ms, 30_000, lang=ocr_lang
-                    )
-                    seg.word_count = len(seg.subtitle_text.split())
-                except Exception as exc:
-                    telemetry.capture(exc)
-                    if config.verbose:
-                        print(f"Warning: OCR failed for segment at {seg.start_ms}ms: {exc}",
-                              file=sys.stderr)
-
     _sync_args = dict(subtitle_sample=subtitle_sample, subtitle_lang=subtitle_lang,
                       audio_lang=audio_lang, subtitle_path=subtitle_path, video=video,
                       config=config, audio_track_index=audio_track_index,
