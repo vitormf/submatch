@@ -261,3 +261,40 @@ def test_score_pair_verbose_segment_exception_warning(
     config = PipelineConfig(sync=False, use_cache=False, verbose=True, on_segment=None, device="cpu")
     _score_pair(video, sub, config, MagicMock())
     assert "audio extraction failed" in capsys.readouterr().err
+
+
+def test_gather_transcriptions_importable():
+    from submatch.scoring import _gather_transcriptions
+    assert callable(_gather_transcriptions)
+
+
+def test_gather_transcriptions_uses_existing_cache(tmp_path):
+    """When video_cache is provided, returns its data without touching audio."""
+    from submatch.scoring import _gather_transcriptions
+    from submatch.cache import VideoCache
+    from submatch.sampler import Segment
+    from unittest.mock import patch, MagicMock
+
+    video = tmp_path / "v.mkv"
+    video.touch()
+
+    cache = VideoCache(
+        segment_starts=[60_000],
+        transcriptions=["hello from cache"],
+        audio_lang="en",
+        audio_track_index=0,
+        audio_track_lang=None,
+    )
+
+    with patch("submatch.scoring.sampler.segments_from_starts",
+               return_value=[Segment(60_000, 90_000, "hello from cache", 3)]), \
+         patch("submatch.scoring.audio.get_duration_ms") as mock_dur:
+        pairs, out_cache, audio_lang = _gather_transcriptions(
+            video, [], 0, None, MagicMock(), MagicMock(), video_cache=cache
+        )
+
+    mock_dur.assert_not_called()
+    assert out_cache is cache
+    assert audio_lang == "en"
+    assert len(pairs) == 1
+    assert pairs[0][2] == "hello from cache"
