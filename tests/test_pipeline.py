@@ -6,7 +6,7 @@ import pytest
 
 from submatch.compare import SegmentScore
 from submatch.language import LanguageResult
-from submatch.output import BatchPairResult, MatchResult, MatchState
+from submatch.types import BatchPairResult, MatchResult, MatchState
 from submatch.pipeline import PipelineConfig, run, run_batch
 from submatch.sampler import Segment
 from submatch.subtitle import Subtitle
