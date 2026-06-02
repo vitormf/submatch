@@ -576,3 +576,92 @@ def test_run_scores_normally_with_odd_segment_count(
     config = PipelineConfig(use_cache=False, sync=False, device="cpu")
     result = run(VIDEO, SUB, config)
     assert result.state == MatchState.PASS
+
+
+# ── default config (config=None) ──────────────────────────────────────────────
+
+def test_run_with_no_config_uses_defaults(tmp_path):
+    # Covers pipeline.py line 158: if config is None: config = PipelineConfig()
+    video = tmp_path / "v.mkv"
+    sub = tmp_path / "s.srt"
+    result = _make_unsure_result()
+    with patch("submatch.scoring._score_pair", return_value=(result, MagicMock())), \
+         patch("submatch.pipeline._get_model", return_value=MagicMock()), \
+         patch("submatch.pipeline._resolve_device", return_value="cpu"):
+        final = run(video, sub)  # no config argument → line 158
+    assert final is not None
+
+
+def test_run_batch_with_no_config_uses_defaults(tmp_path):
+    # Covers pipeline.py line 181: if config is None: config = PipelineConfig()
+    video = tmp_path / "v.mkv"
+    sub = tmp_path / "s.srt"
+    result = _make_unsure_result()
+    with patch("submatch.scoring._score_pair", return_value=(result, MagicMock())), \
+         patch("submatch.pipeline._get_model", return_value=MagicMock()), \
+         patch("submatch.pipeline._resolve_device", return_value="cpu"), \
+         patch("submatch.pipeline._resolve_workers", return_value=1):
+        results = run_batch([(video, sub)])  # no config argument → line 181
+    assert len(results) == 1
+
+
+# ── resync branch in run_batch (single-worker) ────────────────────────────────
+
+def test_run_batch_resync_on_drift(tmp_path):
+    # Covers pipeline.py lines 195-203: resync branch when DRIFT + resync=True
+    from submatch.language import LanguageResult
+    from submatch.sync import SyncResult
+
+    video = tmp_path / "v.mkv"
+    sub = tmp_path / "s.srt"
+    sub.write_text("1\n00:00:01,000 --> 00:00:02,000\nHello\n")
+    sync_tmp = tmp_path / "sync.srt"
+    sync_tmp.write_text("[synced]")
+
+    lang = LanguageResult(audio="en", subtitle_detected="en", subtitle_filename="en",
+                          video_metadata=None, expected=None, mismatch=False, mismatch_details=[])
+    sync_r = SyncResult(synced_srt_path=sync_tmp, offset_seconds=3.0, drift_detected=True)
+    drift_result = MatchResult(confidence=0.9, passed=True, threshold=0.35,
+                               language=lang, sync=sync_r, segments=[MagicMock()],
+                               model="base", state=MatchState.DRIFT)
+    pass_result = MatchResult(confidence=0.9, passed=True, threshold=0.35,
+                              language=lang, sync=None, segments=[MagicMock()],
+                              model="base", state=MatchState.PASS)
+
+    mock_cache = MagicMock()
+    call_count = [0]
+
+    def fake_score_pair(*args, **kwargs):
+        call_count[0] += 1
+        return (drift_result, mock_cache) if call_count[0] == 1 else (pass_result, mock_cache)
+
+    config = PipelineConfig(resync=True, workers=1)
+    with patch("submatch.scoring._score_pair", side_effect=fake_score_pair), \
+         patch("submatch.pipeline._get_model", return_value=MagicMock()), \
+         patch("submatch.pipeline._resolve_device", return_value="cpu"):
+        results = run_batch([(video, sub)], config)
+
+    assert len(results) == 1
+    assert results[0].result.resynced is True
+    assert call_count[0] == 2  # score_pair called twice (first drift, then resync)
+
+
+# ── parallel exception handler ────────────────────────────────────────────────
+
+def test_run_batch_parallel_worker_exception(tmp_path):
+    # Covers pipeline.py lines 237-244: exception in parallel worker propagated to results
+    video = tmp_path / "v.mkv"
+    sub = tmp_path / "s.srt"
+
+    completed = []
+    config = PipelineConfig(workers=2, on_pair_complete=completed.append)
+
+    with patch("submatch.pipeline._score_group_parallel",
+               side_effect=RuntimeError("GPU OOM")), \
+         patch("submatch.pipeline._resolve_device", return_value="cpu"):
+        results = run_batch([(video, sub)], config)
+
+    assert len(results) == 1
+    assert results[0].error == "GPU OOM"
+    assert results[0].result is None
+    assert len(completed) == 1
