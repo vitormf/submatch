@@ -53,7 +53,7 @@ def _apply_mocks(mock_sub, mock_lang, mock_audio, mock_sampler, mock_transcribe,
     mock_sampler.select_segments.return_value = [_seg()]
     mock_transcribe.load_model.return_value = MagicMock()
     mock_transcribe.transcribe_segment.return_value = TranscriptionResult(
-        text="Hello world", language="en", no_speech_prob=0.1
+        text="Hello world", language="en", no_speech_prob=0.1, avg_logprob=0.5
     )
     mock_compare.token_f1.return_value = SegmentScore(f1=0.9, wer=0.1, subtitle_tokens=2)
     mock_compare.aggregate.return_value = 0.9
@@ -469,3 +469,110 @@ def test_from_toml_cli_only_keys_are_ignored():
         config = PipelineConfig.from_toml()
     assert config.model == "small"
     assert not hasattr(config, "no_recursive")
+
+
+# ── musical content support ───────────────────────────────────────────────────
+
+@patch("submatch.scoring.transcribe")
+@patch("submatch.scoring.audio")
+@patch("submatch.scoring.sampler")
+def test_audio_driven_transcribe_rejects_low_avg_logprob(mock_sampler, mock_audio, mock_transcribe, tmp_path):
+    """Quality gate rejects candidate with avg_logprob below -1.0 and tries the next."""
+    from submatch.scoring import _audio_driven_transcribe
+    video = tmp_path / "v.mkv"
+    video.touch()
+    config = PipelineConfig(use_cache=True, sync=False, device="cpu")
+
+    mock_audio.detect_speech_regions.return_value = []
+    mock_audio.extract_segment.return_value = MagicMock()
+
+    # One zone, two candidates: first has low logprob (rejected), second is accepted
+    mock_sampler.audio_candidate_segments.return_value = [[0, 30_000]]
+
+    low = TranscriptionResult(text="singing lyrics here today", language="en",
+                              no_speech_prob=0.1, avg_logprob=-2.0)
+    good = TranscriptionResult(text="hello world indeed", language="en",
+                               no_speech_prob=0.1, avg_logprob=0.5)
+    mock_transcribe.transcribe_segment.side_effect = [low, good]
+
+    starts, texts, _ = _audio_driven_transcribe(video, 0, 1, MagicMock(), config,
+                                                duration_ms=1_800_000)
+    assert texts == ["hello world indeed"]
+
+
+@patch("submatch.scoring.compare")
+@patch("submatch.scoring.transcribe")
+@patch("submatch.scoring.sampler")
+@patch("submatch.scoring.audio")
+@patch("submatch.scoring.language")
+@patch("submatch.scoring.subtitle")
+def test_run_unsure_when_all_segments_below_coverage_threshold(
+    mock_sub, mock_lang, mock_audio, mock_sampler, mock_transcribe, mock_compare
+):
+    """All segments have no subtitle text but Whisper heard speech → UNSURE."""
+    _apply_mocks(mock_sub, mock_lang, mock_audio, mock_sampler, mock_transcribe, mock_compare)
+    sparse = Segment(start_ms=60_000, end_ms=90_000, subtitle_text="", word_count=0)
+    mock_sampler.select_segments.return_value = [sparse, sparse, sparse, sparse]
+    config = PipelineConfig(use_cache=False, sync=False, device="cpu")
+    result = run(VIDEO, SUB, config)
+    assert result.state == MatchState.UNSURE
+
+
+@patch("submatch.scoring.compare")
+@patch("submatch.scoring.transcribe")
+@patch("submatch.scoring.sampler")
+@patch("submatch.scoring.audio")
+@patch("submatch.scoring.language")
+@patch("submatch.scoring.subtitle")
+def test_run_scores_normally_with_partial_coverage(
+    mock_sub, mock_lang, mock_audio, mock_sampler, mock_transcribe, mock_compare
+):
+    """Only 1 of 4 segments has subtitle content → still scores normally (not UNSURE)."""
+    _apply_mocks(mock_sub, mock_lang, mock_audio, mock_sampler, mock_transcribe, mock_compare)
+    good = _seg()
+    sparse = Segment(start_ms=90_000, end_ms=120_000, subtitle_text="", word_count=0)
+    mock_sampler.select_segments.return_value = [good, sparse, sparse, sparse]
+    mock_compare.aggregate.return_value = 0.9
+    config = PipelineConfig(use_cache=False, sync=False, device="cpu")
+    result = run(VIDEO, SUB, config)
+    assert result.state == MatchState.PASS
+
+
+@patch("submatch.scoring.compare")
+@patch("submatch.scoring.transcribe")
+@patch("submatch.scoring.sampler")
+@patch("submatch.scoring.audio")
+@patch("submatch.scoring.language")
+@patch("submatch.scoring.subtitle")
+def test_run_excludes_sparse_segments_from_scoring(
+    mock_sub, mock_lang, mock_audio, mock_sampler, mock_transcribe, mock_compare
+):
+    """Sparse segments (word_count=0, trans≠empty) are not included in segment_results."""
+    _apply_mocks(mock_sub, mock_lang, mock_audio, mock_sampler, mock_transcribe, mock_compare)
+    good = _seg()
+    sparse = Segment(start_ms=90_000, end_ms=120_000, subtitle_text="", word_count=0)
+    mock_sampler.select_segments.return_value = [good, good, sparse, sparse]
+    mock_compare.aggregate.return_value = 0.9
+    config = PipelineConfig(use_cache=False, sync=False, device="cpu")
+    result = run(VIDEO, SUB, config)
+    assert len(result.segments) == 2
+
+
+@patch("submatch.scoring.compare")
+@patch("submatch.scoring.transcribe")
+@patch("submatch.scoring.sampler")
+@patch("submatch.scoring.audio")
+@patch("submatch.scoring.language")
+@patch("submatch.scoring.subtitle")
+def test_run_scores_normally_with_odd_segment_count(
+    mock_sub, mock_lang, mock_audio, mock_sampler, mock_transcribe, mock_compare
+):
+    """2 good + 1 sparse → PASS (all good segments scored)."""
+    _apply_mocks(mock_sub, mock_lang, mock_audio, mock_sampler, mock_transcribe, mock_compare)
+    good = _seg()
+    sparse = Segment(start_ms=90_000, end_ms=120_000, subtitle_text="", word_count=0)
+    mock_sampler.select_segments.return_value = [good, good, sparse]
+    mock_compare.aggregate.return_value = 0.9
+    config = PipelineConfig(use_cache=False, sync=False, device="cpu")
+    result = run(VIDEO, SUB, config)
+    assert result.state == MatchState.PASS
