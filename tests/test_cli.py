@@ -2171,7 +2171,7 @@ def test_run_embedded_extraction_failure_skips_track(tmp_path, capsys):
     args, video = _make_embedded_args(tmp_path)
     tracks = [{"index": 0, "lang": "eng", "title": None}]
     with patch("submatch.embedded.list_subtitle_tracks", return_value=tracks), \
-         patch("submatch.embedded.extract_subtitle_track",
+         patch("submatch.embedded.extract_all_subtitle_tracks",
                side_effect=Exception("codec error")):
         result = cli._run_embedded(args, [video])
     assert result == 2
@@ -2184,18 +2184,23 @@ def test_run_embedded_sub_lang_filters_tracks(tmp_path):
         {"index": 0, "lang": "eng", "title": None},
         {"index": 1, "lang": "jpn", "title": None},
     ]
-    extracted = []
+    extracted_tracks = []
 
-    def fake_extract(v, idx, dest):
-        extracted.append(idx)
-        dest.touch()
+    def fake_extract_all(v, trks, dest_dir):
+        result = {}
+        for t in trks:
+            extracted_tracks.append(t["index"])
+            dest = dest_dir / f"embedded_s{t['index']}_{t['lang'] or 'und'}.srt"
+            dest.touch()
+            result[t["index"]] = dest
+        return result
 
     with patch("submatch.embedded.list_subtitle_tracks", return_value=tracks), \
-         patch("submatch.embedded.extract_subtitle_track", side_effect=fake_extract), \
+         patch("submatch.embedded.extract_all_subtitle_tracks", side_effect=fake_extract_all), \
          patch("submatch.cli._run_batch", return_value=0):
         cli._run_embedded(args, [video])
 
-    assert extracted == [0]  # only English track extracted
+    assert extracted_tracks == [0]  # only English track extracted
 
 
 def test_run_embedded_sub_lang_includes_untagged_tracks(tmp_path):
@@ -2204,18 +2209,23 @@ def test_run_embedded_sub_lang_includes_untagged_tracks(tmp_path):
         {"index": 0, "lang": None, "title": None},   # unknown lang → included
         {"index": 1, "lang": "jpn", "title": None},  # Japanese → excluded
     ]
-    extracted = []
+    extracted_tracks = []
 
-    def fake_extract(v, idx, dest):
-        extracted.append(idx)
-        dest.touch()
+    def fake_extract_all(v, trks, dest_dir):
+        result = {}
+        for t in trks:
+            extracted_tracks.append(t["index"])
+            dest = dest_dir / f"embedded_s{t['index']}_und.srt"
+            dest.touch()
+            result[t["index"]] = dest
+        return result
 
     with patch("submatch.embedded.list_subtitle_tracks", return_value=tracks), \
-         patch("submatch.embedded.extract_subtitle_track", side_effect=fake_extract), \
+         patch("submatch.embedded.extract_all_subtitle_tracks", side_effect=fake_extract_all), \
          patch("submatch.cli._run_batch", return_value=0):
         cli._run_embedded(args, [video])
 
-    assert extracted == [0]
+    assert extracted_tracks == [0]
 
 
 def test_run_embedded_temp_files_cleaned_up_on_success(tmp_path):
@@ -2223,12 +2233,17 @@ def test_run_embedded_temp_files_cleaned_up_on_success(tmp_path):
     tracks = [{"index": 0, "lang": "eng", "title": None}]
     captured_dirs = []
 
-    def fake_extract(v, idx, dest):
-        captured_dirs.append(dest.parent.parent)  # the root tmp dir
-        dest.touch()
+    def fake_extract_all(v, trks, dest_dir):
+        captured_dirs.append(dest_dir.parent)  # the root tmp dir
+        result = {}
+        for t in trks:
+            dest = dest_dir / f"embedded_s{t['index']}_eng.srt"
+            dest.touch()
+            result[t["index"]] = dest
+        return result
 
     with patch("submatch.embedded.list_subtitle_tracks", return_value=tracks), \
-         patch("submatch.embedded.extract_subtitle_track", side_effect=fake_extract), \
+         patch("submatch.embedded.extract_all_subtitle_tracks", side_effect=fake_extract_all), \
          patch("submatch.cli._run_batch", return_value=0):
         cli._run_embedded(args, [video])
 
@@ -2241,12 +2256,17 @@ def test_run_embedded_temp_files_cleaned_up_on_error(tmp_path):
     tracks = [{"index": 0, "lang": "eng", "title": None}]
     captured_dirs = []
 
-    def fake_extract(v, idx, dest):
-        captured_dirs.append(dest.parent.parent)
-        dest.touch()
+    def fake_extract_all(v, trks, dest_dir):
+        captured_dirs.append(dest_dir.parent)
+        result = {}
+        for t in trks:
+            dest = dest_dir / f"embedded_s{t['index']}_eng.srt"
+            dest.touch()
+            result[t["index"]] = dest
+        return result
 
     with patch("submatch.embedded.list_subtitle_tracks", return_value=tracks), \
-         patch("submatch.embedded.extract_subtitle_track", side_effect=fake_extract), \
+         patch("submatch.embedded.extract_all_subtitle_tracks", side_effect=fake_extract_all), \
          patch("submatch.cli._run_batch", side_effect=RuntimeError("boom")):
         with pytest.raises(RuntimeError):
             cli._run_embedded(args, [video])
