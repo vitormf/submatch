@@ -10,7 +10,7 @@ from submatch import __version__
 from submatch import audio, gpu, output, telemetry
 from submatch import cache as _cache_module
 from submatch import pipeline as _pipeline
-from submatch.types import BatchPairResult, MatchResult, MatchState
+from submatch.types import BatchPairResult, MatchState
 
 
 def _ensure_utf8_stdout() -> None:
@@ -146,14 +146,6 @@ def _fmt_eta(secs: int) -> str:
     return f"~{secs // 3600}:{(secs % 3600) // 60:02d}:{secs % 60:02d}"
 
 
-def _should_fail(result: MatchResult, pass_unsure: bool) -> bool:
-    if result.state == MatchState.PASS:
-        return False
-    if result.state == MatchState.UNSURE and pass_unsure:
-        return False
-    return True
-
-
 _SUMMARY_THRESHOLD = 8
 
 
@@ -204,6 +196,9 @@ def _args_to_config(args: argparse.Namespace) -> _pipeline.PipelineConfig:
         cache_ttl_days=getattr(args, "cache_ttl_days", None),
         cache_max_mb=getattr(args, "cache_max_mb", None),
         resync=getattr(args, "resync", False),
+        pass_unsure=getattr(args, "pass_unsure", False),
+        keep_synced=getattr(args, "keep_synced", False),
+        delete_failures=getattr(args, "delete_failures", False),
         verbose=args.verbose,
     )
 
@@ -272,6 +267,9 @@ def _run_batch(
         else:
             output.print_human(pair_result.result, verbose=args.verbose,
                                video=pair_result.video, subtitle=pair_result.subtitle)
+        if (config.delete_failures and pair_result.result and
+                pair_result.result.state == MatchState.FAIL):
+            print(f"Deleted: {pair_result.subtitle}")
         if _ema_pair_time[0] is None:
             _ema_pair_time[0] = took
         else:
@@ -291,18 +289,12 @@ def _run_batch(
         print(f"Error: {exc}", file=sys.stderr)
         return 2
 
-    if args.delete_failures:
-        for p in results:
-            if p.result is not None and p.result.state == MatchState.FAIL:
-                p.subtitle.unlink(missing_ok=True)
-                print(f"Deleted: {p.subtitle}")
-
     output.print_batch_summary(results)
     _write_reports(results, args)
 
     if any(p.error for p in results):
         return 2
-    if any(p.result and _should_fail(p.result, args.pass_unsure) for p in results):
+    if any(p.result and not p.result.passed for p in results):
         return 1
     return 0
 
@@ -445,13 +437,11 @@ def main() -> None:
     if result.resynced:
         print(f"Subtitle resynced: {args.subtitle}")
 
-    if args.keep_synced and result.sync and result.sync.synced_srt_path:
+    if config.keep_synced and result.sync:
         kept = args.subtitle.with_stem(args.subtitle.stem + ".synced")
-        shutil.copy(result.sync.synced_srt_path, kept)
         print(f"Synced subtitle saved to {kept}")
-
-    if result.sync and result.sync.synced_srt_path:
-        result.sync.synced_srt_path.unlink(missing_ok=True)
+    if config.delete_failures and result.state == MatchState.FAIL:
+        print(f"Deleted: {args.subtitle}")
 
     output.print_human(result, verbose=args.verbose)
     _write_reports(
@@ -460,11 +450,7 @@ def main() -> None:
         args,
     )
 
-    if args.delete_failures and result.state == MatchState.FAIL:
-        args.subtitle.unlink(missing_ok=True)
-        print(f"Deleted: {args.subtitle}")
-
-    sys.exit(0 if not _should_fail(result, args.pass_unsure) else 1)
+    sys.exit(0 if result.passed else 1)
 
 
 if __name__ == "__main__":

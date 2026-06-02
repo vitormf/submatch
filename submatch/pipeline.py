@@ -32,6 +32,9 @@ class PipelineConfig:
     cache_ttl_days: int | None = None
     cache_max_mb: int | None = None
     resync: bool = False
+    pass_unsure: bool = False
+    keep_synced: bool = False
+    delete_failures: bool = False
     verbose: bool = False
     on_segment: Callable[[int, int], None] | None = None
     on_pair_complete: Callable[[BatchPairResult], None] | None = None
@@ -388,9 +391,7 @@ def _score_group_parallel(
                 result, _ = _score_pair(video, sub, resync_config, model, video_cache=new_cache)
                 result.state = _determine_state(result)
                 result.resynced = True
-            else:
-                if result.sync and result.sync.synced_srt_path:
-                    result.sync.synced_srt_path.unlink(missing_ok=True)
+            result = _apply_postprocessing(result, sub, pair_config)
             if cache is None:
                 cache = new_cache
             pair_result = BatchPairResult(video=video, subtitle=sub, result=result, error=None)
@@ -401,6 +402,25 @@ def _score_group_parallel(
         if config.on_pair_complete:
             config.on_pair_complete(pair_result)
     return results
+
+
+def _apply_postprocessing(
+    result: MatchResult,
+    subtitle: Path,
+    config: PipelineConfig,
+) -> MatchResult:
+    passed = result.state == MatchState.PASS or (
+        result.state == MatchState.UNSURE and config.pass_unsure
+    )
+    result = dataclasses.replace(result, passed=passed)
+    if result.sync and result.sync.synced_srt_path:
+        if config.keep_synced:
+            kept = subtitle.with_stem(subtitle.stem + ".synced")
+            shutil.copy(result.sync.synced_srt_path, kept)
+        result.sync.synced_srt_path.unlink(missing_ok=True)
+    if config.delete_failures and result.state == MatchState.FAIL:
+        subtitle.unlink(missing_ok=True)
+    return result
 
 
 def run(
@@ -423,6 +443,7 @@ def run(
         result, _ = _score_pair(video, subtitle, resync_config, model)
         result.state = _determine_state(result)
         result.resynced = True
+    result = _apply_postprocessing(result, subtitle, config)
     return result
 
 
@@ -454,9 +475,7 @@ def run_batch(
                     match_result, _ = _score_pair(video, sub, resync_config, model, video_cache=new_cache)
                     match_result.state = _determine_state(match_result)
                     match_result.resynced = True
-                else:
-                    if match_result.sync and match_result.sync.synced_srt_path:
-                        match_result.sync.synced_srt_path.unlink(missing_ok=True)
+                match_result = _apply_postprocessing(match_result, sub, config)
                 if cache is None:
                     video_caches[video] = new_cache
                 pair_result = BatchPairResult(video=video, subtitle=sub,
