@@ -1486,6 +1486,35 @@ def test_fmt_eta_hours():
     assert cli._fmt_eta(3661) == "~1:01:01"
 
 
+# ── _ProgressTracker ──────────────────────────────────────────────────────────
+
+def test_progress_tracker_eta_header_no_ema():
+    from submatch.cli import _ProgressTracker
+    tracker = _ProgressTracker(n_total=5)
+    assert tracker.eta_header() == "[1/5]"
+
+
+def test_progress_tracker_eta_header_with_ema():
+    from submatch.cli import _ProgressTracker
+    tracker = _ProgressTracker(n_total=5)
+    tracker.ema_pair_time = 10.0
+    tracker.pair_idx = 1
+    header = tracker.eta_header()
+    assert "[2/5" in header
+    assert "%" in header
+
+
+def test_progress_tracker_advance_updates_state():
+    from submatch.cli import _ProgressTracker
+    tracker = _ProgressTracker(n_total=3)
+    tracker.advance(10.0)
+    assert tracker.pair_idx == 1
+    assert tracker.ema_pair_time == 10.0
+    tracker.advance(5.0)
+    assert tracker.pair_idx == 2
+    assert abs(tracker.ema_pair_time - (0.3 * 5.0 + 0.7 * 10.0)) < 0.001
+
+
 def test_determine_state_pass():
     result = _make_match_result(passed=True, drift_detected=False)
     assert scoring._determine_state(result) == MatchState.PASS
@@ -2378,6 +2407,36 @@ def test_main_single_import_error_exits_2(tmp_path, capsys):
             c.__exit__(None, None, None)
     assert exc.value.code == 2
     assert "sentence-transformers not installed" in capsys.readouterr().err
+
+
+def test_run_batch_import_error_calls_telemetry_capture(tmp_path):
+    ctx = _make_batch_patches(tmp_path, ["--threshold", "0.01"])
+    [c.__enter__() for c in ctx]
+    try:
+        exc = ImportError("sentence-transformers not installed")
+        with patch("submatch.cli._pipeline.run_batch", side_effect=exc), \
+             patch("submatch.cli.telemetry.capture") as mock_capture, \
+             pytest.raises(SystemExit):
+            cli.main()
+        mock_capture.assert_called_once_with(exc)
+    finally:
+        for c in reversed(ctx):
+            c.__exit__(None, None, None)
+
+
+def test_main_single_import_error_calls_telemetry_capture(tmp_path):
+    _, _, ctx = _make_pipeline_patches(tmp_path, ["--threshold", "0.01"])
+    [c.__enter__() for c in ctx]
+    try:
+        exc = ImportError("sentence-transformers not installed")
+        with patch("submatch.cli._pipeline.run", side_effect=exc), \
+             patch("submatch.cli.telemetry.capture") as mock_capture, \
+             pytest.raises(SystemExit):
+            cli.main()
+        mock_capture.assert_called_once_with(exc)
+    finally:
+        for c in reversed(ctx):
+            c.__exit__(None, None, None)
 
 
 def test_main_uses_static_ffmpeg_when_ffmpeg_missing(capsys):
