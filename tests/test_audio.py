@@ -3,7 +3,7 @@ import subprocess
 import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
-from submatch.audio import get_duration_ms, has_audio_track, extract_segment, list_audio_tracks, resolve_audio_track, detect_speech_regions
+from submatch.audio import get_duration_ms, get_audio_track_duration_ms, has_audio_track, extract_segment, list_audio_tracks, resolve_audio_track, detect_speech_regions
 
 
 @pytest.fixture(scope="module")
@@ -352,3 +352,44 @@ def test_extract_segment_raises_on_nonzero_returncode(tmp_path):
     with patch("submatch.audio.subprocess.Popen", return_value=proc), \
          pytest.raises(subprocess.CalledProcessError):
         extract_segment(video, start_ms=0, duration_ms=5_000)
+
+
+# --- get_audio_track_duration_ms ---
+
+def test_get_audio_track_duration_ms_returns_stream_duration(tmp_path):
+    """Should return the audio stream duration in ms."""
+    response = json.dumps({"streams": [{"duration": "3600.5"}]})
+    with patch("submatch.audio.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(stdout=response, returncode=0)
+        result = get_audio_track_duration_ms(Path("video.mkv"), audio_track=0)
+    assert result == 3600500
+
+
+def test_get_audio_track_duration_ms_returns_none_for_missing_stream(tmp_path):
+    """When requested track index doesn't exist, return None."""
+    response = json.dumps({"streams": []})
+    with patch("submatch.audio.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(stdout=response, returncode=0)
+        result = get_audio_track_duration_ms(Path("video.mkv"), audio_track=0)
+    assert result is None
+
+
+def test_get_audio_track_duration_ms_returns_none_when_duration_absent(tmp_path):
+    """Some streams don't report a duration field — return None."""
+    response = json.dumps({"streams": [{"codec_type": "audio"}]})
+    with patch("submatch.audio.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(stdout=response, returncode=0)
+        result = get_audio_track_duration_ms(Path("video.mkv"), audio_track=0)
+    assert result is None
+
+
+def test_get_audio_track_duration_ms_selects_correct_track(tmp_path):
+    """When multiple audio tracks exist, return duration of the requested one."""
+    response = json.dumps({"streams": [
+        {"duration": "1000.0"},
+        {"duration": "2500.0"},
+    ]})
+    with patch("submatch.audio.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(stdout=response, returncode=0)
+        result = get_audio_track_duration_ms(Path("video.mkv"), audio_track=1)
+    assert result == 2500000
