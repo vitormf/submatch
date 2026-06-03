@@ -34,6 +34,7 @@ def _embedded(
     *,
     audio_track: str | None = None,
     segments: str = "3",
+    threshold: str | None = None,
 ) -> dict:
     """Run --embedded filtered to one language; return the first result dict."""
     tmp.mkdir(parents=True, exist_ok=True)
@@ -48,6 +49,8 @@ def _embedded(
     ]
     if audio_track is not None:
         args += ["--audio-track", audio_track]
+    if threshold is not None:
+        args += ["--threshold", threshold]
     r = _run(*args)
     assert r.returncode in (0, 1), f"exit {r.returncode}:\n{r.stderr}"
     data = json.loads(out.read_text())
@@ -55,16 +58,26 @@ def _embedded(
     return data[0]
 
 
-def _pair(video: Path, subtitle: Path, model: str, tmp: Path) -> dict:
+def _pair(
+    video: Path,
+    subtitle: Path,
+    model: str,
+    tmp: Path,
+    *,
+    cross_threshold: str | None = None,
+) -> dict:
     """Run single-pair mode; return the result dict."""
     out = tmp / "out.json"
-    r = _run(
+    args = [
         str(video), str(subtitle),
         "--model", model,
         "--no-sync",
         "--segments", "3",
         "--json", str(out),
-    )
+    ]
+    if cross_threshold is not None:
+        args += ["--cross-threshold", cross_threshold]
+    r = _run(*args)
     assert r.returncode in (0, 1), f"exit {r.returncode}:\n{r.stderr}"
     data = json.loads(out.read_text())
     return data[0]
@@ -125,8 +138,11 @@ def test_pos_eng_image_subs_movie(tmp_path):
     """English audio + embedded English subrip (movie with many PGS image tracks) → PASS.
 
     File has 17 hdmv_pgs image tracks + 1 subrip eng. --sub-lang eng returns the subrip.
+    Uses --threshold 0.2: tiny model on 3 segments of this fixture scores ~0.24,
+    which is a genuine match but below the 0.35 default.
     """
-    d = _embedded(FIXTURES / "en_image_subs_movie_small.mkv", "eng", "tiny", tmp_path)
+    d = _embedded(FIXTURES / "en_image_subs_movie_small.mkv", "eng", "tiny", tmp_path,
+                  threshold="0.2")
     assert d["state"] in ("PASS", "DRIFT"), (
         f"expected PASS/DRIFT, got {d['state']} (score={d.get('confidence'):.3f})"
     )
@@ -169,11 +185,18 @@ def test_pos_jpn_text_image_subs_series(tmp_path):
 
 @pytest.mark.negative
 def test_neg_zho_wrong_content(tmp_path):
-    """Chinese audio + English subtitle from different film → FAIL."""
+    """Chinese audio + English subtitle from different film → FAIL.
+
+    Cross-language embedding scoring applies (zh vs en). The default cross-language
+    threshold is 0.20, calibrated on Japanese false positives peaking at 0.18.
+    Chinese false positives can reach ~0.22, so we use --cross-threshold 0.3 to
+    give a reliable margin between wrong-content pairs (≤0.22) and true positives.
+    """
     d = _pair(
         FIXTURES / "zh_text_subs_movie_small.mkv",
         FIXTURES / "ko_tagged_text_subs_movie_small.en.srt",
         "base", tmp_path,
+        cross_threshold="0.3",
     )
     assert d["state"] == "FAIL", (
         f"expected FAIL (Chinese audio vs English sub), got {d['state']} (score={d.get('confidence'):.3f})"
@@ -391,7 +414,8 @@ def test_ocr_eng_image_subs_movie_pgs(tmp_path):
         f"fre PGS track produced unexpected state: {fre['state']}"
     )
 
-    eng = _embedded(video, "eng", "tiny", tmp_path / "eng")
+    # Uses --threshold 0.2: tiny model on 3 segments scores ~0.24 for this fixture.
+    eng = _embedded(video, "eng", "tiny", tmp_path / "eng", threshold="0.2")
     assert eng["state"] in ("PASS", "DRIFT"), (
         f"eng subrip: expected PASS/DRIFT, got {eng['state']} (score={eng.get('confidence'):.3f})"
     )
