@@ -238,12 +238,27 @@ def test_extract_all_subtitle_tracks_image_track_produces_sub(tmp_path):
     assert track_spec.startswith("5:")
 
 
-def test_extract_all_subtitle_tracks_image_track_propagates_error(tmp_path):
-    """ffmpeg error on an image track must raise CalledProcessError."""
+def test_extract_all_subtitle_tracks_image_track_skips_on_error(tmp_path):
+    """ffmpeg error on an image track must be swallowed — track is skipped, not raised."""
     tracks = [{"index": 0, "lang": "eng", "title": None, "codec": "dvd_subtitle"}]
     with patch("submatch.embedded.subprocess.Popen", return_value=_mock_proc(returncode=1)):
-        with pytest.raises(subprocess.CalledProcessError):
-            extract_all_subtitle_tracks(Path("movie.mkv"), tracks, tmp_path)
+        result = extract_all_subtitle_tracks(Path("movie.mkv"), tracks, tmp_path)
+    assert result == {}
+
+
+def test_extract_all_subtitle_tracks_image_error_does_not_block_text_tracks(tmp_path):
+    """A failing image track must not prevent successful text track extraction."""
+    tracks = [
+        {"index": 0, "lang": "eng", "title": None, "codec": "dvd_subtitle"},
+        {"index": 1, "lang": "eng", "title": None, "codec": "subrip"},
+    ]
+    # Text-track ffmpeg pass succeeds; image-track ffmpeg pass fails
+    good_proc = _mock_proc(returncode=0)
+    bad_proc = _mock_proc(returncode=1)
+    with patch("submatch.embedded.subprocess.Popen", side_effect=[good_proc, bad_proc]):
+        result = extract_all_subtitle_tracks(Path("movie.mkv"), tracks, tmp_path)
+    assert 1 in result   # text track extracted
+    assert 0 not in result  # image track skipped
 
 
 def test_extract_all_subtitle_tracks_image_track_keyboard_interrupt_kills_process_group(tmp_path):
