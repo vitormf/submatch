@@ -628,7 +628,7 @@ def test_audio_driven_transcribe_uses_audio_track_duration_for_candidates(tmp_pa
     from submatch.scoring import _audio_driven_transcribe
     from submatch.pipeline import PipelineConfig
     from submatch.transcribe import TranscriptionResult
-    from unittest.mock import patch, MagicMock, call
+    from unittest.mock import patch, MagicMock
 
     video = tmp_path / "v.mkv"
     video.touch()
