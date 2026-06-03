@@ -112,7 +112,10 @@ def extract_all_subtitle_tracks(
             raise subprocess.CalledProcessError(proc.returncode, cmd)
 
     for track in image_tracks:
-        dest = _extract_image_track(video, track, dest_dir)
-        paths[track["index"]] = dest
+        try:
+            dest = _extract_image_track(video, track, dest_dir)
+            paths[track["index"]] = dest
+        except subprocess.CalledProcessError:
+            pass
 
     return paths
