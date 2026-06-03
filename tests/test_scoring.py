@@ -620,6 +620,50 @@ def test_gather_transcriptions_importable():
     assert callable(_gather_transcriptions)
 
 
+def test_audio_driven_transcribe_uses_audio_track_duration_for_candidates(tmp_path):
+    """Regression for PYTHON-C: when audio track is shorter than the container format,
+    candidate positions must be bounded by the audio track duration, not the format duration.
+    Without this fix, candidates near the end of the format duration fall past the end of
+    the audio track, causing ffmpeg CalledProcessError on every candidate in those zones."""
+    from submatch.scoring import _audio_driven_transcribe
+    from submatch.pipeline import PipelineConfig
+    from submatch.transcribe import TranscriptionResult
+    from unittest.mock import patch, MagicMock, call
+
+    video = tmp_path / "v.mkv"
+    video.touch()
+
+    # Simulate a 2-hour video where the audio track ends at 40 minutes
+    format_duration_ms = 7_200_000   # 2 hours
+    audio_track_duration_ms = 2_400_000  # 40 minutes
+
+    good_trans = TranscriptionResult(text="hello world", language="en", no_speech_prob=0.1, avg_logprob=0.0)
+    mock_wav = MagicMock()
+    mock_wav.unlink = MagicMock()
+
+    config = PipelineConfig(use_cache=True, sync=False, device="cpu")
+
+    with patch("submatch.scoring.audio.get_duration_ms", return_value=format_duration_ms), \
+         patch("submatch.scoring.audio.get_audio_track_duration_ms", return_value=audio_track_duration_ms) as mock_atd, \
+         patch("submatch.scoring.audio.detect_speech_regions", return_value=[]), \
+         patch("submatch.scoring.audio.extract_segment", return_value=mock_wav) as mock_extract, \
+         patch("submatch.scoring.transcribe.transcribe_segment", return_value=good_trans):
+        starts, _, _ = _audio_driven_transcribe(
+            video, audio_track_index=0, n_seg=12, model=MagicMock(),
+            config=config, duration_ms=format_duration_ms,
+        )
+
+    # All candidate start positions must be within the audio track duration
+    for call_args in mock_extract.call_args_list:
+        start_ms = call_args[0][1]  # positional arg: start_ms
+        assert start_ms + 30_000 <= audio_track_duration_ms, (
+            f"Candidate at {start_ms}ms extends past audio track end "
+            f"({audio_track_duration_ms}ms): would cause ffmpeg CalledProcessError"
+        )
+
+    mock_atd.assert_called_once_with(video, 0)
+
+
 def test_gather_transcriptions_uses_existing_cache(tmp_path):
     """When video_cache is provided, returns its data without touching audio."""
     from submatch.scoring import _gather_transcriptions

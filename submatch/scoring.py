@@ -86,8 +86,12 @@ def _audio_driven_transcribe(
     speech_regions = audio.detect_speech_regions(video, audio_track_index)
     if not duration_ms:
         duration_ms = audio.get_duration_ms(video)
+    # Use the audio track's own duration to bound candidates. Some containers report
+    # a format duration longer than the audio track (e.g. broadcast padding), causing
+    # ffmpeg CalledProcessError when candidates land past the end of the audio stream.
+    candidate_duration_ms = audio.get_audio_track_duration_ms(video, audio_track_index) or duration_ms
     zone_candidates = sampler.audio_candidate_segments(
-        speech_regions, duration_ms, n_zones=n_seg, candidates_per_zone=2
+        speech_regions, candidate_duration_ms, n_zones=n_seg, candidates_per_zone=2
     )
 
     accepted_starts: list[int] = []

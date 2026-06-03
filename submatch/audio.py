@@ -44,6 +44,31 @@ def get_duration_ms(video_path: Path) -> int:
     return int(duration_s * 1_000)
 
 
+def get_audio_track_duration_ms(video_path: Path, audio_track: int = 0) -> int | None:
+    """Return the duration of a specific audio stream in ms, or None if unavailable.
+
+    Some video containers report a format duration longer than the audio track (e.g. when
+    a broadcast recording is padded with video after audio ends). Using the audio stream's
+    own duration prevents ffmpeg CalledProcessError when seeking into positions the audio
+    track doesn't cover. Returns None on any error so callers fall back to format duration.
+    """
+    try:
+        result = subprocess.run(
+            ["ffprobe", "-v", "quiet", "-print_format", "json",
+             "-show_streams", "-select_streams", "a", str(video_path)],
+            capture_output=True, text=True, check=True,
+        )
+        streams = json.loads(result.stdout).get("streams", [])
+        if audio_track >= len(streams):
+            return None
+        duration = streams[audio_track].get("duration")
+        if duration is None:
+            return None
+        return int(float(duration) * 1_000)
+    except Exception:
+        return None
+
+
 def has_audio_track(video_path: Path) -> bool:
     result = subprocess.run(
         ["ffprobe", "-v", "quiet", "-print_format", "json",

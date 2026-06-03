@@ -87,6 +87,7 @@ def _make_pipeline_patches(tmp_path, extra_argv=()):
         patch("submatch.cli.check_dependencies"),
         patch("submatch.cli.audio.has_audio_track", return_value=True),
         patch("submatch.scoring.audio.get_duration_ms", return_value=90 * 60 * 1_000),
+        patch("submatch.scoring.audio.get_audio_track_duration_ms", return_value=90 * 60 * 1_000),
         patch("submatch.scoring.audio.extract_segment", return_value=tmp_path / "seg.wav"),
         patch("submatch.scoring.audio.detect_speech_regions", return_value=[]),
         patch("submatch.scoring.subtitle.parse", return_value=subs),
