@@ -17,7 +17,7 @@ jobs:
     uses: ./.github/workflows/run-tests.yml
 
   integration-full:
-    name: Integration tests (full suite)
+    name: Integration tests (slow tier)
     needs: run-tests
     runs-on: self-hosted
     steps:
@@ -27,8 +27,8 @@ jobs:
         run: .venv/bin/pip install -e ".[dev]"
       - name: Prepare fixtures
         run: .venv/bin/python tests/integration/prepare.py
-      - name: Run full integration suite
-        run: .venv/bin/pytest tests/integration/ --tb=short -q -x --timeout=300 --no-cov
+      - name: Run slow integration tests
+        run: .venv/bin/pytest tests/integration/ -m "integration and slow" --tb=short -q -x --timeout=300 --no-cov
 
   release:
     needs: [run-tests, integration-full]
