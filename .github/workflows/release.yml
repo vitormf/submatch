@@ -19,7 +19,7 @@ jobs:
   integration-full:
     name: Integration tests (slow tier)
     needs: run-tests
-    runs-on: self-hosted
+    runs-on: [self-hosted, macOS]
     steps:
       - uses: actions/checkout@v4
       - run: /opt/homebrew/bin/python3.12 -m venv .venv
@@ -33,7 +33,7 @@ jobs:
   local-tests:
     name: Local tests (real fixtures)
     needs: run-tests
-    runs-on: self-hosted
+    runs-on: [self-hosted, macOS]
     steps:
       - uses: actions/checkout@v4
       - run: /opt/homebrew/bin/python3.12 -m venv .venv
@@ -46,7 +46,7 @@ jobs:
 
   release:
     needs: [run-tests, integration-full, local-tests]
-    runs-on: self-hosted
+    runs-on: [self-hosted, macOS]
     permissions:
       contents: write
 
