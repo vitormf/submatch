@@ -24,5 +24,11 @@ venv/
 # Integration test fixtures (downloaded assets, not committed)
 tests/fixtures/
 
-# Local-only tests and fixtures (personal, never committed)
-tests/local/
+# Local test data (copyright-protected fixtures, personal source lists, timing output)
+tests/local/fixtures/
+tests/local/sources.json
+tests/local/.index.json
+tests/local/benchmark_results.json
+
+# Pre-commit content audit title list (personal, never committed)
+.copyright-titles

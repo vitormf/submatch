@@ -30,8 +30,22 @@ jobs:
       - name: Run slow integration tests
         run: .venv/bin/pytest tests/integration/ -m "integration and slow" --tb=short -q -x --timeout=300 --no-cov
 
+  local-tests:
+    name: Local tests (real fixtures)
+    needs: run-tests
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+      - run: /opt/homebrew/bin/python3.12 -m venv .venv
+      - name: Install dependencies
+        run: .venv/bin/pip install -e ".[dev]"
+      - name: Run local tests
+        env:
+          SUBMATCH_LOCAL_FIXTURES: ${{ secrets.SUBMATCH_LOCAL_FIXTURES }}
+        run: .venv/bin/pytest tests/local/ -v --tb=short --no-cov
+
   release:
-    needs: [run-tests, integration-full]
+    needs: [run-tests, integration-full, local-tests]
     runs-on: self-hosted
     permissions:
       contents: write
