@@ -55,7 +55,7 @@ submatch = "submatch.cli:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--cov=submatch --cov-report=term-missing --ignore=tests/integration"
+addopts = "--cov=submatch --cov-report=term-missing --ignore=tests/integration --ignore=tests/local"
 markers = [
     "integration: requires network, real ffmpeg/whisper, and downloaded fixtures",
     "slow: marks slow integration tests (>10s); excluded from the fast merge gate",
