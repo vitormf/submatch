@@ -27,7 +27,7 @@ def test_list_subtitle_tracks_single_with_lang():
     stream = {"tags": {"language": "eng", "title": "English"}}
     with patch("subprocess.run", return_value=_mock_run(_ffprobe_out([stream]))):
         result = list_subtitle_tracks(Path("movie.mkv"))
-    assert result == [{"index": 0, "lang": "eng", "title": "English", "codec": None}]
+    assert result == [{"index": 0, "global_index": 0, "lang": "eng", "title": "English", "codec": None}]
 
 
 def test_list_subtitle_tracks_multiple():
@@ -39,10 +39,19 @@ def test_list_subtitle_tracks_multiple():
     with patch("subprocess.run", return_value=_mock_run(_ffprobe_out(streams))):
         result = list_subtitle_tracks(Path("movie.mkv"))
     assert result == [
-        {"index": 0, "lang": "eng", "title": None, "codec": None},
-        {"index": 1, "lang": "jpn", "title": "Japanese", "codec": None},
-        {"index": 2, "lang": None, "title": None, "codec": None},
+        {"index": 0, "global_index": 0, "lang": "eng", "title": None, "codec": None},
+        {"index": 1, "global_index": 1, "lang": "jpn", "title": "Japanese", "codec": None},
+        {"index": 2, "global_index": 2, "lang": None, "title": None, "codec": None},
     ]
+
+
+def test_list_subtitle_tracks_global_index_from_ffprobe():
+    """global_index reflects the stream's position among ALL streams, not just subtitles."""
+    stream = {"index": 5, "codec_name": "dvd_subtitle", "tags": {"language": "eng"}}
+    with patch("subprocess.run", return_value=_mock_run(_ffprobe_out([stream]))):
+        result = list_subtitle_tracks(Path("movie.mkv"))
+    assert result[0]["index"] == 0         # subtitle-relative (for -map 0:s:0)
+    assert result[0]["global_index"] == 5  # global (for mkvextract tracks 5:dest)
 
 
 def test_list_subtitle_tracks_ffprobe_command():
@@ -212,15 +221,21 @@ def test_list_subtitle_tracks_codec_none_when_absent():
 
 
 def test_extract_all_subtitle_tracks_image_track_produces_sub(tmp_path):
-    """dvd_subtitle tracks must be extracted to .sub, not .srt."""
-    tracks = [{"index": 0, "lang": "eng", "title": None, "codec": "dvd_subtitle"}]
+    """dvd_subtitle tracks must be extracted via mkvextract to .sub (VOBSUB format).
+
+    ffmpeg maps .sub to the microdvd muxer (wrong codec), so mkvextract is required
+    to write the correct VOBSUB .sub + .idx pair.
+    """
+    tracks = [{"index": 0, "global_index": 5, "lang": "eng", "title": None, "codec": "dvd_subtitle"}]
     with patch("submatch.embedded.subprocess.Popen", return_value=_mock_proc()) as mock_popen:
         result = extract_all_subtitle_tracks(Path("movie.mkv"), tracks, tmp_path)
     assert result[0].suffix == ".sub"
     cmd = mock_popen.call_args[0][0]
-    assert "-c:s" in cmd
-    cs_idx = cmd.index("-c:s")
-    assert cmd[cs_idx + 1] == "copy"
+    assert cmd[0] == "mkvextract"
+    assert "tracks" in cmd
+    # mkvextract track spec: "global_idx:dest_path"
+    track_spec = next(a for a in cmd if ":" in a and a[0].isdigit())
+    assert track_spec.startswith("5:")
 
 
 def test_extract_all_subtitle_tracks_image_track_propagates_error(tmp_path):
@@ -257,11 +272,12 @@ def test_extract_all_subtitle_tracks_pgs_track_produces_sup(tmp_path):
 
 
 def test_extract_all_subtitle_tracks_image_uses_copy_codec(tmp_path):
-    """PGS extraction command must include -c:s copy."""
+    """PGS (hdmv_pgs_subtitle) must use ffmpeg with -c:s copy (not mkvextract)."""
     tracks = [{"index": 0, "lang": "eng", "title": None, "codec": "hdmv_pgs_subtitle"}]
     with patch("submatch.embedded.subprocess.Popen", return_value=_mock_proc()) as mock_popen:
         extract_all_subtitle_tracks(Path("movie.mkv"), tracks, tmp_path)
     cmd = mock_popen.call_args[0][0]
+    assert cmd[0] == "ffmpeg"
     assert "-c:s" in cmd
     cs_idx = cmd.index("-c:s")
     assert cmd[cs_idx + 1] == "copy"

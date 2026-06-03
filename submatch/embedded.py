@@ -9,7 +9,11 @@ _IMAGE_CODECS = frozenset({"dvd_subtitle", "hdmv_pgs_subtitle", "dvbsub"})
 
 
 def list_subtitle_tracks(video: Path) -> list[dict]:
-    """Return one dict per subtitle stream: {"index", "lang", "title", "codec"}."""
+    """Return one dict per subtitle stream: {"index", "global_index", "lang", "title", "codec"}.
+
+    "index" is the subtitle-stream-relative index (for -map 0:s:N).
+    "global_index" is the global stream index from ffprobe (for mkvextract tracks N:dest).
+    """
     result = subprocess.run(
         ["ffprobe", "-v", "quiet", "-print_format", "json",
          "-show_streams", "-select_streams", "s", str(video)],
@@ -19,6 +23,7 @@ def list_subtitle_tracks(video: Path) -> list[dict]:
     return [
         {
             "index": i,
+            "global_index": s.get("index", i),
             "lang": s.get("tags", {}).get("language"),
             "title": s.get("tags", {}).get("title"),
             "codec": s.get("codec_name"),
@@ -42,12 +47,24 @@ def extract_subtitle_track(video: Path, index: int, dest: Path) -> None:
 
 
 def _extract_image_track(video: Path, track: dict, dest_dir: Path) -> Path:
-    """Extract one image-based subtitle track to its native format (.sub or .sup)."""
+    """Extract one image-based subtitle track to its native format (.sub or .sup).
+
+    dvd_subtitle uses mkvextract: ffmpeg maps .sub to the microdvd muxer (wrong format).
+    mkvextract correctly writes the VOBSUB .sub + .idx pair.
+    PGS (hdmv_pgs_subtitle) still uses ffmpeg -c:s copy → .sup.
+    """
     idx = track["index"]
+    global_idx = track.get("global_index", idx)
     lang = track.get("lang") or "und"
-    ext = ".sup" if track.get("codec") == "hdmv_pgs_subtitle" else ".sub"
-    dest = dest_dir / f"embedded_s{idx}_{lang}{ext}"
-    cmd = ["ffmpeg", "-y", "-i", str(video), "-map", f"0:s:{idx}", "-c:s", "copy", str(dest)]
+    codec = track.get("codec")
+
+    if codec == "dvd_subtitle":
+        dest = dest_dir / f"embedded_s{idx}_{lang}.sub"
+        cmd = ["mkvextract", str(video), "tracks", f"{global_idx}:{dest}"]
+    else:
+        ext = ".sup" if codec == "hdmv_pgs_subtitle" else ".sub"
+        dest = dest_dir / f"embedded_s{idx}_{lang}{ext}"
+        cmd = ["ffmpeg", "-y", "-i", str(video), "-map", f"0:s:{idx}", "-c:s", "copy", str(dest)]
 
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, preexec_fn=os.setsid)
     try:
