@@ -366,6 +366,7 @@ def test_spanish_audio_detected_as_spanish(spanish_video, spanish_es_srt, whispe
     assert lang == "es", f"Expected audio language 'es', got '{lang}'"
 
 
+@pytest.mark.slow
 def test_spanish_mismatched_subtitle_scores_lower(
     spanish_video, spanish_es_srt, sintel_es_srt, whisper_tiny,
 ):
@@ -403,6 +404,7 @@ def test_cross_language_guiyangese_english_passes_threshold(
     )
 
 
+@pytest.mark.slow
 def test_guiyangese_matching_subtitle_scores_higher_than_mismatch(
     guiyangese_video, guiyangese_en_srt, sintel_en_srt, whisper_tiny, embed_model,
 ):
@@ -489,6 +491,7 @@ def test_turkish_en_cross_language(
 # Whisper detects Neapolitan audio as Italian (it). The Italian subtitle is used
 # for same-language scoring; English subtitle for cross-language scoring.
 
+@pytest.mark.slow
 @pytest.mark.xfail(
     reason=(
         "Whisper tiny's Neapolitan transcription quality is inconsistent across runs — "
@@ -511,6 +514,7 @@ def test_neapolitan_it_matches(neapolitan_video, neapolitan_it_srt, whisper_tiny
     )
 
 
+@pytest.mark.slow
 @pytest.mark.xfail(
     reason=(
         "Whisper tiny's Neapolitan transcription quality is inconsistent across runs, "
@@ -533,6 +537,7 @@ def test_neapolitan_en_cross_language(
 
 # ── Thai video — same-language and cross-language tests ──────────────────────
 
+@pytest.mark.slow
 @pytest.mark.xfail(
     reason=(
         "Whisper tiny produces garbled mixed Thai/romanised output with near-zero "
@@ -553,6 +558,7 @@ def test_thai_th_matches(thai_video, thai_th_srt, whisper_tiny):
     )
 
 
+@pytest.mark.slow
 @pytest.mark.xfail(
     reason=(
         "Whisper tiny garbled transcriptions for Thai audio carry near-zero "
@@ -653,6 +659,7 @@ def test_compact_output_one_line_per_pair(german_video, german_de_srt, tmp_path)
     assert len(pair_lines) == 1, f"Expected 1 compact pair line, got {len(pair_lines)}:\n{result.stdout}"
 
 
+@pytest.mark.slow
 def test_compact_output_multiple_pairs_shows_summary(
     german_video, german_de_srt, german_en_srt, tmp_path,
 ):
@@ -676,6 +683,7 @@ def test_compact_output_multiple_pairs_shows_summary(
 # multi_track_video has two audio tracks: track 0 = German speech (tagged deu),
 # track 1 = silence (tagged eng). Created by the session fixture in conftest.py.
 
+@pytest.mark.slow
 def test_audio_track_index_1_reported_in_json(multi_track_video, german_de_srt, tmp_path):
     """--audio-track 1 sets audio_track_index=1 and audio_track_lang='eng' in JSON output."""
     out = tmp_path / "out.json"
@@ -689,6 +697,7 @@ def test_audio_track_index_1_reported_in_json(multi_track_video, german_de_srt, 
     assert data["audio_track_lang"] == "eng"
 
 
+@pytest.mark.slow
 def test_audio_track_language_eng_selects_second_track(multi_track_video, german_de_srt, tmp_path):
     """--audio-track eng (ISO 639-2) resolves to the 'eng'-tagged track at index 1."""
     out = tmp_path / "out.json"
@@ -702,6 +711,7 @@ def test_audio_track_language_eng_selects_second_track(multi_track_video, german
     assert data["audio_track_lang"] == "eng"
 
 
+@pytest.mark.slow
 def test_audio_track_iso_639_1_en_matches_eng_tagged_track(multi_track_video, german_de_srt, tmp_path):
     """--audio-track en (ISO 639-1) resolves to the 'eng'-tagged (ISO 639-2) track."""
     out = tmp_path / "out.json"
@@ -742,6 +752,7 @@ def test_audio_track_out_of_range_exits_2(multi_track_video, german_de_srt):
     )
 
 
+@pytest.mark.slow
 def test_audio_track_silence_scores_lower_than_real_audio(
     multi_track_video, german_de_srt, tmp_path,
 ):
