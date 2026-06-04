@@ -42,16 +42,20 @@ def write_csv(results: list[BatchPairResult], path: str) -> None:
     writer = csv.writer(buf)
     writer.writerow([
         "video", "subtitle", "state", "score", "threshold",
-        "audio_lang", "subtitle_lang", "drift_detected", "cross_language", "error",
+        "audio_lang", "subtitle_lang", "drift_detected", "cross_language",
+        "segment_audio_languages", "error",
     ])
     for p in results:
         if p.result is None:
             writer.writerow([
-                str(p.video), str(p.subtitle), "ERROR", "", "", "", "", "", "", p.error,
+                str(p.video), str(p.subtitle), "ERROR", "", "", "", "", "", "", "", p.error,
             ])
         else:
             r = p.result
             drift = r.sync.drift_detected if r.sync else False
+            seg_langs_str = ",".join(
+                s.audio_language or "" for s in r.segments
+            )
             writer.writerow([
                 str(p.video),
                 str(p.subtitle),
@@ -62,6 +66,7 @@ def write_csv(results: list[BatchPairResult], path: str) -> None:
                 r.subtitle_language or "",
                 str(drift).lower(),
                 str(r.cross_language).lower(),
+                seg_langs_str,
                 "",
             ])
     _write(path, buf.getvalue())
@@ -81,7 +86,7 @@ def write_html(results: list[BatchPairResult], path: str) -> None:
             state_counts["ERROR"] += 1
             row_class = "row-error"
             state_label = "ERROR"
-            score_str = audio_lang = sub_lang = ""
+            score_str = audio_lang = sub_lang = seg_langs_str = ""
             error_str = _esc.escape(p.error or "")
         else:
             r = p.result
@@ -94,6 +99,9 @@ def write_html(results: list[BatchPairResult], path: str) -> None:
             score_str = f"{r.confidence:.2f}"
             audio_lang = _esc.escape(r.language.audio or "")
             sub_lang = _esc.escape(r.subtitle_language or "")
+            seg_langs_str = _esc.escape(
+                ",".join(s.audio_language or "" for s in r.segments)
+            )
             error_str = ""
 
         rows_html.append(
@@ -104,6 +112,7 @@ def write_html(results: list[BatchPairResult], path: str) -> None:
             f'<td>{score_str}</td>'
             f'<td>{audio_lang}</td>'
             f'<td>{sub_lang}</td>'
+            f'<td>{seg_langs_str}</td>'
             f'<td>{error_str}</td>'
             f'</tr>'
         )
@@ -155,7 +164,8 @@ th.desc::after{{content:" ▼"}}
 <th onclick="sortTable(3)">Score</th>
 <th onclick="sortTable(4)">Audio Lang</th>
 <th onclick="sortTable(5)">Sub Lang</th>
-<th onclick="sortTable(6)">Error</th>
+<th onclick="sortTable(6)">Seg Langs</th>
+<th onclick="sortTable(7)">Error</th>
 </tr></thead>
 <tbody>
 {''.join(rows_html)}

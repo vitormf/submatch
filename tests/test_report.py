@@ -116,7 +116,7 @@ def test_write_csv_header_columns(tmp_path):
     rows = list(csv.reader(io.StringIO(Path(out).read_text())))
     assert rows[0] == ["video", "subtitle", "state", "score", "threshold",
                        "audio_lang", "subtitle_lang", "drift_detected",
-                       "cross_language", "error"]
+                       "cross_language", "segment_audio_languages", "error"]
 
 
 def test_write_csv_one_row_per_pair(tmp_path):
@@ -132,7 +132,7 @@ def test_write_csv_error_row(tmp_path):
     rows = list(csv.reader(io.StringIO(Path(out).read_text())))
     error_row = rows[3]
     assert error_row[2] == "ERROR"
-    assert error_row[9] == "no audio track"
+    assert error_row[10] == "no audio track"
 
 
 def test_write_csv_pass_row_values(tmp_path):
@@ -234,3 +234,37 @@ def test_path_encoder_fallback_raises_for_non_path():
     encoder = _PathEncoder()
     with pytest.raises(TypeError):
         encoder.default(object())
+
+
+def test_json_segments_include_audio_language(tmp_path):
+    pairs = _make_pairs()
+    pairs[0].result.segments[0].audio_language = "ko"
+
+    path = str(tmp_path / "out.json")
+    report.write_json(pairs, path)
+    data = json.loads(Path(path).read_text())
+    segs = data[0]["segments"]
+    assert segs[0]["audio_language"] == "ko"
+
+
+def test_csv_includes_segment_audio_languages(tmp_path):
+    pairs = _make_pairs()
+    pairs[0].result.segments[0].audio_language = "ko"
+
+    path = str(tmp_path / "out.csv")
+    report.write_csv(pairs, path)
+    reader = csv.DictReader(open(path))
+    rows = list(reader)
+    assert "segment_audio_languages" in rows[0]
+    assert rows[0]["segment_audio_languages"] == "ko"
+
+
+def test_html_includes_segment_audio_languages(tmp_path):
+    pairs = _make_pairs()
+    pairs[0].result.segments[0].audio_language = "ko"
+
+    path = str(tmp_path / "out.html")
+    report.write_html(pairs, path)
+    html = Path(path).read_text()
+    assert "Seg Langs" in html
+    assert "ko" in html

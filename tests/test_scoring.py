@@ -510,6 +510,7 @@ def test_build_match_result_cross_language_uses_default_threshold():
     # confidence=0.22 sits above 0.20 (new cross-language default) but below 0.35 (old fallback)
     config = PipelineConfig(model="base", threshold=0.35, cross_threshold=None)
 
+    from submatch.scoring import TranscriptionEntry
     with patch("submatch.scoring.language.detect_from_text", return_value="en"), \
          patch("submatch.scoring.language.detect_from_filename", return_value="en"), \
          patch("submatch.scoring.language.detect_from_video", return_value=None), \
@@ -519,7 +520,7 @@ def test_build_match_result_cross_language_uses_default_threshold():
                return_value=SegmentScore(f1=0.22, wer=0.78, subtitle_tokens=2)), \
          patch("submatch.scoring._get_embed_model", return_value=MagicMock()):
         result = _build_match_result(
-            transcription_pairs=[(1, seg, "こんにちは 世界")],
+            transcription_pairs=[TranscriptionEntry(index=1, segment=seg, text="こんにちは 世界", audio_language="ja")],
             subtitle_sample="hello world",
             subtitle_lang="en",
             audio_lang="ja",
@@ -551,6 +552,7 @@ def test_build_match_result_same_language_still_uses_threshold():
     seg = Segment(60_000, 90_000, "hello world", 2)
     config = PipelineConfig(model="base", threshold=0.35, cross_threshold=None)
 
+    from submatch.scoring import TranscriptionEntry
     with patch("submatch.scoring.language.detect_from_text", return_value="en"), \
          patch("submatch.scoring.language.detect_from_filename", return_value="en"), \
          patch("submatch.scoring.language.detect_from_video", return_value=None), \
@@ -559,7 +561,7 @@ def test_build_match_result_same_language_still_uses_threshold():
          patch("submatch.scoring.compare.token_f1",
                return_value=SegmentScore(f1=0.22, wer=0.78, subtitle_tokens=2)):
         result = _build_match_result(
-            transcription_pairs=[(1, seg, "hello world")],
+            transcription_pairs=[TranscriptionEntry(index=1, segment=seg, text="hello world", audio_language="en")],
             subtitle_sample="hello world",
             subtitle_lang="en",
             audio_lang="en",
@@ -591,6 +593,7 @@ def test_build_match_result_explicit_cross_threshold_overrides_default():
     seg = Segment(60_000, 90_000, "hello world", 2)
     config = PipelineConfig(model="base", threshold=0.35, cross_threshold=0.30)
 
+    from submatch.scoring import TranscriptionEntry
     with patch("submatch.scoring.language.detect_from_text", return_value="en"), \
          patch("submatch.scoring.language.detect_from_filename", return_value="en"), \
          patch("submatch.scoring.language.detect_from_video", return_value=None), \
@@ -600,7 +603,7 @@ def test_build_match_result_explicit_cross_threshold_overrides_default():
                return_value=SegmentScore(f1=0.22, wer=0.78, subtitle_tokens=2)), \
          patch("submatch.scoring._get_embed_model", return_value=MagicMock()):
         result = _build_match_result(
-            transcription_pairs=[(1, seg, "こんにちは 世界")],
+            transcription_pairs=[TranscriptionEntry(index=1, segment=seg, text="こんにちは 世界", audio_language="ja")],
             subtitle_sample="hello world",
             subtitle_lang="en",
             audio_lang="ja",
@@ -648,7 +651,7 @@ def test_audio_driven_transcribe_uses_audio_track_duration_for_candidates(tmp_pa
          patch("submatch.scoring.audio.detect_speech_regions", return_value=[]), \
          patch("submatch.scoring.audio.extract_segment", return_value=mock_wav) as mock_extract, \
          patch("submatch.scoring.transcribe.transcribe_segment", return_value=good_trans):
-        starts, _, _ = _audio_driven_transcribe(
+        starts, _, _, _ = _audio_driven_transcribe(
             video, audio_track_index=0, n_seg=12, model=MagicMock(),
             config=config, duration_ms=format_duration_ms,
         )
@@ -662,6 +665,151 @@ def test_audio_driven_transcribe_uses_audio_track_duration_for_candidates(tmp_pa
         )
 
     mock_atd.assert_called_once_with(video, 0)
+
+
+def test_audio_driven_transcribe_silent_segments_do_not_vote(tmp_path, monkeypatch):
+    """When most zones are silent (no accepted segment), those zones cast no vote,
+    so the final audio_lang reflects only the zones with real speech."""
+    from pathlib import Path
+    from submatch.scoring import _audio_driven_transcribe
+    from submatch import transcribe as _transcribe, audio as _audio, sampler as _sampler
+    from submatch.pipeline import PipelineConfig
+
+    call_count = [0]
+    def fake_transcribe(model, wav_path):
+        i = call_count[0]
+        call_count[0] += 1
+        r = _transcribe.TranscriptionResult(text="", language="en", no_speech_prob=0.95, avg_logprob=-2.0)
+        if i == 0:
+            r = _transcribe.TranscriptionResult(
+                text="안녕하세요 반갑습니다 잘 있었어요",
+                language="ko",
+                no_speech_prob=0.1,
+                avg_logprob=-0.5,
+            )
+        return r
+
+    fake_wav = tmp_path / "seg.wav"
+    fake_wav.write_bytes(b"RIFF")
+
+    monkeypatch.setattr(_transcribe, "transcribe_segment", fake_transcribe)
+    monkeypatch.setattr(_audio, "detect_speech_regions", lambda *a, **kw: [])
+    monkeypatch.setattr(_audio, "get_audio_track_duration_ms", lambda *a, **kw: 3_600_000)
+    monkeypatch.setattr(_audio, "extract_segment", lambda *a, **kw: fake_wav)
+    monkeypatch.setattr(_sampler, "audio_candidate_segments", lambda *a, **kw: [
+        [0], [300_000], [600_000], [900_000], [1_200_000]
+    ])
+
+    config = PipelineConfig(model="base", verbose=False)
+    _, _, audio_lang, _ = _audio_driven_transcribe(Path("/fake/movie.mp4"), 0, 5, None, config, duration_ms=3_600_000)
+    assert audio_lang == "ko"
+
+
+def test_build_match_result_per_segment_cross_language(monkeypatch):
+    """Each segment uses its own audio_language for cross/same scoring decision."""
+    from pathlib import Path
+    from unittest.mock import MagicMock, patch
+    from submatch.scoring import _build_match_result, TranscriptionEntry
+    from submatch import language as _language, embeddings as _emb, compare as _cmp
+    from submatch.pipeline import PipelineConfig
+
+    def _seg(text):
+        s = MagicMock()
+        s.subtitle_text = text
+        s.start_ms = 0
+        s.word_count = len(text.split())
+        return s
+
+    entries = [
+        TranscriptionEntry(index=1, segment=_seg("hello world"), text="hello world", audio_language="en"),
+        TranscriptionEntry(index=2, segment=_seg("안녕하세요 반갑습니다"), text="안녕하세요", audio_language="ko"),
+    ]
+
+    embed_calls = []
+    f1_calls = []
+
+    def fake_cross(sub, asr, model):
+        embed_calls.append((sub, asr))
+        r = MagicMock()
+        r.f1 = 0.8
+        r.wer = 0.2
+        return r
+
+    def fake_f1(sub, asr):
+        f1_calls.append((sub, asr))
+        r = MagicMock()
+        r.f1 = 0.9
+        r.wer = 0.1
+        return r
+
+    config = PipelineConfig(model="base", verbose=False)
+
+    with patch.object(_emb, "cross_language_score", side_effect=fake_cross), \
+         patch.object(_cmp, "token_f1", side_effect=fake_f1), \
+         patch("submatch.scoring._get_embed_model", return_value=MagicMock()), \
+         patch.object(_language, "detect_from_text", return_value="en"), \
+         patch.object(_language, "detect_from_filename", return_value="en"), \
+         patch.object(_language, "detect_from_video", return_value=None):
+        result = _build_match_result(
+            entries,
+            subtitle_sample="hello world",
+            subtitle_lang="en",
+            audio_lang=None,
+            subtitle_path=Path("sub.en.srt"),
+            video=Path("video.mp4"),
+            config=config,
+            audio_track_index=0,
+            audio_track_lang=None,
+        )
+
+    assert len(f1_calls) == 1, "English segment should use token_f1"
+    assert len(embed_calls) == 1, "Korean segment should use embeddings"
+    assert result.segments[0].audio_language == "en"
+    assert result.segments[1].audio_language == "ko"
+    assert result.cross_language is True
+
+
+def test_no_cache_path_silent_segments_do_not_vote(tmp_path, monkeypatch):
+    """In --no-cache mode, silent segments should not vote for audio language."""
+    from pathlib import Path
+    from submatch.scoring import _gather_transcriptions
+    from submatch import transcribe as _transcribe, audio as _audio, sampler as _sampler
+    from submatch.pipeline import PipelineConfig
+
+    call_count = [0]
+    def fake_transcribe(model, wav_path):
+        i = call_count[0]
+        call_count[0] += 1
+        if i == 0:
+            return _transcribe.TranscriptionResult(
+                text="안녕하세요 반갑습니다 잘 있었어요",
+                language="ko", no_speech_prob=0.1, avg_logprob=-0.5,
+            )
+        return _transcribe.TranscriptionResult(
+            text="", language="en", no_speech_prob=0.95, avg_logprob=-2.0,
+        )
+
+    fake_wav = tmp_path / "seg.wav"
+    fake_wav.write_bytes(b"RIFF")
+
+    from unittest.mock import MagicMock
+    monkeypatch.setattr(_transcribe, "transcribe_segment", fake_transcribe)
+    monkeypatch.setattr(_audio, "get_duration_ms", lambda *a, **kw: 3_600_000)
+    monkeypatch.setattr(_audio, "extract_segment", lambda *a, **kw: fake_wav)
+
+    fake_segs = [MagicMock(start_ms=i * 300_000, word_count=3, subtitle_text="test") for i in range(5)]
+    monkeypatch.setattr(_sampler, "select_segments", lambda *a, **kw: fake_segs)
+
+    config = PipelineConfig(model="base", verbose=False, use_cache=False, segments=5)
+    entries, _, audio_lang = _gather_transcriptions(
+        video=Path("/fake/movie.mp4"),
+        subtitles=[],
+        audio_track_index=0,
+        audio_track_lang=None,
+        config=config,
+        model=None,
+    )
+    assert audio_lang == "ko"
 
 
 def test_gather_transcriptions_uses_existing_cache(tmp_path):
@@ -693,4 +841,4 @@ def test_gather_transcriptions_uses_existing_cache(tmp_path):
     assert out_cache is cache
     assert audio_lang == "en"
     assert len(pairs) == 1
-    assert pairs[0][2] == "hello from cache"
+    assert pairs[0].text == "hello from cache"

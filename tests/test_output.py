@@ -324,3 +324,69 @@ def test_print_human_shows_resynced_in_meta(capsys):
     print_human(result)
     out = capsys.readouterr().out
     assert "resynced" in out
+
+
+# ── audio_language on SegmentResult ──────────────────────────────────────────
+
+def test_segment_result_has_audio_language_field():
+    from submatch.types import SegmentResult
+    seg = SegmentResult(index=1, start_ms=0, score=1.0, wer=0.0,
+                        subtitle_text="hello", transcription="hello",
+                        audio_language="ko")
+    assert seg.audio_language == "ko"
+
+
+def test_segment_result_audio_language_defaults_none():
+    from submatch.types import SegmentResult
+    seg = SegmentResult(index=1, start_ms=0, score=1.0, wer=0.0,
+                        subtitle_text="hello", transcription="hello")
+    assert seg.audio_language is None
+
+
+def test_verbose_shows_asr_language_tag(capsys):
+    from submatch.types import SegmentResult, MatchResult, MatchState
+    from submatch.language import LanguageResult
+    from submatch.output import print_human
+
+    lang = LanguageResult(
+        audio="ko", subtitle_detected="en", subtitle_filename="en",
+        video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
+    )
+    seg = SegmentResult(
+        index=1, start_ms=10_000, score=0.8, wer=0.2,
+        subtitle_text="Hello world", transcription="안녕하세요",
+        audio_language="ko",
+    )
+    result = MatchResult(
+        confidence=0.8, passed=True, threshold=0.35,
+        language=lang, sync=None, segments=[seg], model="base",
+    )
+    result.state = MatchState.PASS
+    print_human(result, verbose=True)
+    out = capsys.readouterr().out
+    assert "asr[ko]:" in out
+
+
+def test_verbose_no_language_tag_when_unknown(capsys):
+    from submatch.types import SegmentResult, MatchResult, MatchState
+    from submatch.language import LanguageResult
+    from submatch.output import print_human
+
+    lang = LanguageResult(
+        audio=None, subtitle_detected="en", subtitle_filename="en",
+        video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
+    )
+    seg = SegmentResult(
+        index=1, start_ms=10_000, score=0.8, wer=0.2,
+        subtitle_text="Hello world", transcription="hello world",
+        audio_language=None,
+    )
+    result = MatchResult(
+        confidence=0.8, passed=True, threshold=0.35,
+        language=lang, sync=None, segments=[seg], model="base",
+    )
+    result.state = MatchState.PASS
+    print_human(result, verbose=True)
+    out = capsys.readouterr().out
+    assert "asr:" in out
+    assert "asr[" not in out
