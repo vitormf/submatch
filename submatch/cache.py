@@ -87,8 +87,8 @@ def store(
             "created_at": now,
             "last_used": now,
             "segments": [
-                {"start_ms": s, "text": t, "lang": l}
-                for s, t, l in zip(
+                {"start_ms": s, "text": t, "lang": lang}
+                for s, t, lang in zip(
                     vc.segment_starts,
                     vc.transcriptions,
                     (
