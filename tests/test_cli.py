@@ -1092,7 +1092,8 @@ def test_score_pair_cross_language_uses_embeddings(tmp_path):
 
     subs_parsed = [Subtitle(1, 1_000, 3_500, "Olá mundo")]
     segs = [Segment(60_000, 90_000, "Olá mundo", 2)]
-    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5)
+    # 3+ words needed to pass the quality gate (words >= 3) so accepted_lang is set
+    mock_trans = MagicMock(text="hello world everyone", language="en", no_speech_prob=0.0, avg_logprob=0.5)
     lang = LanguageResult(
         audio="en", subtitle_detected="pt", subtitle_filename="pt",
         video_metadata=None, expected=None, mismatch=True,

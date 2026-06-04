@@ -664,6 +664,44 @@ def test_audio_driven_transcribe_uses_audio_track_duration_for_candidates(tmp_pa
     mock_atd.assert_called_once_with(video, 0)
 
 
+def test_audio_driven_transcribe_silent_segments_do_not_vote(tmp_path, monkeypatch):
+    """When most zones are silent (no accepted segment), those zones cast no vote,
+    so the final audio_lang reflects only the zones with real speech."""
+    from pathlib import Path
+    from submatch.scoring import _audio_driven_transcribe
+    from submatch import transcribe as _transcribe, audio as _audio, sampler as _sampler
+    from submatch.pipeline import PipelineConfig
+
+    call_count = [0]
+    def fake_transcribe(model, wav_path):
+        i = call_count[0]
+        call_count[0] += 1
+        r = _transcribe.TranscriptionResult(text="", language="en", no_speech_prob=0.95, avg_logprob=-2.0)
+        if i == 0:
+            r = _transcribe.TranscriptionResult(
+                text="안녕하세요 반갑습니다 잘 있었어요",
+                language="ko",
+                no_speech_prob=0.1,
+                avg_logprob=-0.5,
+            )
+        return r
+
+    fake_wav = tmp_path / "seg.wav"
+    fake_wav.write_bytes(b"RIFF")
+
+    monkeypatch.setattr(_transcribe, "transcribe_segment", fake_transcribe)
+    monkeypatch.setattr(_audio, "detect_speech_regions", lambda *a, **kw: [])
+    monkeypatch.setattr(_audio, "get_audio_track_duration_ms", lambda *a, **kw: 3_600_000)
+    monkeypatch.setattr(_audio, "extract_segment", lambda *a, **kw: fake_wav)
+    monkeypatch.setattr(_sampler, "audio_candidate_segments", lambda *a, **kw: [
+        [0], [300_000], [600_000], [900_000], [1_200_000]
+    ])
+
+    config = PipelineConfig(model="base", verbose=False)
+    _, _, audio_lang = _audio_driven_transcribe(Path("/fake/movie.mp4"), 0, 5, None, config, duration_ms=3_600_000)
+    assert audio_lang == "ko"
+
+
 def test_gather_transcriptions_uses_existing_cache(tmp_path):
     """When video_cache is provided, returns its data without touching audio."""
     from submatch.scoring import _gather_transcriptions
