@@ -2166,7 +2166,7 @@ def test_audio_driven_transcribe_retries_on_bad_no_speech_prob(tmp_path):
          patch("submatch.scoring.audio.get_duration_ms", return_value=3_600_000), \
          patch("submatch.scoring.sampler.audio_candidate_segments",
                return_value=[[100_000, 200_000]]):
-        starts, texts, lang = _audio_driven_transcribe(
+        starts, texts, lang, _ = _audio_driven_transcribe(
             video=Path("fake.mkv"),
             audio_track_index=0,
             n_seg=1,
@@ -2197,7 +2197,7 @@ def test_audio_driven_transcribe_fallback_uses_most_words(tmp_path):
          patch("submatch.scoring.audio.get_duration_ms", return_value=3_600_000), \
          patch("submatch.scoring.sampler.audio_candidate_segments",
                return_value=[[100_000, 200_000]]):
-        starts, texts, lang = _audio_driven_transcribe(
+        starts, texts, lang, _ = _audio_driven_transcribe(
             video=Path("fake.mkv"),
             audio_track_index=0,
             n_seg=1,
@@ -2228,7 +2228,7 @@ def test_audio_driven_transcribe_tied_lang_votes_returns_none():
          patch("submatch.scoring.audio.get_duration_ms", return_value=3_600_000), \
          patch("submatch.scoring.sampler.audio_candidate_segments",
                return_value=[[100_000], [200_000]]):
-        _, _, lang = _audio_driven_transcribe(
+        _, _, lang, _ = _audio_driven_transcribe(
             video=Path("fake.mkv"),
             audio_track_index=0,
             n_seg=2,
