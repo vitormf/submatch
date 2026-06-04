@@ -33,6 +33,14 @@ _embed_local = threading.local()
 # while false positives (wrong subtitle) peak at 0.18, so 0.20 separates them.
 _DEFAULT_CROSS_THRESHOLD = 0.20
 
+# Whisper language detection confidence threshold. Below this the detected
+# language is unreliable (unsupported languages hallucinate random scripts).
+_LANG_CONF_MIN = 0.5
+
+# After this many zones with zero accepted segments, stop probing — the audio
+# is likely in an unsupported language and further transcription won't help.
+_LANG_PROBE_ZONES = 3
+
 
 def _get_embed_model() -> Any:
     if not hasattr(_embed_local, "model"):
@@ -133,9 +141,11 @@ def _audio_driven_transcribe(
                 if best is None or words > best_words:
                     best = (start_ms, trans.text)
                     best_words = words
-                    best_lang = trans.language
+                    best_lang = trans.language if trans.language_prob >= _LANG_CONF_MIN else None
 
-                if trans.no_speech_prob < 0.6 and words >= 3 and trans.avg_logprob > -1.0:
+                if (trans.no_speech_prob < 0.6 and words >= 3
+                        and trans.avg_logprob > -1.0
+                        and trans.language_prob >= _LANG_CONF_MIN):
                     accepted = (start_ms, trans.text)
                     accepted_lang = trans.language
                     break
@@ -152,6 +162,12 @@ def _audio_driven_transcribe(
             accepted_langs.append(chosen_lang)
         if accepted_lang is not None:
             lang_votes.append(accepted_lang)
+
+        # Early bail-out: if no zone has passed the quality+language gate after
+        # _LANG_PROBE_ZONES zones, the audio is likely in an unsupported language.
+        # Stop probing to avoid transcribing the entire video for no gain.
+        if zone_idx + 1 >= _LANG_PROBE_ZONES and not lang_votes:
+            break
 
     return accepted_starts, accepted_texts, _audio_lang_from_votes(lang_votes), accepted_langs
 
@@ -305,13 +321,15 @@ def _gather_transcriptions(
                 try:
                     trans = transcribe.transcribe_segment(model, wav_path)
                     words = len(trans.text.split())
-                    if trans.no_speech_prob < 0.6 and words >= 3 and trans.avg_logprob > -1.0:
-                        lang_votes.append(trans.language)
+                    lang = trans.language if trans.language_prob >= _LANG_CONF_MIN else None
+                    if (trans.no_speech_prob < 0.6 and words >= 3
+                            and trans.avg_logprob > -1.0 and lang is not None):
+                        lang_votes.append(lang)
                     entries.append(TranscriptionEntry(
                         index=i + 1, segment=seg,
-                        text=trans.text, audio_language=trans.language,
+                        text=trans.text, audio_language=lang,
                     ))
-                    seg_langs.append(trans.language)
+                    seg_langs.append(lang)
                 finally:
                     wav_path.unlink(missing_ok=True)
             except Exception as exc:

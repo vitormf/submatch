@@ -12,6 +12,7 @@ class TranscriptionResult:
     language: str
     no_speech_prob: float = 0.0
     avg_logprob: float = 0.0
+    language_prob: float = 1.0
 
 
 def load_model(model_name: str = "base", device: str | None = None) -> Any:
@@ -32,9 +33,15 @@ def load_model(model_name: str = "base", device: str | None = None) -> Any:
 
 def transcribe_segment(model: Any, audio_path: Path) -> TranscriptionResult:
     import warnings
+    import whisper
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        result = model.transcribe(str(audio_path), fp16=False)
+        audio = whisper.load_audio(str(audio_path))
+        mel = whisper.log_mel_spectrogram(whisper.pad_or_trim(audio)).to(model.device)
+        _, lang_probs = model.detect_language(mel)
+        result = model.transcribe(audio, fp16=False)
+    language = result["language"]
+    language_prob = lang_probs.get(language, 0.0)
     segs = result.get("segments", [])
     if segs:
         no_speech_prob = sum(s.get("no_speech_prob", 0.0) for s in segs) / len(segs)
@@ -44,7 +51,8 @@ def transcribe_segment(model: Any, audio_path: Path) -> TranscriptionResult:
         avg_logprob = 0.0
     return TranscriptionResult(
         text=result["text"].strip(),
-        language=result["language"],
+        language=language,
         no_speech_prob=no_speech_prob,
         avg_logprob=avg_logprob,
+        language_prob=language_prob,
     )
