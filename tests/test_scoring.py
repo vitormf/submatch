@@ -765,6 +765,49 @@ def test_build_match_result_per_segment_cross_language(monkeypatch):
     assert result.cross_language is True
 
 
+def test_no_cache_path_silent_segments_do_not_vote(tmp_path, monkeypatch):
+    """In --no-cache mode, silent segments should not vote for audio language."""
+    from pathlib import Path
+    from submatch.scoring import _gather_transcriptions
+    from submatch import transcribe as _transcribe, audio as _audio, sampler as _sampler, subtitle as _subtitle
+    from submatch.pipeline import PipelineConfig
+
+    call_count = [0]
+    def fake_transcribe(model, wav_path):
+        i = call_count[0]
+        call_count[0] += 1
+        if i == 0:
+            return _transcribe.TranscriptionResult(
+                text="안녕하세요 반갑습니다 잘 있었어요",
+                language="ko", no_speech_prob=0.1, avg_logprob=-0.5,
+            )
+        return _transcribe.TranscriptionResult(
+            text="", language="en", no_speech_prob=0.95, avg_logprob=-2.0,
+        )
+
+    fake_wav = tmp_path / "seg.wav"
+    fake_wav.write_bytes(b"RIFF")
+
+    from unittest.mock import MagicMock
+    monkeypatch.setattr(_transcribe, "transcribe_segment", fake_transcribe)
+    monkeypatch.setattr(_audio, "get_duration_ms", lambda *a, **kw: 3_600_000)
+    monkeypatch.setattr(_audio, "extract_segment", lambda *a, **kw: fake_wav)
+
+    fake_segs = [MagicMock(start_ms=i * 300_000, word_count=3, subtitle_text="test") for i in range(5)]
+    monkeypatch.setattr(_sampler, "select_segments", lambda *a, **kw: fake_segs)
+
+    config = PipelineConfig(model="base", verbose=False, use_cache=False, segments=5)
+    entries, _, audio_lang = _gather_transcriptions(
+        video=Path("/fake/movie.mp4"),
+        subtitles=[],
+        audio_track_index=0,
+        audio_track_lang=None,
+        config=config,
+        model=None,
+    )
+    assert audio_lang == "ko"
+
+
 def test_gather_transcriptions_uses_existing_cache(tmp_path):
     """When video_cache is provided, returns its data without touching audio."""
     from submatch.scoring import _gather_transcriptions

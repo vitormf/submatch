@@ -4,6 +4,7 @@ import sys
 import tempfile
 import threading
 from collections import Counter
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -15,10 +16,7 @@ if TYPE_CHECKING:
     from submatch.pipeline import PipelineConfig
 
 
-from dataclasses import dataclass as _dataclass
-
-
-@_dataclass
+@dataclass
 class TranscriptionEntry:
     index: int
     segment: "sampler.Segment"
@@ -306,7 +304,9 @@ def _gather_transcriptions(
                 )
                 try:
                     trans = transcribe.transcribe_segment(model, wav_path)
-                    lang_votes.append(trans.language)
+                    words = len(trans.text.split())
+                    if trans.no_speech_prob < 0.6 and words >= 3 and trans.avg_logprob > -1.0:
+                        lang_votes.append(trans.language)
                     entries.append(TranscriptionEntry(
                         index=i + 1, segment=seg,
                         text=trans.text, audio_language=trans.language,
