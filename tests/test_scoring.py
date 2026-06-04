@@ -705,6 +705,66 @@ def test_audio_driven_transcribe_silent_segments_do_not_vote(tmp_path, monkeypat
     assert audio_lang == "ko"
 
 
+def test_build_match_result_per_segment_cross_language(monkeypatch):
+    """Each segment uses its own audio_language for cross/same scoring decision."""
+    from pathlib import Path
+    from unittest.mock import MagicMock, patch
+    from submatch.scoring import _build_match_result, TranscriptionEntry
+    from submatch import language as _language, embeddings as _emb, compare as _cmp
+    from submatch.pipeline import PipelineConfig
+
+    def _seg(text):
+        s = MagicMock()
+        s.subtitle_text = text
+        s.start_ms = 0
+        s.word_count = len(text.split())
+        return s
+
+    entries = [
+        TranscriptionEntry(index=1, segment=_seg("hello world"), text="hello world", audio_language="en"),
+        TranscriptionEntry(index=2, segment=_seg("안녕하세요 반갑습니다"), text="안녕하세요", audio_language="ko"),
+    ]
+
+    embed_calls = []
+    f1_calls = []
+
+    def fake_cross(sub, asr, model):
+        embed_calls.append((sub, asr))
+        r = MagicMock(); r.f1 = 0.8; r.wer = 0.2
+        return r
+
+    def fake_f1(sub, asr):
+        f1_calls.append((sub, asr))
+        r = MagicMock(); r.f1 = 0.9; r.wer = 0.1
+        return r
+
+    config = PipelineConfig(model="base", verbose=False)
+
+    with patch.object(_emb, "cross_language_score", side_effect=fake_cross), \
+         patch.object(_cmp, "token_f1", side_effect=fake_f1), \
+         patch("submatch.scoring._get_embed_model", return_value=MagicMock()), \
+         patch.object(_language, "detect_from_text", return_value="en"), \
+         patch.object(_language, "detect_from_filename", return_value="en"), \
+         patch.object(_language, "detect_from_video", return_value=None):
+        result = _build_match_result(
+            entries,
+            subtitle_sample="hello world",
+            subtitle_lang="en",
+            audio_lang=None,
+            subtitle_path=Path("sub.en.srt"),
+            video=Path("video.mp4"),
+            config=config,
+            audio_track_index=0,
+            audio_track_lang=None,
+        )
+
+    assert len(f1_calls) == 1, "English segment should use token_f1"
+    assert len(embed_calls) == 1, "Korean segment should use embeddings"
+    assert result.segments[0].audio_language == "en"
+    assert result.segments[1].audio_language == "ko"
+    assert result.cross_language is True
+
+
 def test_gather_transcriptions_uses_existing_cache(tmp_path):
     """When video_cache is provided, returns its data without touching audio."""
     from submatch.scoring import _gather_transcriptions
