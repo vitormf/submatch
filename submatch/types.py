@@ -22,6 +22,7 @@ class SegmentResult:
     wer: float
     subtitle_text: str
     transcription: str
+    audio_language: str | None = None
 
 
 @dataclass

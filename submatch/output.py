@@ -73,8 +73,9 @@ def print_human(
         bar = _bar(seg.score, width=8)
         print(f"  #{seg.index:<2} {ts}  {color}{seg.score:.2f}{_RESET}  {bar}")
         if verbose:
+            asr_label = f"asr[{seg.audio_language}]" if seg.audio_language else "asr"
             print(f"      sub: {seg.subtitle_text}")
-            print(f"      asr: {seg.transcription}")
+            print(f"      {asr_label}: {seg.transcription}")
     print()
 
 
