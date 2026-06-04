@@ -188,8 +188,13 @@ def _build_match_result(
     audio_track_lang: str | None,
     sync_result: "sync.SyncResult | None" = None,
 ) -> MatchResult:
-    cross_lang = _is_cross_language(audio_lang, subtitle_lang)
-    embed_model: Any = _get_embed_model() if cross_lang else None
+    # Load embed model if ANY segment needs cross-language scoring
+    need_embed = any(
+        _is_cross_language(e.audio_language or audio_lang, subtitle_lang)
+        for e in transcription_pairs
+    )
+    embed_model: Any = _get_embed_model() if need_embed else None
+    cross_lang = need_embed  # True if any segment used embeddings
 
     # Skip windows where the subtitle has no text but Whisper heard something —
     # that pattern (empty subtitle, non-empty transcription) indicates musical
@@ -202,7 +207,8 @@ def _build_match_result(
 
     segment_results: list[SegmentResult] = []
     for entry in scored_pairs:
-        if cross_lang:
+        seg_cross = _is_cross_language(entry.audio_language or audio_lang, subtitle_lang)
+        if seg_cross:
             score = embeddings.cross_language_score(
                 entry.segment.subtitle_text, entry.text, embed_model
             )
@@ -215,6 +221,7 @@ def _build_match_result(
             wer=score.wer,
             subtitle_text=entry.segment.subtitle_text,
             transcription=entry.text,
+            audio_language=entry.audio_language,
         ))
 
     lang_result = language.build_result(
