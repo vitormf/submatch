@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 FIXTURES = Path(os.environ.get("SUBMATCH_LOCAL_FIXTURES", str(Path(__file__).parent / "fixtures")))
-_BENCHMARK = FIXTURES / "benchmark_results.json"
+_BENCHMARK = Path(__file__).parent / "benchmark_results.json"
 _timings: dict[str, float] = {}
 
 

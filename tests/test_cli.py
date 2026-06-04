@@ -74,7 +74,7 @@ def _make_pipeline_patches(tmp_path, extra_argv=()):
 
     subs = [Subtitle(1, 1_000, 3_500, "Hello world")]
     segs = [Segment(60_000, 90_000, "Hello world", 2)]
-    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5)
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5, language_prob=1.0)
     lang = LanguageResult(
         audio="en", subtitle_detected="en", subtitle_filename="en",
         video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
@@ -228,7 +228,7 @@ def test_main_sync_success_reparses_srt(tmp_path):
 
     subs = [Subtitle(1, 1_000, 3_500, "Hello world")]
     segs = [Segment(60_000, 90_000, "Hello world", 2)]
-    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5)
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5, language_prob=1.0)
     lang = LanguageResult(
         audio="en", subtitle_detected="en", subtitle_filename="en",
         video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
@@ -310,7 +310,7 @@ def test_main_keep_synced_saves_file(tmp_path):
 
     subs = [Subtitle(1, 1_000, 3_500, "Hello world")]
     segs = [Segment(60_000, 90_000, "Hello world", 2)]
-    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5)
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5, language_prob=1.0)
     lang = LanguageResult(
         audio="en", subtitle_detected="en", subtitle_filename="en",
         video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
@@ -352,7 +352,7 @@ def test_main_sync_failure_continues(tmp_path):
     subtitle.write_text(SAMPLE_SRT)
     subs = [Subtitle(1, 1_000, 3_500, "Hello world")]
     segs = [Segment(60_000, 90_000, "Hello world", 2)]
-    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5)
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5, language_prob=1.0)
     lang = LanguageResult(
         audio="en", subtitle_detected="en", subtitle_filename="en",
         video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
@@ -389,7 +389,7 @@ def _make_batch_patches(tmp_path, extra_argv=()):
 
     subs = [Subtitle(1, 1_000, 3_500, "Hello world")]
     segs = [Segment(60_000, 90_000, "Hello world", 2)]
-    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5)
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5, language_prob=1.0)
     lang = LanguageResult(
         audio="en", subtitle_detected="en", subtitle_filename="en",
         video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
@@ -461,7 +461,7 @@ def test_batch_candidates_mode(tmp_path):
 
     subs_parsed = [Subtitle(1, 1_000, 3_500, "Hello world")]
     segs = [Segment(60_000, 90_000, "Hello world", 2)]
-    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5)
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5, language_prob=1.0)
     lang = LanguageResult(
         audio="en", subtitle_detected="en", subtitle_filename="en",
         video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
@@ -527,7 +527,7 @@ def _make_two_pair_patches(tmp_path, extra_argv=()):
 
     subs = [Subtitle(1, 1_000, 3_500, "Hello world")]
     segs = [Segment(60_000, 90_000, "Hello world", 2)]
-    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5)
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5, language_prob=1.0)
     lang = LanguageResult(
         audio="en", subtitle_detected="en", subtitle_filename="en",
         video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
@@ -748,7 +748,7 @@ def test_batch_recursive_dir_mode(tmp_path):
 
     subs_parsed = [Subtitle(1, 1_000, 3_500, "Hello world")]
     segs = [Segment(60_000, 90_000, "Hello world", 2)]
-    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5)
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5, language_prob=1.0)
     lang = LanguageResult(
         audio="en", subtitle_detected="en", subtitle_filename="en",
         video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
@@ -802,7 +802,7 @@ def test_main_video_only_auto_discovers_subtitle(tmp_path):
 
     subs_parsed = [Subtitle(1, 1_000, 3_500, "Hello world")]
     segs = [Segment(60_000, 90_000, "Hello world", 2)]
-    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5)
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5, language_prob=1.0)
     lang = LanguageResult(
         audio="en", subtitle_detected="en", subtitle_filename="en",
         video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
@@ -838,7 +838,7 @@ def test_main_subtitle_only_finds_video(tmp_path):
 
     subs_parsed = [Subtitle(1, 1_000, 3_500, "Hello world")]
     segs = [Segment(60_000, 90_000, "Hello world", 2)]
-    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5)
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5, language_prob=1.0)
     lang = LanguageResult(
         audio="en", subtitle_detected="en", subtitle_filename="en",
         video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
@@ -887,7 +887,7 @@ def test_batch_recursive_candidates_mode(tmp_path):
 
     subs_parsed = [Subtitle(1, 1_000, 3_500, "Hello world")]
     segs = [Segment(60_000, 90_000, "Hello world", 2)]
-    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5)
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5, language_prob=1.0)
     lang = LanguageResult(
         audio="en", subtitle_detected="en", subtitle_filename="en",
         video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
@@ -1093,7 +1093,7 @@ def test_score_pair_cross_language_uses_embeddings(tmp_path):
     subs_parsed = [Subtitle(1, 1_000, 3_500, "Olá mundo")]
     segs = [Segment(60_000, 90_000, "Olá mundo", 2)]
     # 3+ words needed to pass the quality gate (words >= 3) so accepted_lang is set
-    mock_trans = MagicMock(text="hello world everyone", language="en", no_speech_prob=0.0, avg_logprob=0.5)
+    mock_trans = MagicMock(text="hello world everyone", language="en", no_speech_prob=0.0, avg_logprob=0.5, language_prob=1.0)
     lang = LanguageResult(
         audio="en", subtitle_detected="pt", subtitle_filename="pt",
         video_metadata=None, expected=None, mismatch=True,
@@ -1153,7 +1153,7 @@ def test_cross_threshold_used_for_cross_language_pair(tmp_path):
 
     subs_parsed = [Subtitle(1, 1_000, 3_500, "Olá mundo")]
     segs = [Segment(60_000, 90_000, "Olá mundo", 2)]
-    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5)
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5, language_prob=1.0)
     lang = LanguageResult(
         audio="en", subtitle_detected="pt", subtitle_filename="pt",
         video_metadata=None, expected=None, mismatch=True,
@@ -1223,7 +1223,7 @@ def test_batch_sync_bar_description(tmp_path):
 
     subs_parsed = [Subtitle(1, 1_000, 3_500, "Hello world")]
     segs = [Segment(60_000, 90_000, "Hello world", 2)]
-    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5)
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5, language_prob=1.0)
     lang = LanguageResult(
         audio="en", subtitle_detected="en", subtitle_filename="en",
         video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
@@ -1307,7 +1307,7 @@ def test_batch_reuses_transcription_cache_for_same_video(tmp_path):
 
     subs_parsed = [Subtitle(1, 1_000, 3_500, "Hello world")]
     segs = [Segment(60_000, 90_000, "Hello world", 2)]
-    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5)
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5, language_prob=1.0)
     lang = LanguageResult(
         audio="en", subtitle_detected="en", subtitle_filename="en",
         video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
@@ -1364,7 +1364,7 @@ def test_score_pair_exception_propagates_after_sync(tmp_path):
 
     subs = [Subtitle(1, 1_000, 3_500, "Hello world")]
     segs = [Segment(60_000, 90_000, "Hello world", 2)]
-    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5)
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5, language_prob=1.0)
     mock_wav = MagicMock()
     mock_wav.unlink = MagicMock()
     lang = LanguageResult(
@@ -1419,7 +1419,7 @@ def test_batch_parallel_sync_cleans_up_synced_file(tmp_path):
 
     subs_parsed = [Subtitle(1, 1_000, 3_500, "Hello world")]
     segs = [Segment(60_000, 90_000, "Hello world", 2)]
-    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5)
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5, language_prob=1.0)
     lang = LanguageResult(
         audio="en", subtitle_detected="en", subtitle_filename="en",
         video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
@@ -1580,7 +1580,7 @@ def test_main_drift_exits_1(tmp_path):
 
     subs = [Subtitle(1, 1_000, 3_500, "Hello world")]
     segs = [Segment(60_000, 90_000, "Hello world", 2)]
-    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5)
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5, language_prob=1.0)
     lang = LanguageResult(
         audio="en", subtitle_detected="en", subtitle_filename="en",
         video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
@@ -1619,7 +1619,7 @@ def test_main_resync_replaces_subtitle(tmp_path):
 
     subs = [Subtitle(1, 1_000, 3_500, "Hello world")]
     segs = [Segment(60_000, 90_000, "Hello world", 2)]
-    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5)
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5, language_prob=1.0)
     lang = LanguageResult(
         audio="en", subtitle_detected="en", subtitle_filename="en",
         video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
@@ -1662,7 +1662,7 @@ def test_batch_sequential_resync(tmp_path):
 
     subs = [Subtitle(1, 1_000, 3_500, "Hello world")]
     segs = [Segment(60_000, 90_000, "Hello world", 2)]
-    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5)
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5, language_prob=1.0)
     lang = LanguageResult(
         audio="en", subtitle_detected="en", subtitle_filename="en",
         video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
@@ -1702,7 +1702,7 @@ def test_batch_parallel_resync(tmp_path):
 
     subs = [Subtitle(1, 1_000, 3_500, "Hello world")]
     segs = [Segment(60_000, 90_000, "Hello world", 2)]
-    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5)
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5, language_prob=1.0)
     lang = LanguageResult(
         audio="en", subtitle_detected="en", subtitle_filename="en",
         video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
@@ -1858,7 +1858,7 @@ def test_score_pair_resolve_audio_track_called_once_per_video(tmp_path):
 
     subs = [Subtitle(1, 1_000, 3_500, "Hello world")]
     segs = [Segment(60_000, 90_000, "Hello world", 2)]
-    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5)
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5, language_prob=1.0)
     lang = LanguageResult(
         audio="en", subtitle_detected="en", subtitle_filename="en",
         video_metadata=None, expected=None, mismatch=False, mismatch_details=[],
@@ -1894,7 +1894,7 @@ def test_score_pair_passes_audio_track_to_extract_segment(tmp_path):
 
     subs = [Subtitle(1, 1_000, 3_500, "Hello world")]
     segs = [Segment(60_000, 90_000, "Hello world", 2)]
-    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5)
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5, language_prob=1.0)
     lang = LanguageResult(
         audio="en", subtitle_detected="en", subtitle_filename="en",
         video_metadata=None, expected=None, mismatch=False, mismatch_details=[],

@@ -155,7 +155,7 @@ def test_score_pair_sync_runtime_error_keeps_fail(tmp_path):
 
     subs = [Subtitle(1, 1_000, 3_500, "Hello world")]
     segs = [Segment(60_000, 90_000, "Hello world", 2)]
-    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5)
+    mock_trans = MagicMock(text="hello world", language="en", no_speech_prob=0.0, avg_logprob=0.5, language_prob=1.0)
     mock_wav = MagicMock()
     mock_wav.unlink = MagicMock()
     lang = LanguageResult(
@@ -842,3 +842,129 @@ def test_gather_transcriptions_uses_existing_cache(tmp_path):
     assert audio_lang == "en"
     assert len(pairs) == 1
     assert pairs[0].text == "hello from cache"
+
+
+def test_low_language_confidence_sets_segment_lang_none(tmp_path, monkeypatch):
+    """Segments where Whisper's language confidence is below threshold get lang=None."""
+    from pathlib import Path
+    from submatch.scoring import _audio_driven_transcribe
+    from submatch import transcribe as _transcribe, audio as _audio, sampler as _sampler
+    from submatch.pipeline import PipelineConfig
+
+    def fake_transcribe(model, wav_path):
+        return _transcribe.TranscriptionResult(
+            text="garbage hallucination text words",
+            language="ne",
+            no_speech_prob=0.1,
+            avg_logprob=-0.5,
+            language_prob=0.12,  # below _LANG_CONF_MIN=0.5
+        )
+
+    fake_wav = tmp_path / "seg.wav"
+    fake_wav.write_bytes(b"RIFF")
+
+    monkeypatch.setattr(_transcribe, "transcribe_segment", fake_transcribe)
+    monkeypatch.setattr(_audio, "detect_speech_regions", lambda *a, **kw: [])
+    monkeypatch.setattr(_audio, "get_audio_track_duration_ms", lambda *a, **kw: 3_600_000)
+    monkeypatch.setattr(_audio, "extract_segment", lambda *a, **kw: fake_wav)
+    monkeypatch.setattr(_sampler, "audio_candidate_segments", lambda *a, **kw: [
+        [0], [300_000], [600_000],
+    ])
+
+    config = PipelineConfig(model="base", verbose=False)
+    starts, texts, audio_lang, seg_langs = _audio_driven_transcribe(
+        Path("/fake/movie.mp4"), 0, 3, None, config, duration_ms=3_600_000
+    )
+
+    # Low confidence → lang=None for all segments
+    assert all(lang is None for lang in seg_langs)
+    # No votes → audio_lang=None
+    assert audio_lang is None
+
+
+def test_early_bailout_after_probe_zones(tmp_path, monkeypatch):
+    """After _LANG_PROBE_ZONES zones with zero accepted segments, processing stops early."""
+    from pathlib import Path
+    from submatch.scoring import _audio_driven_transcribe
+    from submatch import transcribe as _transcribe, audio as _audio, sampler as _sampler
+    from submatch.pipeline import PipelineConfig
+
+    transcribe_calls = [0]
+
+    def fake_transcribe(model, wav_path):
+        transcribe_calls[0] += 1
+        return _transcribe.TranscriptionResult(
+            text="garbage",
+            language="ne",
+            no_speech_prob=0.8,  # fails quality gate
+            avg_logprob=-2.0,
+            language_prob=0.12,
+        )
+
+    fake_wav = tmp_path / "seg.wav"
+    fake_wav.write_bytes(b"RIFF")
+
+    n_zones = 8
+    monkeypatch.setattr(_transcribe, "transcribe_segment", fake_transcribe)
+    monkeypatch.setattr(_audio, "detect_speech_regions", lambda *a, **kw: [])
+    monkeypatch.setattr(_audio, "get_audio_track_duration_ms", lambda *a, **kw: 3_600_000)
+    monkeypatch.setattr(_audio, "extract_segment", lambda *a, **kw: fake_wav)
+    monkeypatch.setattr(_sampler, "audio_candidate_segments", lambda *a, **kw: [
+        [i * 300_000] for i in range(n_zones)
+    ])
+
+    config = PipelineConfig(model="base", verbose=False)
+    starts, _, audio_lang, seg_langs = _audio_driven_transcribe(
+        Path("/fake/movie.mp4"), 0, n_zones, None, config, duration_ms=3_600_000
+    )
+
+    # Should bail out after _LANG_PROBE_ZONES zones, not process all 8
+    assert len(starts) == 3
+    assert transcribe_calls[0] == 3
+    assert audio_lang is None
+
+
+def test_no_bailout_when_one_zone_accepted(tmp_path, monkeypatch):
+    """If at least one zone passes the gate within _LANG_PROBE_ZONES, all zones are processed."""
+    from pathlib import Path
+    from submatch.scoring import _audio_driven_transcribe
+    from submatch import transcribe as _transcribe, audio as _audio, sampler as _sampler
+    from submatch.pipeline import PipelineConfig
+
+    call_count = [0]
+
+    def fake_transcribe(model, wav_path):
+        i = call_count[0]
+        call_count[0] += 1
+        if i == 1:  # second zone passes
+            return _transcribe.TranscriptionResult(
+                text="hello world there friend",
+                language="fr",
+                no_speech_prob=0.1,
+                avg_logprob=-0.3,
+                language_prob=0.88,
+            )
+        return _transcribe.TranscriptionResult(
+            text="garbage", language="ne", no_speech_prob=0.8,
+            avg_logprob=-2.0, language_prob=0.12,
+        )
+
+    fake_wav = tmp_path / "seg.wav"
+    fake_wav.write_bytes(b"RIFF")
+
+    n_zones = 6
+    monkeypatch.setattr(_transcribe, "transcribe_segment", fake_transcribe)
+    monkeypatch.setattr(_audio, "detect_speech_regions", lambda *a, **kw: [])
+    monkeypatch.setattr(_audio, "get_audio_track_duration_ms", lambda *a, **kw: 3_600_000)
+    monkeypatch.setattr(_audio, "extract_segment", lambda *a, **kw: fake_wav)
+    monkeypatch.setattr(_sampler, "audio_candidate_segments", lambda *a, **kw: [
+        [i * 300_000] for i in range(n_zones)
+    ])
+
+    config = PipelineConfig(model="base", verbose=False)
+    starts, _, audio_lang, _ = _audio_driven_transcribe(
+        Path("/fake/movie.mp4"), 0, n_zones, None, config, duration_ms=3_600_000
+    )
+
+    assert len(starts) == n_zones  # all zones processed
+    assert audio_lang == "fr"
