@@ -1,8 +1,7 @@
 import sys
 import pytest
 import numpy as np
-from pathlib import Path
-from unittest.mock import patch, MagicMock, call
+from unittest.mock import patch, MagicMock
 
 from submatch.transcribe import load_model, transcribe_segment, TranscriptionResult
 
