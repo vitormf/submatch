@@ -18,7 +18,6 @@ jobs:
 
   integration-full:
     name: Integration tests (slow tier)
-    needs: run-tests
     runs-on: [self-hosted, macOS]
     steps:
       - uses: actions/checkout@v4
@@ -32,7 +31,6 @@ jobs:
 
   local-tests:
     name: Local tests (real fixtures)
-    needs: run-tests
     runs-on: [self-hosted, macOS]
     steps:
       - uses: actions/checkout@v4
