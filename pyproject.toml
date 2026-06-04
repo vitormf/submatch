@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "submatch"
-version = "0.6.1"
+version = "0.7.0"
 description = "Verify subtitle files match video audio content"
 readme = "README.md"
 license = { file = "LICENSE" }
