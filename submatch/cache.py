@@ -91,7 +91,11 @@ def store(
                 for s, t, l in zip(
                     vc.segment_starts,
                     vc.transcriptions,
-                    vc.segment_langs if vc.segment_langs else [None] * len(vc.segment_starts),
+                    (
+                        list(vc.segment_langs) + [None] * (len(vc.segment_starts) - len(vc.segment_langs))
+                        if vc.segment_langs
+                        else [None] * len(vc.segment_starts)
+                    ),
                 )
             ],
         }
