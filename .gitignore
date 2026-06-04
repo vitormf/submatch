@@ -24,11 +24,8 @@ venv/
 # Integration test fixtures (downloaded assets, not committed)
 tests/fixtures/
 
-# Local test data (copyright-protected fixtures, personal source lists, timing output)
+# Local test data
 tests/local/fixtures/
-tests/local/sources.json
-tests/local/.index.json
-tests/local/benchmark_results.json
 
 # Local-only scripts and tools (not for distribution)
 scripts/
