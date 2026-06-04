@@ -510,6 +510,7 @@ def test_build_match_result_cross_language_uses_default_threshold():
     # confidence=0.22 sits above 0.20 (new cross-language default) but below 0.35 (old fallback)
     config = PipelineConfig(model="base", threshold=0.35, cross_threshold=None)
 
+    from submatch.scoring import TranscriptionEntry
     with patch("submatch.scoring.language.detect_from_text", return_value="en"), \
          patch("submatch.scoring.language.detect_from_filename", return_value="en"), \
          patch("submatch.scoring.language.detect_from_video", return_value=None), \
@@ -519,7 +520,7 @@ def test_build_match_result_cross_language_uses_default_threshold():
                return_value=SegmentScore(f1=0.22, wer=0.78, subtitle_tokens=2)), \
          patch("submatch.scoring._get_embed_model", return_value=MagicMock()):
         result = _build_match_result(
-            transcription_pairs=[(1, seg, "こんにちは 世界")],
+            transcription_pairs=[TranscriptionEntry(index=1, segment=seg, text="こんにちは 世界", audio_language="ja")],
             subtitle_sample="hello world",
             subtitle_lang="en",
             audio_lang="ja",
@@ -551,6 +552,7 @@ def test_build_match_result_same_language_still_uses_threshold():
     seg = Segment(60_000, 90_000, "hello world", 2)
     config = PipelineConfig(model="base", threshold=0.35, cross_threshold=None)
 
+    from submatch.scoring import TranscriptionEntry
     with patch("submatch.scoring.language.detect_from_text", return_value="en"), \
          patch("submatch.scoring.language.detect_from_filename", return_value="en"), \
          patch("submatch.scoring.language.detect_from_video", return_value=None), \
@@ -559,7 +561,7 @@ def test_build_match_result_same_language_still_uses_threshold():
          patch("submatch.scoring.compare.token_f1",
                return_value=SegmentScore(f1=0.22, wer=0.78, subtitle_tokens=2)):
         result = _build_match_result(
-            transcription_pairs=[(1, seg, "hello world")],
+            transcription_pairs=[TranscriptionEntry(index=1, segment=seg, text="hello world", audio_language="en")],
             subtitle_sample="hello world",
             subtitle_lang="en",
             audio_lang="en",
@@ -591,6 +593,7 @@ def test_build_match_result_explicit_cross_threshold_overrides_default():
     seg = Segment(60_000, 90_000, "hello world", 2)
     config = PipelineConfig(model="base", threshold=0.35, cross_threshold=0.30)
 
+    from submatch.scoring import TranscriptionEntry
     with patch("submatch.scoring.language.detect_from_text", return_value="en"), \
          patch("submatch.scoring.language.detect_from_filename", return_value="en"), \
          patch("submatch.scoring.language.detect_from_video", return_value=None), \
@@ -600,7 +603,7 @@ def test_build_match_result_explicit_cross_threshold_overrides_default():
                return_value=SegmentScore(f1=0.22, wer=0.78, subtitle_tokens=2)), \
          patch("submatch.scoring._get_embed_model", return_value=MagicMock()):
         result = _build_match_result(
-            transcription_pairs=[(1, seg, "こんにちは 世界")],
+            transcription_pairs=[TranscriptionEntry(index=1, segment=seg, text="こんにちは 世界", audio_language="ja")],
             subtitle_sample="hello world",
             subtitle_lang="en",
             audio_lang="ja",
@@ -648,7 +651,7 @@ def test_audio_driven_transcribe_uses_audio_track_duration_for_candidates(tmp_pa
          patch("submatch.scoring.audio.detect_speech_regions", return_value=[]), \
          patch("submatch.scoring.audio.extract_segment", return_value=mock_wav) as mock_extract, \
          patch("submatch.scoring.transcribe.transcribe_segment", return_value=good_trans):
-        starts, _, _ = _audio_driven_transcribe(
+        starts, _, _, _ = _audio_driven_transcribe(
             video, audio_track_index=0, n_seg=12, model=MagicMock(),
             config=config, duration_ms=format_duration_ms,
         )
@@ -698,7 +701,7 @@ def test_audio_driven_transcribe_silent_segments_do_not_vote(tmp_path, monkeypat
     ])
 
     config = PipelineConfig(model="base", verbose=False)
-    _, _, audio_lang = _audio_driven_transcribe(Path("/fake/movie.mp4"), 0, 5, None, config, duration_ms=3_600_000)
+    _, _, audio_lang, _ = _audio_driven_transcribe(Path("/fake/movie.mp4"), 0, 5, None, config, duration_ms=3_600_000)
     assert audio_lang == "ko"
 
 
@@ -731,4 +734,4 @@ def test_gather_transcriptions_uses_existing_cache(tmp_path):
     assert out_cache is cache
     assert audio_lang == "en"
     assert len(pairs) == 1
-    assert pairs[0][2] == "hello from cache"
+    assert pairs[0].text == "hello from cache"

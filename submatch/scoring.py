@@ -15,6 +15,17 @@ if TYPE_CHECKING:
     from submatch.pipeline import PipelineConfig
 
 
+from dataclasses import dataclass as _dataclass
+
+
+@_dataclass
+class TranscriptionEntry:
+    index: int
+    segment: "sampler.Segment"
+    text: str
+    audio_language: str | None
+
+
 _embed_local = threading.local()
 
 # Cross-language subtitle matching is inherently harder than same-language:
@@ -81,8 +92,8 @@ def _audio_driven_transcribe(
     model: Any,
     config: PipelineConfig,
     duration_ms: int = 0,
-) -> tuple[list[int], list[str], str | None]:
-    """Select segments via audio VAD + quality gate. Returns (starts_ms, texts, audio_lang)."""
+) -> tuple[list[int], list[str], str | None, list[str | None]]:
+    """Select segments via audio VAD + quality gate. Returns (starts_ms, texts, audio_lang, segment_langs)."""
     speech_regions = audio.detect_speech_regions(video, audio_track_index)
     if not duration_ms:
         duration_ms = audio.get_duration_ms(video)
@@ -96,6 +107,7 @@ def _audio_driven_transcribe(
 
     accepted_starts: list[int] = []
     accepted_texts: list[str] = []
+    accepted_langs: list[str | None] = []
     lang_votes: list[str] = []
     n_zones = len(zone_candidates)
 
@@ -139,10 +151,11 @@ def _audio_driven_transcribe(
         if chosen is not None:
             accepted_starts.append(chosen[0])
             accepted_texts.append(chosen[1])
+            accepted_langs.append(chosen_lang)
         if accepted_lang is not None:
             lang_votes.append(accepted_lang)
 
-    return accepted_starts, accepted_texts, _audio_lang_from_votes(lang_votes)
+    return accepted_starts, accepted_texts, _audio_lang_from_votes(lang_votes), accepted_langs
 
 
 def _audio_lang_from_votes(votes: list[str]) -> str | None:
@@ -164,7 +177,7 @@ def _audio_lang_from_votes(votes: list[str]) -> str | None:
 
 
 def _build_match_result(
-    transcription_pairs: list[tuple[int, "sampler.Segment", str]],
+    transcription_pairs: list[TranscriptionEntry],
     subtitle_sample: str,
     subtitle_lang: str | None,
     audio_lang: str | None,
@@ -183,24 +196,25 @@ def _build_match_result(
     # content where scoring against an empty reference gives a false F1=0.
     # When both are empty (silence/no-speech), F1=1.0 is a valid signal.
     scored_pairs = [
-        (idx, seg, trans_text)
-        for idx, seg, trans_text in transcription_pairs
-        if seg.word_count > 0 or not trans_text.strip()
+        e for e in transcription_pairs
+        if e.segment.word_count > 0 or not e.text.strip()
     ]
 
     segment_results: list[SegmentResult] = []
-    for idx, seg, trans_text in scored_pairs:
+    for entry in scored_pairs:
         if cross_lang:
-            score = embeddings.cross_language_score(seg.subtitle_text, trans_text, embed_model)
+            score = embeddings.cross_language_score(
+                entry.segment.subtitle_text, entry.text, embed_model
+            )
         else:
-            score = compare.token_f1(seg.subtitle_text, trans_text)
+            score = compare.token_f1(entry.segment.subtitle_text, entry.text)
         segment_results.append(SegmentResult(
-            index=idx,
-            start_ms=seg.start_ms,
+            index=entry.index,
+            start_ms=entry.segment.start_ms,
             score=score.f1,
             wer=score.wer,
-            subtitle_text=seg.subtitle_text,
-            transcription=trans_text,
+            subtitle_text=entry.segment.subtitle_text,
+            transcription=entry.text,
         ))
 
     lang_result = language.build_result(
@@ -252,24 +266,28 @@ def _gather_transcriptions(
     config: "PipelineConfig",
     model: Any,
     video_cache: _cache_module.VideoCache | None = None,
-) -> tuple[list[tuple[int, "sampler.Segment", str]], _cache_module.VideoCache, str | None]:
-    """Return (transcription_pairs, new_cache, audio_lang)."""
+) -> tuple[list[TranscriptionEntry], _cache_module.VideoCache, str | None]:
+    """Return (transcription_entries, new_cache, audio_lang)."""
     if video_cache is not None:
         audio_lang = video_cache.audio_lang
         cached_segs = sampler.segments_from_starts(subtitles, video_cache.segment_starts)
-        transcription_pairs = [
-            (i + 1, seg, trans)
-            for i, (seg, trans) in enumerate(zip(cached_segs, video_cache.transcriptions))
+        seg_langs = video_cache.segment_langs or [None] * len(cached_segs)
+        entries = [
+            TranscriptionEntry(index=i + 1, segment=seg, text=trans, audio_language=lang)
+            for i, (seg, trans, lang) in enumerate(
+                zip(cached_segs, video_cache.transcriptions, seg_langs)
+            )
         ]
-        return transcription_pairs, video_cache, audio_lang
+        return entries, video_cache, audio_lang
 
     duration_ms = audio.get_duration_ms(video)
     n_seg = config.segments or sampler.auto_segment_count(duration_ms)
-    audio_lang: str | None = None
-    transcription_pairs: list[tuple[int, sampler.Segment, str]] = []
 
     if not config.use_cache:
         segs = sampler.select_segments(subtitles, duration_ms, n=config.segments)
+        entries: list[TranscriptionEntry] = []
+        seg_langs: list[str | None] = []
+        lang_votes: list[str] = []
         for i, seg in enumerate(segs):
             if config.on_segment is not None:
                 config.on_segment(i + 1, len(segs))
@@ -281,9 +299,12 @@ def _gather_transcriptions(
                 )
                 try:
                     trans = transcribe.transcribe_segment(model, wav_path)
-                    if i == 0:
-                        audio_lang = trans.language
-                    transcription_pairs.append((i + 1, seg, trans.text))
+                    lang_votes.append(trans.language)
+                    entries.append(TranscriptionEntry(
+                        index=i + 1, segment=seg,
+                        text=trans.text, audio_language=trans.language,
+                    ))
+                    seg_langs.append(trans.language)
                 finally:
                     wav_path.unlink(missing_ok=True)
             except Exception as exc:
@@ -292,14 +313,16 @@ def _gather_transcriptions(
                     print(f"Warning: segment {i + 1} failed: {exc}", file=sys.stderr)
         if config.verbose:
             print()
+        audio_lang = _audio_lang_from_votes(lang_votes)
         new_cache = _cache_module.VideoCache(
-            segment_starts=[seg.start_ms for _, seg, _ in transcription_pairs],
-            transcriptions=[t for _, _, t in transcription_pairs],
+            segment_starts=[e.segment.start_ms for e in entries],
+            transcriptions=[e.text for e in entries],
             audio_lang=audio_lang,
             audio_track_index=audio_track_index,
             audio_track_lang=audio_track_lang,
+            segment_langs=seg_langs,
         )
-        return transcription_pairs, new_cache, audio_lang
+        return entries, new_cache, audio_lang
 
     _cfg = _cache_config(config)
     _mtime = video.stat().st_mtime
@@ -309,20 +332,23 @@ def _gather_transcriptions(
     if _disk_hit is not None:
         audio_lang = _disk_hit.audio_lang
         cached_segs = sampler.segments_from_starts(subtitles, _disk_hit.segment_starts)
-        transcription_pairs = [
-            (i + 1, seg, txt)
-            for i, (seg, txt) in enumerate(zip(cached_segs, _disk_hit.transcriptions))
+        seg_langs = _disk_hit.segment_langs or [None] * len(cached_segs)
+        entries = [
+            TranscriptionEntry(index=i + 1, segment=seg, text=txt, audio_language=lang)
+            for i, (seg, txt, lang) in enumerate(
+                zip(cached_segs, _disk_hit.transcriptions, seg_langs)
+            )
         ]
-        return transcription_pairs, _disk_hit, audio_lang
+        return entries, _disk_hit, audio_lang
 
-    starts, texts, audio_lang = _audio_driven_transcribe(
+    starts, texts, audio_lang, seg_langs = _audio_driven_transcribe(
         video, audio_track_index, n_seg, model, config,
         duration_ms=duration_ms,
     )
     cached_segs = sampler.segments_from_starts(subtitles, starts)
-    transcription_pairs = [
-        (i + 1, seg, txt)
-        for i, (seg, txt) in enumerate(zip(cached_segs, texts))
+    entries = [
+        TranscriptionEntry(index=i + 1, segment=seg, text=txt, audio_language=lang)
+        for i, (seg, txt, lang) in enumerate(zip(cached_segs, texts, seg_langs))
     ]
     new_cache = _cache_module.VideoCache(
         segment_starts=starts,
@@ -330,12 +356,13 @@ def _gather_transcriptions(
         audio_lang=audio_lang,
         audio_track_index=audio_track_index,
         audio_track_lang=audio_track_lang,
+        segment_langs=seg_langs,
     )
     _cache_module.store(
         video, _mtime, config.model, n_seg, audio_track_index,
         new_cache, _cfg["dir"], _cfg["ttl_days"], _cfg["max_mb"],
     )
-    return transcription_pairs, new_cache, audio_lang
+    return entries, new_cache, audio_lang
 
 
 def _score_pair(
@@ -375,16 +402,16 @@ def _score_pair(
             )
             sys.exit(2)
         ocr_lang = _resolve_ocr_lang(subtitle_path, video)
-        for _, seg, _ in transcription_pairs:
+        for entry in transcription_pairs:
             try:
-                seg.subtitle_text = ocr.ocr_window(
-                    subtitle_path, seg.start_ms, 30_000, lang=ocr_lang
+                entry.segment.subtitle_text = ocr.ocr_window(
+                    subtitle_path, entry.segment.start_ms, 30_000, lang=ocr_lang
                 )
-                seg.word_count = len(seg.subtitle_text.split())
+                entry.segment.word_count = len(entry.segment.subtitle_text.split())
             except Exception as exc:
                 telemetry.capture(exc)
                 if config.verbose:
-                    print(f"Warning: OCR failed for segment at {seg.start_ms}ms: {exc}",
+                    print(f"Warning: OCR failed for segment at {entry.segment.start_ms}ms: {exc}",
                           file=sys.stderr)
 
     _sync_args = dict(subtitle_sample=subtitle_sample, subtitle_lang=subtitle_lang,
@@ -408,11 +435,14 @@ def _score_pair(
                     audio_track=audio_track_index,
                 )
                 synced_subtitles = subtitle.parse(sync_result.synced_srt_path)
-                starts = [seg.start_ms for _, seg, _ in transcription_pairs]
+                starts = [e.segment.start_ms for e in transcription_pairs]
                 synced_segs = sampler.segments_from_starts(synced_subtitles, starts)
                 synced_pairs = [
-                    (i, seg, txt)
-                    for (i, _, txt), seg in zip(transcription_pairs, synced_segs)
+                    TranscriptionEntry(
+                        index=e.index, segment=seg,
+                        text=e.text, audio_language=e.audio_language,
+                    )
+                    for e, seg in zip(transcription_pairs, synced_segs)
                 ]
                 match_result = _build_match_result(synced_pairs, sync_result=sync_result,
                                                    **_sync_args)

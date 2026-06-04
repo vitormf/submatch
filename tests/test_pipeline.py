@@ -496,8 +496,8 @@ def test_audio_driven_transcribe_rejects_low_avg_logprob(mock_sampler, mock_audi
                                no_speech_prob=0.1, avg_logprob=0.5)
     mock_transcribe.transcribe_segment.side_effect = [low, good]
 
-    starts, texts, _ = _audio_driven_transcribe(video, 0, 1, MagicMock(), config,
-                                                duration_ms=1_800_000)
+    starts, texts, _, _ = _audio_driven_transcribe(video, 0, 1, MagicMock(), config,
+                                                   duration_ms=1_800_000)
     assert texts == ["hello world indeed"]
 
 
