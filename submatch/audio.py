@@ -37,11 +37,19 @@ def _lang_match(pref: str, track_lang: str | None) -> bool:
 def get_duration_ms(video_path: Path) -> int:
     result = subprocess.run(
         ["ffprobe", "-v", "quiet", "-print_format", "json",
-         "-show_format", str(video_path)],
+         "-show_format", "-show_streams", str(video_path)],
         capture_output=True, text=True, check=True,
     )
-    duration_s = float(json.loads(result.stdout)["format"]["duration"])
-    return int(duration_s * 1_000)
+    data = json.loads(result.stdout)
+    fmt = data.get("format", {})
+    if "duration" in fmt:
+        return int(float(fmt["duration"]) * 1_000)
+    stream_durations = [
+        float(s["duration"]) for s in data.get("streams", []) if "duration" in s
+    ]
+    if stream_durations:
+        return int(max(stream_durations) * 1_000)
+    raise ValueError(f"could not determine duration of {video_path}")
 
 
 def get_audio_track_duration_ms(video_path: Path, audio_track: int = 0) -> int | None:
