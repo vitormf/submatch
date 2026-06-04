@@ -30,4 +30,3 @@ tests/local/fixtures/
 # Local-only scripts and tools (not for distribution)
 scripts/
 tests/local/make_fixtures.py
-.copyright-titles.example
