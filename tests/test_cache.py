@@ -216,6 +216,26 @@ def test_store_and_load_preserves_segment_langs(tmp_path):
     assert result.segment_langs == ["ko", None]
 
 
+def test_store_with_empty_segment_langs_writes_all_segments(tmp_path):
+    """segment_langs=[] should not truncate the stored segments."""
+    video = Path("/fake/movie.mkv")
+    vc = VideoCache(
+        segment_starts=[10000, 20000, 30000],
+        transcriptions=["a", "b", "c"],
+        audio_lang="en",
+        audio_track_index=0,
+        audio_track_lang=None,
+        segment_langs=[],
+    )
+    store(video, mtime=1000.0, model="base", n_segments=3, audio_track_index=0,
+          vc=vc, cache_dir=tmp_path, ttl_days=30, max_mb=200)
+    result = load(video, mtime=1000.0, model="base", n_segments=3,
+                  audio_track_index=0, cache_dir=tmp_path)
+    assert result is not None
+    assert len(result.segment_starts) == 3
+    assert result.segment_langs == [None, None, None]
+
+
 def test_load_old_cache_missing_segment_langs(tmp_path):
     """Old cache files without 'lang' in segments deserialise gracefully."""
     video = Path("/fake/movie.mkv")
