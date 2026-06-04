@@ -44,6 +44,49 @@ def test_get_duration_ms(tiny_video):
     assert 9_000 <= duration <= 11_000
 
 
+def _mock_ffprobe(data: dict) -> MagicMock:
+    m = MagicMock()
+    m.stdout = json.dumps(data)
+    return m
+
+
+def test_get_duration_ms_falls_back_to_stream_duration_when_format_missing():
+    """Regression for PYTHON-D: KeyError when format dict has no 'duration' key.
+
+    Some containers (raw MPEG-TS, certain MP4) omit duration at the format level.
+    get_duration_ms must fall back to the maximum stream-level duration.
+    """
+    data = {
+        "format": {"filename": "video.ts", "nb_streams": 2},  # no 'duration' key
+        "streams": [
+            {"codec_type": "video", "duration": "3600.0"},
+            {"codec_type": "audio", "duration": "3598.5"},
+        ],
+    }
+    with patch("submatch.audio.subprocess.run", return_value=_mock_ffprobe(data)):
+        result = get_duration_ms(Path("video.ts"))
+    assert result == 3_600_000
+
+
+def test_get_duration_ms_prefers_format_duration_over_streams():
+    """Format-level duration takes precedence when present."""
+    data = {
+        "format": {"duration": "120.0"},
+        "streams": [{"codec_type": "audio", "duration": "100.0"}],
+    }
+    with patch("submatch.audio.subprocess.run", return_value=_mock_ffprobe(data)):
+        result = get_duration_ms(Path("video.mp4"))
+    assert result == 120_000
+
+
+def test_get_duration_ms_raises_when_no_duration_anywhere():
+    """Raises ValueError with clear message when neither format nor streams have duration."""
+    data = {"format": {}, "streams": [{"codec_type": "video"}]}
+    with patch("submatch.audio.subprocess.run", return_value=_mock_ffprobe(data)):
+        with pytest.raises(ValueError, match="duration"):
+            get_duration_ms(Path("video.mp4"))
+
+
 def test_has_audio_track_true(tiny_video):
     assert has_audio_track(tiny_video) is True
 
