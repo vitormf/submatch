@@ -239,7 +239,9 @@ def test_store_with_empty_segment_langs_writes_all_segments(tmp_path):
 def test_load_old_cache_missing_segment_langs(tmp_path):
     """Old cache files without 'lang' in segments deserialise gracefully."""
     video = Path("/fake/movie.mkv")
-    import hashlib, json, time
+    import hashlib
+    import json
+    import time
     raw = f"{video.resolve()}|1000.0|base|2|0"
     key = hashlib.sha256(raw.encode()).hexdigest()[:16]
     path = tmp_path / f"{key}.json"

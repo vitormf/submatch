@@ -730,12 +730,16 @@ def test_build_match_result_per_segment_cross_language(monkeypatch):
 
     def fake_cross(sub, asr, model):
         embed_calls.append((sub, asr))
-        r = MagicMock(); r.f1 = 0.8; r.wer = 0.2
+        r = MagicMock()
+        r.f1 = 0.8
+        r.wer = 0.2
         return r
 
     def fake_f1(sub, asr):
         f1_calls.append((sub, asr))
-        r = MagicMock(); r.f1 = 0.9; r.wer = 0.1
+        r = MagicMock()
+        r.f1 = 0.9
+        r.wer = 0.1
         return r
 
     config = PipelineConfig(model="base", verbose=False)
@@ -769,7 +773,7 @@ def test_no_cache_path_silent_segments_do_not_vote(tmp_path, monkeypatch):
     """In --no-cache mode, silent segments should not vote for audio language."""
     from pathlib import Path
     from submatch.scoring import _gather_transcriptions
-    from submatch import transcribe as _transcribe, audio as _audio, sampler as _sampler, subtitle as _subtitle
+    from submatch import transcribe as _transcribe, audio as _audio, sampler as _sampler
     from submatch.pipeline import PipelineConfig
 
     call_count = [0]
