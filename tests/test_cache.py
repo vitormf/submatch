@@ -196,3 +196,42 @@ def test_evict_outer_exception_is_swallowed():
     mock_dir = MagicMock()
     mock_dir.glob.side_effect = OSError("permission denied")
     _evict(mock_dir, ttl_days=30, max_mb=200)  # must not raise
+
+
+def test_store_and_load_preserves_segment_langs(tmp_path):
+    video = Path("/fake/movie.mkv")
+    vc = VideoCache(
+        segment_starts=[10000, 20000],
+        transcriptions=["hello world", "she left"],
+        audio_lang="ko",
+        audio_track_index=0,
+        audio_track_lang=None,
+        segment_langs=["ko", None],
+    )
+    store(video, mtime=1000.0, model="base", n_segments=2, audio_track_index=0,
+          vc=vc, cache_dir=tmp_path, ttl_days=30, max_mb=200)
+    result = load(video, mtime=1000.0, model="base", n_segments=2,
+                  audio_track_index=0, cache_dir=tmp_path)
+    assert result is not None
+    assert result.segment_langs == ["ko", None]
+
+
+def test_load_old_cache_missing_segment_langs(tmp_path):
+    """Old cache files without 'lang' in segments deserialise gracefully."""
+    video = Path("/fake/movie.mkv")
+    import hashlib, json, time
+    raw = f"{video.resolve()}|1000.0|base|2|0"
+    key = hashlib.sha256(raw.encode()).hexdigest()[:16]
+    path = tmp_path / f"{key}.json"
+    data = {
+        "video_path": str(video.resolve()),
+        "mtime": 1000.0, "model": "base", "n_segments": 2,
+        "audio_track_index": 0, "audio_lang": "en", "audio_track_lang": None,
+        "created_at": time.time(), "last_used": time.time(),
+        "segments": [{"start_ms": 10000, "text": "hello"}, {"start_ms": 20000, "text": "world"}],
+    }
+    path.write_text(json.dumps(data))
+    result = load(video, mtime=1000.0, model="base", n_segments=2,
+                  audio_track_index=0, cache_dir=tmp_path)
+    assert result is not None
+    assert result.segment_langs == [None, None]

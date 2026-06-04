@@ -2,7 +2,7 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 _DEFAULT_CACHE_DIR = Path.home() / ".cache" / "submatch"
@@ -17,6 +17,7 @@ class VideoCache:
     audio_lang: str | None
     audio_track_index: int = 0
     audio_track_lang: str | None = None
+    segment_langs: list[str | None] = field(default_factory=list)
 
 
 def _cache_key(video: Path, mtime: float, model: str, n_segments: int, audio_track_index: int) -> str:
@@ -43,6 +44,7 @@ def load(
             audio_lang=data.get("audio_lang"),
             audio_track_index=data.get("audio_track_index", 0),
             audio_track_lang=data.get("audio_track_lang"),
+            segment_langs=[s.get("lang") for s in data["segments"]],
         )
     except Exception:
         return None
@@ -85,8 +87,12 @@ def store(
             "created_at": now,
             "last_used": now,
             "segments": [
-                {"start_ms": s, "text": t}
-                for s, t in zip(vc.segment_starts, vc.transcriptions)
+                {"start_ms": s, "text": t, "lang": l}
+                for s, t, l in zip(
+                    vc.segment_starts,
+                    vc.transcriptions,
+                    vc.segment_langs if vc.segment_langs else [None] * len(vc.segment_starts),
+                )
             ],
         }
         with open(path, "w", encoding="utf-8") as f:
