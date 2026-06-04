@@ -919,8 +919,8 @@ def test_early_bailout_after_probe_zones(tmp_path, monkeypatch):
     )
 
     # Should bail out after _LANG_PROBE_ZONES zones, not process all 8
-    assert len(starts) == _LANG_PROBE_ZONES
-    assert transcribe_calls[0] == _LANG_PROBE_ZONES
+    assert len(starts) == 3
+    assert transcribe_calls[0] == 3
     assert audio_lang is None
 
 
