@@ -139,8 +139,8 @@ def _audio_driven_transcribe(
         if chosen is not None:
             accepted_starts.append(chosen[0])
             accepted_texts.append(chosen[1])
-        if chosen_lang is not None:
-            lang_votes.append(chosen_lang)
+        if accepted_lang is not None:
+            lang_votes.append(accepted_lang)
 
     return accepted_starts, accepted_texts, _audio_lang_from_votes(lang_votes)
 
