@@ -324,3 +324,20 @@ def test_print_human_shows_resynced_in_meta(capsys):
     print_human(result)
     out = capsys.readouterr().out
     assert "resynced" in out
+
+
+# ── audio_language on SegmentResult ──────────────────────────────────────────
+
+def test_segment_result_has_audio_language_field():
+    from submatch.types import SegmentResult
+    seg = SegmentResult(index=1, start_ms=0, score=1.0, wer=0.0,
+                        subtitle_text="hello", transcription="hello",
+                        audio_language="ko")
+    assert seg.audio_language == "ko"
+
+
+def test_segment_result_audio_language_defaults_none():
+    from submatch.types import SegmentResult
+    seg = SegmentResult(index=1, start_ms=0, score=1.0, wer=0.0,
+                        subtitle_text="hello", transcription="hello")
+    assert seg.audio_language is None
