@@ -81,7 +81,7 @@ submatch /media/shows/ --sub-lang pt --filter "*.srt"   # both must pass
 
 ### Cross-language matching
 
-When the subtitle language differs from the audio language (e.g. English audio with Portuguese subtitles), `submatch` automatically switches from token F1 scoring to multilingual semantic similarity using [`paraphrase-multilingual-MiniLM-L12-v2`](https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2). Cross-language pairs use a default threshold of `0.20` (instead of the `0.35` default for same-language pairs) because semantic similarity scores across language pairs are inherently lower even for correct matches.
+When a segment's detected audio language differs from the subtitle language, `submatch` automatically switches that segment from token F1 scoring to multilingual semantic similarity using [`paraphrase-multilingual-MiniLM-L12-v2`](https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2). This happens per-segment, so dubbed or mixed-language files are handled correctly even if not every segment is cross-language. Cross-language segments use a default threshold of `0.20` (instead of the `0.35` default for same-language segments) because semantic similarity scores across language pairs are inherently lower even for correct matches.
 
 Use `--cross-threshold` to tune the pass/fail cutoff for translated subtitles independently:
 
