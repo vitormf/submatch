@@ -8,6 +8,7 @@ jobs:
     name: Unit tests (${{ matrix.os }})
     runs-on: ${{ matrix.runner }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: macOS
