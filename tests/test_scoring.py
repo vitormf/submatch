@@ -885,7 +885,7 @@ def test_low_language_confidence_sets_segment_lang_none(tmp_path, monkeypatch):
 def test_early_bailout_after_probe_zones(tmp_path, monkeypatch):
     """After _LANG_PROBE_ZONES zones with zero accepted segments, processing stops early."""
     from pathlib import Path
-    from submatch.scoring import _audio_driven_transcribe, _LANG_PROBE_ZONES
+    from submatch.scoring import _audio_driven_transcribe
     from submatch import transcribe as _transcribe, audio as _audio, sampler as _sampler
     from submatch.pipeline import PipelineConfig
 
@@ -927,7 +927,7 @@ def test_early_bailout_after_probe_zones(tmp_path, monkeypatch):
 def test_no_bailout_when_one_zone_accepted(tmp_path, monkeypatch):
     """If at least one zone passes the gate within _LANG_PROBE_ZONES, all zones are processed."""
     from pathlib import Path
-    from submatch.scoring import _audio_driven_transcribe, _LANG_PROBE_ZONES
+    from submatch.scoring import _audio_driven_transcribe
     from submatch import transcribe as _transcribe, audio as _audio, sampler as _sampler
     from submatch.pipeline import PipelineConfig
 
